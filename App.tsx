@@ -5,13 +5,13 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { styles } from './mobile/src/styles/appStyles';
 // Sentence analyzer wiring is temporarily disabled until backend integration is ready.
 // const AsyncStorage: any = require('@react-native-async-storage/async-storage');
 // import { analyzeSentence } from './mobile/src/services/analyzerClient';
@@ -50,6 +50,7 @@ const CALENDAR_SOURCE_OPTIONS = [
   { value: 'friends', label: 'Friend' },
   { value: 'media', label: 'Media' },
   { value: 'websearch', label: 'Web search' },
+  { value: 'environment', label: 'Environment' },
 ];
 
 const SOURCE_LABELS = {
@@ -57,6 +58,7 @@ const SOURCE_LABELS = {
   friends: 'Friend',
   media: 'Media',
   websearch: 'Web search',
+  environment: 'Environment',
   other: 'Other',
 };
 
@@ -70,10 +72,48 @@ const SOURCE_COLORS = {
   friends: '#ec4899',
   media: '#f59e0b',
   websearch: '#10b981',
+  environment: '#06b6d4',
   other: '#94a3b8',
 };
 
 const TAU = Math.PI * 2;
+
+const PAGES = [
+  { key: 'calendar', label: 'Calendar' },
+  { key: 'notes', label: 'Notes' },
+  { key: 'insights', label: 'Insights' },
+];
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
+
+const addMonths = (date: Date, amount: number) => {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + amount, 1);
+  return startOfMonth(next);
+};
+
+const buildCalendarCells = (monthStart: Date) => {
+  const firstDay = startOfMonth(monthStart);
+  const startOffset = firstDay.getDay();
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() - startOffset);
+
+  const cells = [];
+  for (let i = 0; i < 42; i += 1) {
+    const cellDate = new Date(gridStart);
+    cellDate.setDate(gridStart.getDate() + i);
+    cells.push({
+      key: formatDateKey(cellDate),
+      date: cellDate,
+      isCurrentMonth:
+        cellDate.getMonth() === monthStart.getMonth() &&
+        cellDate.getFullYear() === monthStart.getFullYear(),
+    });
+  }
+  return cells;
+};
 
 // const emptyResult = {
 //   score: 0,
@@ -97,66 +137,25 @@ const initialCalendarForm = () => ({
   dateKey: formatDateKey(new Date()),
   language: DEFAULT_LANG,
   sourceType: DEFAULT_SOURCE,
-  sourceDetail: '',
+  sourceOrigin: '',
   text: '',
 });
 
 export default function App() {
-  return (
-    <View style={styles.appShell}>
-      <Text style={styles.appHeadline}>Tensai Note</Text>
-      <Text style={styles.appTagline}>
-        Practice calendar and note journal - sentence analyzer coming soon.
-      </Text>
-      <View style={styles.featureLayout}>
-        <CalendarPanel />
-      </View>
-    </View>
-  );
-}
-
-/* Analyzer and kanji views are temporarily disabled until backend work resumes. */
-
-function CalendarPanel() {
+  const [activePage, setActivePage] = useState('calendar');
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState(() => initialCalendarForm());
+  const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [sidebarVisible, setSidebarVisible] = useState(false);
+  const [noteStage, setNoteStage] = useState<'text' | 'source'>('text');
 
-  const loadNotes = useCallback(async () => {
-    setError(null);
-    try {
-      const stored = await AsyncStorage.getItem(CALENDAR_NOTES_STORAGE_KEY);
-      const parsed = stored ? JSON.parse(stored) : [];
-      const cleaned = Array.isArray(parsed) ? parsed.map(sanitizeNote) : [];
-      cleaned.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-      setNotes(cleaned);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load notes from device storage';
-      setError(message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => { loadNotes(); }, [loadNotes]);
-
-  const groupedNotes = useMemo(() => {
-    const map = new Map();
-    notes.forEach(note => {
-      const key = note.dateKey || 'Unknown date';
-      const bucket = map.get(key) || [];
-      bucket.push(note);
-      map.set(key, bucket);
-    });
-
-    return Array.from(map.entries())
-      .sort(([a], [b]) => (a > b ? -1 : 1))
-      .map(([dateKey, list]) => ({ dateKey, items: list.sort((a, b) => (b.ts || 0) - (a.ts || 0)) }));
-  }, [notes]);
+  const selectedDateKey = useMemo(() => formatDateKey(selectedDate), [selectedDate]);
+  const todayKey = useMemo(() => formatDateKey(new Date()), []);
 
   const sourceSlices = useMemo(() => {
     if (!notes.length) {
@@ -193,14 +192,72 @@ function CalendarPanel() {
     });
   }, [notes]);
 
-  const handleRefresh = useCallback(() => { setRefreshing(true); loadNotes(); }, [loadNotes]);
+  const loadNotes = useCallback(async () => {
+    setError(null);
+    try {
+      const stored = await AsyncStorage.getItem(CALENDAR_NOTES_STORAGE_KEY);
+      const parsed = stored ? JSON.parse(stored) : [];
+      const cleaned = Array.isArray(parsed) ? parsed.map(sanitizeNote) : [];
+      cleaned.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      setNotes(cleaned);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load notes from device storage';
+      setError(message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  const handleFormChange = useCallback((field, value) => { setForm(prev => ({ ...prev, [field]: value })); }, []);
+  useEffect(() => {
+    loadNotes();
+  }, [loadNotes]);
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadNotes();
+  }, [loadNotes]);
+
+  const handleSelectDate = useCallback((date: Date) => {
+    setSelectedDate(date);
+    setCurrentMonth(startOfMonth(date));
+    setForm(prev => ({ ...prev, dateKey: formatDateKey(date) }));
+  }, []);
+
+  const handleMonthChange = useCallback((direction: number) => {
+    setCurrentMonth(prev => addMonths(prev, direction));
+  }, []);
+
+  const handleJumpToday = useCallback(() => {
+    handleSelectDate(new Date());
+  }, [handleSelectDate]);
+
+  const handleFormChange = useCallback((field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+    if (field === 'dateKey') {
+      const parsed = new Date(`${value}T00:00:00`);
+      if (!Number.isNaN(parsed.getTime())) {
+        setSelectedDate(parsed);
+        setCurrentMonth(startOfMonth(parsed));
+      }
+    }
+  }, []);
+
+  const persistNotes = useCallback(async updated => {
+    setNotes(updated);
+    await AsyncStorage.setItem(CALENDAR_NOTES_STORAGE_KEY, JSON.stringify(updated));
+  }, []);
 
   const handleSubmit = useCallback(async () => {
     if (submitting) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.dateKey)) { setError('Enter the date as YYYY-MM-DD.'); return; }
-    if (!form.text.trim()) { setError('Note text cannot be empty.'); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.dateKey)) {
+      setError('Enter the date as YYYY-MM-DD.');
+      return;
+    }
+    if (!form.text.trim()) {
+      setError('Note text cannot be empty.');
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -212,127 +269,415 @@ function CalendarPanel() {
         language: form.language,
         text: form.text.trim(),
         sourceType: form.sourceType,
-        sourceDetail: form.sourceDetail.trim(),
+        sourceOrigin: form.sourceOrigin.trim(),
         ts: timestamp,
       });
       const updated = insertOrUpdateNote(notes, newNote);
-      setNotes(updated);
-      await AsyncStorage.setItem(CALENDAR_NOTES_STORAGE_KEY, JSON.stringify(updated));
-      setForm(initialCalendarForm());
+      await persistNotes(updated);
+
+      const savedDate = new Date(`${form.dateKey}T00:00:00`);
+      const fallbackDate = Number.isNaN(savedDate.getTime()) ? new Date() : savedDate;
+      setForm(prev => ({
+        ...initialCalendarForm(),
+        language: prev.language,
+        sourceType: prev.sourceType,
+        dateKey: formatDateKey(fallbackDate),
+      }));
+      handleSelectDate(fallbackDate);
+      setNoteStage('text');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save note locally';
       setError(message);
-    } finally { setSubmitting(false); }
-  }, [form, submitting, notes]);
-
-  const handleDelete = useCallback(async noteId => {
-    try {
-      const updated = notes.filter(note => note.id !== noteId);
-      setNotes(updated);
-      await AsyncStorage.setItem(CALENDAR_NOTES_STORAGE_KEY, JSON.stringify(updated));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete note locally';
-      setError(message);
+    } finally {
+      setSubmitting(false);
     }
-  }, [notes]);
+  }, [form, submitting, notes, persistNotes, handleSelectDate]);
+
+  const handleDelete = useCallback(
+    async noteId => {
+      try {
+        const updated = notes.filter(note => note.id !== noteId);
+        await persistNotes(updated);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to delete note locally';
+        setError(message);
+      }
+    },
+    [notes, persistNotes],
+  );
+
+  const handleAdvanceStage = useCallback(() => {
+    if (!form.text.trim()) {
+      setError('Note text cannot be empty.');
+      return;
+    }
+    setError(null);
+    setNoteStage('source');
+  }, [form.text]);
+
+  const handleBackStage = useCallback(() => {
+    setError(null);
+    setNoteStage('text');
+  }, []);
+
+  const openSidebar = useCallback(() => setSidebarVisible(true), []);
+  const closeSidebar = useCallback(() => setSidebarVisible(false), []);
+  const handleSelectPage = useCallback((pageKey: string) => {
+    setActivePage(pageKey);
+    setSidebarVisible(false);
+  }, []);
+
+  const handleOpenNotes = useCallback(() => {
+    setNoteStage('text');
+    handleSelectPage('notes');
+  }, [handleSelectPage]);
+
+  const renderContent = () => {
+    switch (activePage) {
+      case 'notes':
+        return (
+          <NotesView
+            form={form}
+            onChangeForm={handleFormChange}
+            onSubmit={handleSubmit}
+            submitting={submitting}
+            notes={notes}
+            onDelete={handleDelete}
+            error={error}
+            noteStage={noteStage}
+            onAdvanceStage={handleAdvanceStage}
+            onBackStage={handleBackStage}
+          />
+        );
+      case 'insights':
+        return (
+          <InsightsView
+            notes={notes}
+            sourceSlices={sourceSlices}
+            onDelete={handleDelete}
+            loading={loading}
+          />
+        );
+      case 'calendar':
+      default:
+        return (
+          <CalendarView
+            notes={notes}
+            loading={loading}
+            error={error}
+            refreshing={refreshing}
+            submitting={submitting}
+            form={form}
+            currentMonth={currentMonth}
+            selectedDateKey={selectedDateKey}
+            todayKey={todayKey}
+            onMonthChange={handleMonthChange}
+            onSelectDate={handleSelectDate}
+            onJumpToday={handleJumpToday}
+            onRefresh={handleRefresh}
+            onChangeForm={handleFormChange}
+            onSubmit={handleSubmit}
+            onDelete={handleDelete}
+            noteStage={noteStage}
+            onAdvanceStage={handleAdvanceStage}
+            onBackStage={handleBackStage}
+          />
+        );
+    }
+  };
 
   return (
-    <ScrollView contentContainerStyle={styles.featureContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
+    <View style={styles.appShell}>
+      <View style={styles.topRow}>
+        <Pressable style={styles.menuButton} onPress={openSidebar}>
+          <Text style={styles.menuButtonLabel}>Menu</Text>
+        </Pressable>
+        <Text style={styles.appHeadline}>Tensai Note</Text>
+      </View>
+      <View style={styles.appLayout}>
+        <View style={styles.mainContent}>{renderContent()}</View>
+      </View>
+
+      <Pressable style={styles.fab} onPress={handleOpenNotes}>
+        <Text style={styles.fabLabel}>Note</Text>
+      </Pressable>
+
+      {sidebarVisible && (
+        <View style={styles.sidebarOverlay}>
+          <View style={styles.sidebarPanel}>
+            {PAGES.map(page => {
+              const isActive = activePage === page.key;
+              return (
+                <Pressable
+                  key={page.key}
+                  style={[styles.sidebarItem, isActive && styles.sidebarItemActive]}
+                  onPress={() => handleSelectPage(page.key)}
+                >
+                  <Text style={[styles.sidebarLabel, isActive && styles.sidebarLabelActive]}>
+                    {page.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Pressable style={styles.sidebarBackdrop} onPress={closeSidebar} />
+        </View>
+      )}
+    </View>
+  );
+}
+
+/* Analyzer and kanji views are temporarily disabled until backend work resumes. */
+
+
+function CalendarView({
+  notes,
+  loading,
+  error,
+  refreshing,
+  submitting,
+  form,
+  currentMonth,
+  selectedDateKey,
+  todayKey,
+  onMonthChange,
+  onSelectDate,
+  onJumpToday,
+  onRefresh,
+  onChangeForm,
+  onSubmit,
+  onDelete,
+  noteStage,
+  onAdvanceStage,
+  onBackStage,
+}) {
+  const monthLabel = useMemo(() => {
+    try {
+      return currentMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    } catch (_err) {
+      return `${currentMonth.getFullYear()}-${currentMonth.getMonth() + 1}`;
+    }
+  }, [currentMonth]);
+
+  const calendarCells = useMemo(() => buildCalendarCells(currentMonth), [currentMonth]);
+  const noteKeySet = useMemo(() => new Set(notes.map(note => note.dateKey)), [notes]);
+  const selectedNotes = useMemo(
+    () => notes.filter(note => note.dateKey === selectedDateKey),
+    [notes, selectedDateKey],
+  );
+
+  return (
+    <ScrollView
+      contentContainerStyle={styles.featureContent}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
       <Text style={styles.featureHeadline}>Practice calendar</Text>
-      <Text style={styles.featureSubtitle}>Log study notes each day to see streaks and where your sentences come from.</Text>
+      <Text style={styles.featureSubtitle}>
+        Tap a day to review entries, then jot quick notes with language/source context.
+      </Text>
 
       <View style={styles.calendarLayout}>
+        <NoteComposer
+          form={form}
+          noteStage={noteStage}
+          submitting={submitting}
+          error={error}
+          onChangeForm={onChangeForm}
+          onAdvanceStage={onAdvanceStage}
+          onBackStage={onBackStage}
+          onSubmit={onSubmit}
+        />
+
         <View style={[styles.featureCard, styles.calendarWrapper]}>
-          <Text style={styles.sectionTitle}>Add a note</Text>
+          <View style={styles.calendarBoard}>
+            <View style={styles.calendarBoardHeader}>
+              <Pressable
+                accessibilityLabel="Previous month"
+                onPress={() => onMonthChange(-1)}
+                style={styles.calendarHeaderButton}
+              >
+                <Text style={styles.calendarHeaderButtonLabel}>{'<'}</Text>
+              </Pressable>
+              <Text style={styles.calendarBoardTitle}>{monthLabel}</Text>
+              <Pressable
+                accessibilityLabel="Next month"
+                onPress={() => onMonthChange(1)}
+                style={styles.calendarHeaderButton}
+              >
+                <Text style={styles.calendarHeaderButtonLabel}>{'>'}</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.calendarWeekdays}>
+              {WEEKDAYS.map(day => (
+                <Text key={day} style={styles.calendarWeekdayLabel}>
+                  {day}
+                </Text>
+              ))}
+            </View>
+
+            <View style={styles.calendarGrid}>
+              {calendarCells.map(cell => {
+                const cellKey = formatDateKey(cell.date);
+                const isSelected = cellKey === selectedDateKey;
+                const isToday = cellKey === todayKey;
+                const hasNotes = noteKeySet.has(cellKey);
+                return (
+                  <Pressable
+                    key={cell.key}
+                    style={[
+                      styles.calendarDay,
+                      !cell.isCurrentMonth && styles.calendarDayMuted,
+                      isSelected && styles.calendarDaySelected,
+                      isToday && styles.calendarDayToday,
+                    ]}
+                    onPress={() => onSelectDate(cell.date)}
+                  >
+                    <Text
+                      style={[
+                        styles.calendarDayLabel,
+                        !cell.isCurrentMonth && styles.calendarDayLabelMuted,
+                        isSelected && styles.calendarDayLabelSelected,
+                      ]}
+                    >
+                      {cell.date.getDate()}
+                    </Text>
+                    {hasNotes ? <View style={styles.calendarDayDot} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.calendarSelectedActions}>
+              <Text style={styles.calendarSelectedLabel}>
+                Selected: {formatDisplayDate(selectedDateKey)}
+              </Text>
+              <Pressable onPress={onJumpToday} style={styles.calendarTodayButton}>
+                <Text style={styles.calendarTodayLabel}>Today</Text>
+              </Pressable>
+            </View>
+          </View>
+
+        <View style={[styles.featureCard, styles.calendarNotePane]}>
+          <View style={styles.calendarNotePaneHeader}>
+            <View>
+              <Text style={styles.calendarNotePaneTitle}>{formatDisplayDate(selectedDateKey)}</Text>
+              <Text style={styles.calendarNotePaneCount}>
+                {selectedNotes.length
+                  ? `${selectedNotes.length} note${selectedNotes.length === 1 ? '' : 's'} saved`
+                  : 'No notes saved yet'}
+              </Text>
+            </View>
+          </View>
+
+          {loading ? (
+            <ActivityIndicator style={styles.calendarNoteLoading} />
+          ) : selectedNotes.length === 0 ? (
+            <Text style={styles.calendarNoteEmpty}>No notes for this day. Capture one from the form.</Text>
+          ) : (
+            <NoteList notes={selectedNotes} onDelete={onDelete} />
+          )}
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
+
+function NoteComposer({
+  form,
+  noteStage,
+  submitting,
+  error,
+  onChangeForm,
+  onAdvanceStage,
+  onBackStage,
+  onSubmit,
+}) {
+  const isTextStage = noteStage === 'text';
+  const canAdvance = Boolean(form.text.trim());
+
+  return (
+    <View style={[styles.featureCard, styles.calendarWrapper]}>
+      {isTextStage ? (
+        <>
+          <Text style={styles.noteStageTitle}>Stage 1 · Write your note</Text>
           <TextInput
             style={styles.calendarNoteEditor}
             multiline
-            placeholder="Write what you practiced or noticed today..."
+            placeholder="Describe what you practiced or noticed..."
+            placeholderTextColor="#94A3B8"
             value={form.text}
-            onChangeText={value => handleFormChange('text', value)}
+            onChangeText={value => onChangeForm('text', value)}
             textAlignVertical="top"
           />
+          <View style={styles.stageActionsSingle}>
+            <Pressable
+              style={[styles.stagePrimaryButton, !canAdvance && styles.primaryButtonDisabled]}
+              onPress={onAdvanceStage}
+              disabled={!canAdvance}
+            >
+              <Text style={styles.stagePrimaryLabel}>Next: Source</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={styles.noteStageTitle}>Stage 2 · Add source context</Text>
+          <Text style={styles.notePreviewLabel}>Note</Text>
+          <Text style={styles.notePreviewText}>{form.text}</Text>
 
           <OptionPillGroup
             label="Language"
             options={CALENDAR_LANG_OPTIONS}
             value={form.language}
-            onChange={value => handleFormChange('language', value)}
+            onChange={value => onChangeForm('language', value)}
           />
 
           <OptionPillGroup
             label="Source"
             options={CALENDAR_SOURCE_OPTIONS}
             value={form.sourceType}
-            onChange={value => handleFormChange('sourceType', value)}
+            onChange={value => onChangeForm('sourceType', value)}
           />
-
-          <SourceDistributionChart slices={sourceSlices} />
 
           <TextInput
             style={styles.calendarInput}
             placeholder="Date (YYYY-MM-DD)"
+            placeholderTextColor="#94A3B8"
             value={form.dateKey}
-            onChangeText={value => handleFormChange('dateKey', value)}
+            onChangeText={value => onChangeForm('dateKey', value)}
           />
 
           <TextInput
             style={styles.calendarInput}
-            placeholder="Source detail (friend name, show, etc.)"
-            value={form.sourceDetail}
-            onChangeText={value => handleFormChange('sourceDetail', value)}
+            placeholder="Source origin (sign, friend name, show, etc.)"
+            placeholderTextColor="#94A3B8"
+            value={form.sourceOrigin}
+            onChangeText={value => onChangeForm('sourceOrigin', value)}
           />
 
-          <Pressable style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]} onPress={handleSubmit} disabled={submitting}>
-            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryLabel}>Save note</Text>}
-          </Pressable>
-        </View>
-
-        <View style={[styles.featureCard, styles.calendarNotePane]}>
-          <View style={styles.calendarNotePaneHeader}>
-            <Text style={styles.calendarNotePaneTitle}>Saved notes</Text>
-            <Text style={styles.calendarNotePaneCount}>
-              {notes.length ? `${notes.length} saved` : 'No entries yet'}
-            </Text>
+          <View style={styles.stageActions}>
+            <Pressable style={styles.stageSecondaryButton} onPress={onBackStage}>
+              <Text style={styles.stageSecondaryLabel}>Back</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.stagePrimaryButton, submitting && styles.primaryButtonDisabled]}
+              onPress={onSubmit}
+              disabled={submitting}
+            >
+              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.stagePrimaryLabel}>Save note</Text>}
+            </Pressable>
           </View>
+        </>
+      )}
 
-          {error ? (
-            <View style={[styles.errorBox, styles.calendarNoteAlert]}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-
-          {loading ? (
-            <ActivityIndicator style={styles.calendarNoteLoading} />
-          ) : groupedNotes.length === 0 ? (
-            <Text style={styles.calendarNoteEmpty}>No notes yet. Add your first study note above.</Text>
-          ) : (
-            <View style={styles.calendarNoteList}>
-              {groupedNotes.map(section => (
-                <View key={section.dateKey} style={styles.calendarNoteSection}>
-                  <Text style={styles.calendarNoteHeading}>{formatDisplayDate(section.dateKey)}</Text>
-                  {section.items.map(note => (
-                    <View key={note.id} style={[styles.featureCard, styles.calendarNoteCard]}>
-                      <View style={styles.calendarNoteMeta}>
-                        <View>
-                          <Text style={styles.calendarNoteBadge}>{note.language}</Text>
-                          <Text style={styles.calendarNoteSource}>{SOURCE_LABELS[note.sourceType] || 'Other'}</Text>
-                        </View>
-                        <Pressable onPress={() => handleDelete(note.id)}>
-                          <Text style={styles.calendarNoteDelete}>Delete</Text>
-                        </Pressable>
-                      </View>
-                      <Text style={styles.calendarNoteText}>{note.text}</Text>
-                      {note.sourceDetail ? <Text style={styles.calendarNoteDetail}>Detail: {note.sourceDetail}</Text> : null}
-                    </View>
-                  ))}
-                </View>
-              ))}
-            </View>
-          )}
+      {error ? (
+        <View style={[styles.errorBox, styles.calendarNoteAlert]}>
+          <Text style={styles.errorText}>{error}</Text>
         </View>
-      </View>
-    </ScrollView>
+      ) : null}
+    </View>
   );
 }
 
@@ -381,6 +726,96 @@ function SourceDistributionChart({ slices }: { slices: Array<{ source: string; l
   );
 }
 
+function NotesView({
+  form,
+  onChangeForm,
+  onSubmit,
+  submitting,
+  notes,
+  onDelete,
+  error,
+  noteStage,
+  onAdvanceStage,
+  onBackStage,
+}) {
+  const orderedNotes = useMemo(
+    () => [...notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)),
+    [notes],
+  );
+
+  return (
+    <ScrollView contentContainerStyle={styles.featureContent}>
+      <Text style={styles.featureHeadline}>Note composer</Text>
+      <Text style={styles.featureSubtitle}>Capture new study notes with language/source context.</Text>
+
+      <NoteComposer
+        form={form}
+        noteStage={noteStage}
+        submitting={submitting}
+        error={error}
+        onChangeForm={onChangeForm}
+        onAdvanceStage={onAdvanceStage}
+        onBackStage={onBackStage}
+        onSubmit={onSubmit}
+      />
+
+      <View style={[styles.featureCard, styles.calendarNotePane]}>
+        <View style={styles.calendarNotePaneHeader}>
+          <View>
+            <Text style={styles.calendarNotePaneTitle}>All notes</Text>
+            <Text style={styles.calendarNotePaneCount}>
+              {orderedNotes.length
+                ? `${orderedNotes.length} saved`
+                : 'No notes saved yet'}
+            </Text>
+          </View>
+        </View>
+
+        <NoteList notes={orderedNotes} onDelete={onDelete} showDate />
+      </View>
+    </ScrollView>
+  );
+}
+
+function InsightsView({ notes, sourceSlices, onDelete, loading }) {
+  const orderedNotes = useMemo(
+    () => [...notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)),
+    [notes],
+  );
+
+  return (
+    <ScrollView contentContainerStyle={styles.featureContent}>
+      <Text style={styles.featureHeadline}>Insights</Text>
+      <Text style={styles.featureSubtitle}>
+        See where your sentences come from and skim through saved notes.
+      </Text>
+
+      <View style={[styles.featureCard, styles.calendarWrapper]}>
+        <SourceDistributionChart slices={sourceSlices} />
+      </View>
+
+      <View style={[styles.featureCard, styles.calendarNotePane]}>
+        <View style={styles.calendarNotePaneHeader}>
+          <View>
+            <Text style={styles.calendarNotePaneTitle}>Note browser</Text>
+            <Text style={styles.calendarNotePaneCount}>
+              {orderedNotes.length
+                ? `${orderedNotes.length} saved`
+                : 'No notes saved yet'}
+            </Text>
+          </View>
+        </View>
+
+        {loading ? (
+          <ActivityIndicator style={styles.calendarNoteLoading} />
+        ) : (
+          <NoteList notes={orderedNotes} onDelete={onDelete} showDate />
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
 function OptionPillGroup({ label, options, value, onChange }) {
   return (
     <View style={styles.pillGroup}>
@@ -406,6 +841,39 @@ function insertOrUpdateNote(list, note) {
   return next;
 }
 
+function NoteList({ notes, onDelete, showDate = false }) {
+  if (!notes.length) {
+    return <Text style={styles.calendarNoteEmpty}>Nothing logged yet.</Text>;
+  }
+
+  return (
+    <View style={styles.calendarNoteList}>
+      {notes.map(note => {
+        const sourceLabel = SOURCE_LABELS[note.sourceType] || 'Other';
+        const sourceDisplay = note.sourceOrigin ? `${sourceLabel}:${note.sourceOrigin}` : sourceLabel;
+
+        return (
+          <View key={note.id} style={[styles.featureCard, styles.calendarNoteCard]}>
+            <View style={styles.calendarNoteMeta}>
+              <View>
+                {showDate ? (
+                  <Text style={styles.noteListDate}>{formatDisplayDate(note.dateKey)}</Text>
+                ) : null}
+                <Text style={styles.calendarNoteBadge}>{note.language}</Text>
+                <Text style={styles.calendarNoteSource}>{sourceDisplay}</Text>
+              </View>
+              <Pressable onPress={() => onDelete(note.id)}>
+                <Text style={styles.calendarNoteDelete}>Delete</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.calendarNoteText}>{note.text}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function sanitizeNote(note) {
   return {
     id: note.id || note._id || `${note.dateKey}-${note.ts}`,
@@ -414,7 +882,7 @@ function sanitizeNote(note) {
     text: note.text || note.content || '',
     ts: note.ts || Date.now(),
     sourceType: note.sourceType || DEFAULT_SOURCE,
-    sourceDetail: note.sourceDetail || '',
+    sourceOrigin: note.sourceOrigin || note.sourceDetail || '',
   };
 }
 
@@ -449,110 +917,6 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
   };
 }
 
-// Minimal styles to integrate with the existing app theme.
-const styles = StyleSheet.create({
-  appShell: { flex: 1, padding: 16, backgroundColor: '#101820' },
-  appHeadline: { color: '#F2F2F2', fontSize: 20, fontWeight: '700' },
-  appTagline: { color: '#9AA0A6', marginBottom: 12 },
-  featureTabs: { flexDirection: 'row', gap: 8, marginVertical: 12 },
-  featureTab: { padding: 8, borderRadius: 8, backgroundColor: '#fff' },
-  featureTabActive: { backgroundColor: '#2563eb' },
-  featureTabLabel: { color: '#111827' },
-  featureTabLabelActive: { color: '#fff' },
-  featureLayout: { flex: 1 },
-  featureContent: { paddingBottom: 48 },
-  featureHeadline: { fontSize: 18, fontWeight: '700', color: '#F2F2F2', marginBottom: 6 },
-  featureSubtitle: { color: '#9AA0A6', marginBottom: 12 },
-  featureCard: {
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 12,
-    shadowColor: 'rgba(15,23,42,0.08)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  promptCard: { marginBottom: 12 },
-  promptLabel: { fontWeight: '700' },
-  promptText: { color: '#374151', marginVertical: 6 },
-  promptButton: { alignSelf: 'flex-start', padding: 8, backgroundColor: '#2563eb', borderRadius: 8 },
-  promptButtonLabel: { color: '#fff', fontWeight: '700' },
-  textArea: { backgroundColor: '#fff', borderRadius: 10, padding: 12, minHeight: 120, marginBottom: 12 },
-  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  toggleLabel: { fontWeight: '600' },
-  toggleHelper: { color: '#6b7280', fontSize: 12 },
-  primaryButton: { backgroundColor: '#2563eb', padding: 12, borderRadius: 10, alignItems: 'center', marginVertical: 12 },
-  primaryButtonDisabled: { opacity: 0.6 },
-  primaryLabel: { color: '#fff', fontWeight: '700' },
-  errorBox: { backgroundColor: '#fee2e2', padding: 10, borderRadius: 8 },
-  errorText: { color: '#991b1b' },
-  resultCard: { marginVertical: 12 },
-  resultScore: { fontSize: 36, fontWeight: '800' },
-  resultSubtitle: { color: '#6b7280', marginBottom: 8 },
-  resultMetricsRow: { flexDirection: 'row', gap: 8, marginVertical: 8 },
-  metricPill: { padding: 8, backgroundColor: '#f8fafc', borderRadius: 8, alignItems: 'center', marginRight: 8 },
-  metricValue: { fontWeight: '800' },
-  metricLabel: { fontSize: 12, color: '#6b7280' },
-  sectionTitle: { fontWeight: '700', marginTop: 12 },
-  emptyText: { color: '#6b7280', marginTop: 6 },
-  badgeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
-  badgeLabel: { fontWeight: '700' },
-  badgeMeta: { color: '#2563eb', fontWeight: '700' },
-  penaltyCard: { backgroundColor: '#fff1f2', padding: 8, borderRadius: 10, marginTop: 6 },
-  penaltyTitle: { fontWeight: '800', color: '#9f1239' },
-  penaltyText: { color: '#9f1239' },
-  historyCard: { marginTop: 12 },
-  historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  clearHistory: { color: '#6b7280' },
-  historyRow: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#eef2f7' },
-  historyMeta: { flexDirection: 'row', gap: 8, marginBottom: 4 },
-  historyLevel: { fontWeight: '700' },
-  historyMode: { color: '#6b7280' },
-  historyScore: { marginLeft: 'auto', fontWeight: '700' },
-  historyText: { color: '#374151' },
-  historyTimestamp: { color: '#9aa0a6', fontSize: 12, marginTop: 4 },
-  kanjiGrid: { display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  kanjiCell: { width: 64, height: 64, borderRadius: 8, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  kanjiChar: { fontSize: 28 },
-  kanjiCount: { color: '#6b7280', marginTop: 8 },
-  calendarLayout: { flex: 1, width: '100%', flexDirection: 'column' },
-  calendarWrapper: { marginBottom: 16 },
-  calendarInput: { backgroundColor: '#fff', padding: 8, borderRadius: 8, marginVertical: 8, borderWidth: 1, borderColor: '#e5e7eb' },
-  calendarNoteEditor: { minHeight: 120, backgroundColor: '#fff', borderRadius: 10, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#e5e7eb' },
-  calendarNotePane: { flex: 1, marginBottom: 16 },
-  calendarNotePaneHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  calendarNotePaneTitle: { fontWeight: '700', fontSize: 16, color: '#111827' },
-  calendarNotePaneCount: { color: '#6b7280', fontSize: 12 },
-  calendarNoteAlert: { marginBottom: 12 },
-  calendarNoteLoading: { marginTop: 12 },
-  calendarNoteEmpty: { color: '#6b7280', marginTop: 12 },
-  calendarSourceSummaryEmpty: { paddingVertical: 12, alignSelf: 'stretch' },
-  calendarSourceSummary: { marginTop: 12, marginBottom: 16, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#f8fafc', alignItems: 'center' },
-  calendarSourceSummaryTitle: { alignSelf: 'flex-start', fontWeight: '700', color: '#111827', marginBottom: 8 },
-  calendarSourceLegend: { marginTop: 12, alignSelf: 'stretch' },
-  calendarSourceLegendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
-  calendarSourceLegendSwatch: { width: 14, height: 14, borderRadius: 7, marginRight: 8 },
-  calendarSourceLegendLabel: { flex: 1, color: '#111827', fontWeight: '600' },
-  calendarSourceLegendValue: { color: '#6b7280', fontVariant: ['tabular-nums'] },
-  calendarNoteList: { marginTop: 8 },
-  calendarNoteSection: { marginTop: 12 },
-  calendarNoteHeading: { fontWeight: '700', marginBottom: 8, color: '#111827' },
-  calendarNoteCard: { backgroundColor: '#f8fafc', padding: 10, borderRadius: 10, marginTop: 8 },
-  calendarNoteMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  calendarNoteBadge: { fontWeight: '700', color: '#2563eb' },
-  calendarNoteSource: { color: '#6b7280', marginTop: 2 },
-  calendarNoteDelete: { color: '#ef4444', fontWeight: '600' },
-  calendarNoteText: { marginTop: 4, color: '#111827' },
-  calendarNoteDetail: { color: '#6b7280', marginTop: 6, fontStyle: 'italic' },
-  pillGroup: { marginVertical: 8 },
-  pillLabel: { fontWeight: '700', marginBottom: 6 },
-  pillRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  pill: { paddingVertical: 6, paddingHorizontal: 10, backgroundColor: '#fff', borderRadius: 8, marginRight: 8 },
-  pillActive: { backgroundColor: '#e6f0ff' },
-  pillText: { color: '#111827' },
-  pillTextActive: { color: '#2563eb', fontWeight: '700' },
-});
 
 
 
