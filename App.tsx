@@ -47,7 +47,7 @@ const CALENDAR_LANG_OPTIONS = [
 
 const CALENDAR_SOURCE_OPTIONS = [
   { value: 'study', label: 'Study session' },
-  { value: 'friends', label: 'Friend' },
+  { value: 'friends', label: 'Friends' },
   { value: 'media', label: 'Media' },
   { value: 'websearch', label: 'Web search' },
   { value: 'environment', label: 'Environment' },
@@ -55,7 +55,7 @@ const CALENDAR_SOURCE_OPTIONS = [
 
 const SOURCE_LABELS = {
   study: 'Study session',
-  friends: 'Friend',
+  friends: 'Friends',
   media: 'Media',
   websearch: 'Web search',
   environment: 'Environment',
@@ -138,6 +138,7 @@ const initialCalendarForm = () => ({
   language: DEFAULT_LANG,
   sourceType: DEFAULT_SOURCE,
   sourceOrigin: '',
+  additionalDetails: '',
   text: '',
 });
 
@@ -270,6 +271,7 @@ export default function App() {
         text: form.text.trim(),
         sourceType: form.sourceType,
         sourceOrigin: form.sourceOrigin.trim(),
+        additionalDetails: form.additionalDetails.trim(),
         ts: timestamp,
       });
       const updated = insertOrUpdateNote(notes, newNote);
@@ -281,6 +283,8 @@ export default function App() {
         ...initialCalendarForm(),
         language: prev.language,
         sourceType: prev.sourceType,
+        sourceOrigin: '',
+        additionalDetails: '',
         dateKey: formatDateKey(fallbackDate),
       }));
       handleSelectDate(fallbackDate);
@@ -332,6 +336,23 @@ export default function App() {
     handleSelectPage('notes');
   }, [handleSelectPage]);
 
+  const handleAddNoteForDate = useCallback(
+    (dateKey?: string) => {
+      const parsed = dateKey ? new Date(`${dateKey}T00:00:00`) : new Date();
+      const normalized = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+      const normalizedKey = formatDateKey(normalized);
+
+      setForm(prev => ({
+        ...prev,
+        dateKey: normalizedKey,
+      }));
+      setNoteStage('text');
+      setSidebarVisible(false);
+      setActivePage('notes');
+    },
+    [],
+  );
+
   const renderContent = () => {
     switch (activePage) {
       case 'notes':
@@ -366,8 +387,6 @@ export default function App() {
             loading={loading}
             error={error}
             refreshing={refreshing}
-            submitting={submitting}
-            form={form}
             currentMonth={currentMonth}
             selectedDateKey={selectedDateKey}
             todayKey={todayKey}
@@ -375,12 +394,8 @@ export default function App() {
             onSelectDate={handleSelectDate}
             onJumpToday={handleJumpToday}
             onRefresh={handleRefresh}
-            onChangeForm={handleFormChange}
-            onSubmit={handleSubmit}
             onDelete={handleDelete}
-            noteStage={noteStage}
-            onAdvanceStage={handleAdvanceStage}
-            onBackStage={handleBackStage}
+            onAddNote={handleAddNoteForDate}
           />
         );
     }
@@ -388,12 +403,9 @@ export default function App() {
 
   return (
     <View style={styles.appShell}>
-      <View style={styles.topRow}>
-        <Pressable style={styles.menuButton} onPress={openSidebar}>
-          <Text style={styles.menuButtonLabel}>Menu</Text>
-        </Pressable>
-        <Text style={styles.appHeadline}>Tensai Note</Text>
-      </View>
+      <Pressable style={styles.menuFab} onPress={openSidebar}>
+        <Text style={styles.menuButtonLabel}>Menu</Text>
+      </Pressable>
       <View style={styles.appLayout}>
         <View style={styles.mainContent}>{renderContent()}</View>
       </View>
@@ -404,6 +416,7 @@ export default function App() {
 
       {sidebarVisible && (
         <View style={styles.sidebarOverlay}>
+          <Pressable style={styles.sidebarBackdrop} onPress={closeSidebar} />
           <View style={styles.sidebarPanel}>
             {PAGES.map(page => {
               const isActive = activePage === page.key;
@@ -420,7 +433,6 @@ export default function App() {
               );
             })}
           </View>
-          <Pressable style={styles.sidebarBackdrop} onPress={closeSidebar} />
         </View>
       )}
     </View>
@@ -435,8 +447,6 @@ function CalendarView({
   loading,
   error,
   refreshing,
-  submitting,
-  form,
   currentMonth,
   selectedDateKey,
   todayKey,
@@ -444,12 +454,8 @@ function CalendarView({
   onSelectDate,
   onJumpToday,
   onRefresh,
-  onChangeForm,
-  onSubmit,
   onDelete,
-  noteStage,
-  onAdvanceStage,
-  onBackStage,
+  onAddNote,
 }) {
   const monthLabel = useMemo(() => {
     try {
@@ -472,22 +478,7 @@ function CalendarView({
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <Text style={styles.featureHeadline}>Practice calendar</Text>
-      <Text style={styles.featureSubtitle}>
-        Tap a day to review entries, then jot quick notes with language/source context.
-      </Text>
-
       <View style={styles.calendarLayout}>
-        <NoteComposer
-          form={form}
-          noteStage={noteStage}
-          submitting={submitting}
-          error={error}
-          onChangeForm={onChangeForm}
-          onAdvanceStage={onAdvanceStage}
-          onBackStage={onBackStage}
-          onSubmit={onSubmit}
-        />
-
         <View style={[styles.featureCard, styles.calendarWrapper]}>
           <View style={styles.calendarBoard}>
             <View style={styles.calendarBoardHeader}>
@@ -557,6 +548,7 @@ function CalendarView({
               </Pressable>
             </View>
           </View>
+        </View>
 
         <View style={[styles.featureCard, styles.calendarNotePane]}>
           <View style={styles.calendarNotePaneHeader}>
@@ -568,6 +560,12 @@ function CalendarView({
                   : 'No notes saved yet'}
               </Text>
             </View>
+            <Pressable
+              style={styles.calendarAddButton}
+              onPress={() => onAddNote(selectedDateKey)}
+            >
+              <Text style={styles.calendarAddButtonLabel}>Add note</Text>
+            </Pressable>
           </View>
 
           {loading ? (
@@ -601,7 +599,7 @@ function NoteComposer({
     <View style={[styles.featureCard, styles.calendarWrapper]}>
       {isTextStage ? (
         <>
-          <Text style={styles.noteStageTitle}>Stage 1 · Write your note</Text>
+          <Text style={styles.noteStageTitle}>Stage 1 - Write your note</Text>
           <TextInput
             style={styles.calendarNoteEditor}
             multiline
@@ -623,7 +621,7 @@ function NoteComposer({
         </>
       ) : (
         <>
-          <Text style={styles.noteStageTitle}>Stage 2 · Add source context</Text>
+          <Text style={styles.noteStageTitle}>Stage 2 - Add source context</Text>
           <Text style={styles.notePreviewLabel}>Note</Text>
           <Text style={styles.notePreviewText}>{form.text}</Text>
 
@@ -655,6 +653,14 @@ function NoteComposer({
             placeholderTextColor="#94A3B8"
             value={form.sourceOrigin}
             onChangeText={value => onChangeForm('sourceOrigin', value)}
+          />
+
+          <TextInput
+            style={styles.calendarInput}
+            placeholder="Additional details"
+            placeholderTextColor="#94A3B8"
+            value={form.additionalDetails}
+            onChangeText={value => onChangeForm('additionalDetails', value)}
           />
 
           <View style={styles.stageActions}>
@@ -746,8 +752,6 @@ function NotesView({
   return (
     <ScrollView contentContainerStyle={styles.featureContent}>
       <Text style={styles.featureHeadline}>Note composer</Text>
-      <Text style={styles.featureSubtitle}>Capture new study notes with language/source context.</Text>
-
       <NoteComposer
         form={form}
         noteStage={noteStage}
@@ -757,6 +761,11 @@ function NotesView({
         onAdvanceStage={onAdvanceStage}
         onBackStage={onBackStage}
         onSubmit={onSubmit}
+      />
+
+      <NoteDateSelector
+        selectedDateKey={form.dateKey}
+        onSelectDate={value => onChangeForm('dateKey', value)}
       />
 
       <View style={[styles.featureCard, styles.calendarNotePane]}>
@@ -777,6 +786,90 @@ function NotesView({
   );
 }
 
+function NoteDateSelector({ selectedDateKey, onSelectDate }) {
+  const initialDate = useMemo(() => {
+    const parsed = new Date(`${selectedDateKey}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return new Date();
+    return parsed;
+  }, [selectedDateKey]);
+  const [pickerMonth, setPickerMonth] = useState(() => startOfMonth(initialDate));
+  const [isOpen, setIsOpen] = useState(false);
+
+  const monthLabel = useMemo(() => {
+    try {
+      return pickerMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    } catch {
+      return `${pickerMonth.getFullYear()}-${pickerMonth.getMonth() + 1}`;
+    }
+  }, [pickerMonth]);
+
+  const pickerCells = useMemo(() => buildCalendarCells(pickerMonth), [pickerMonth]);
+
+  return (
+    <View style={[styles.featureCard, styles.noteDateCard]}>
+      <Pressable style={styles.noteDateToggle} onPress={() => setIsOpen(prev => !prev)}>
+        <View>
+          <Text style={styles.noteStageTitle}>Note date</Text>
+          <Text style={styles.notePreviewLabel}>{formatDisplayDate(selectedDateKey)}</Text>
+        </View>
+        <Text style={styles.noteDateToggleLabel}>{isOpen ? 'Close' : 'Select'}</Text>
+      </Pressable>
+
+      {isOpen ? (
+        <View style={styles.noteDateCalendar}>
+          <View style={styles.noteDateCalendarHeader}>
+            <Pressable onPress={() => setPickerMonth(prev => addMonths(prev, -1))} style={styles.noteDateCalendarButton}>
+              <Text style={styles.noteDateCalendarButtonLabel}>{'<'}</Text>
+            </Pressable>
+            <Text style={styles.noteDateCalendarTitle}>{monthLabel}</Text>
+            <Pressable onPress={() => setPickerMonth(prev => addMonths(prev, 1))} style={styles.noteDateCalendarButton}>
+              <Text style={styles.noteDateCalendarButtonLabel}>{'>'}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.noteDateWeekdays}>
+            {WEEKDAYS.map(day => (
+              <Text key={day} style={styles.noteDateWeekdayLabel}>
+                {day}
+              </Text>
+            ))}
+          </View>
+          <View style={styles.noteDateGrid}>
+            {pickerCells.map(cell => {
+              const key = formatDateKey(cell.date);
+              const active = key === selectedDateKey;
+              return (
+                <Pressable
+                  key={cell.key}
+                  style={[
+                    styles.noteDateDay,
+                    !cell.isCurrentMonth && styles.noteDateDayMuted,
+                    active && styles.noteDateDayActive,
+                  ]}
+                  onPress={() => {
+                    onSelectDate(key);
+                    setPickerMonth(startOfMonth(cell.date));
+                    setIsOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.noteDateDayLabel,
+                      !cell.isCurrentMonth && styles.noteDateDayLabelMuted,
+                      active && styles.noteDateDayLabelActive,
+                    ]}
+                  >
+                    {cell.date.getDate()}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function InsightsView({ notes, sourceSlices, onDelete, loading }) {
   const orderedNotes = useMemo(
     () => [...notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)),
@@ -786,10 +879,6 @@ function InsightsView({ notes, sourceSlices, onDelete, loading }) {
   return (
     <ScrollView contentContainerStyle={styles.featureContent}>
       <Text style={styles.featureHeadline}>Insights</Text>
-      <Text style={styles.featureSubtitle}>
-        See where your sentences come from and skim through saved notes.
-      </Text>
-
       <View style={[styles.featureCard, styles.calendarWrapper]}>
         <SourceDistributionChart slices={sourceSlices} />
       </View>
@@ -862,11 +951,19 @@ function NoteList({ notes, onDelete, showDate = false }) {
                 <Text style={styles.calendarNoteBadge}>{note.language}</Text>
                 <Text style={styles.calendarNoteSource}>{sourceDisplay}</Text>
               </View>
+            <View style={styles.noteActions}>
+              <Pressable>
+                <Text style={styles.calendarNoteEdit}>Edit</Text>
+              </Pressable>
               <Pressable onPress={() => onDelete(note.id)}>
                 <Text style={styles.calendarNoteDelete}>Delete</Text>
               </Pressable>
             </View>
+          </View>
             <Text style={styles.calendarNoteText}>{note.text}</Text>
+            {note.additionalDetails ? (
+              <Text style={styles.calendarNoteDetail}>Details: {note.additionalDetails}</Text>
+            ) : null}
           </View>
         );
       })}
@@ -883,6 +980,7 @@ function sanitizeNote(note) {
     ts: note.ts || Date.now(),
     sourceType: note.sourceType || DEFAULT_SOURCE,
     sourceOrigin: note.sourceOrigin || note.sourceDetail || '',
+    additionalDetails: note.additionalDetails || note.extra || '',
   };
 }
 
