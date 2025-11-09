@@ -2,6 +2,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  NativeModules,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -115,6 +117,46 @@ const buildCalendarCells = (monthStart: Date) => {
   return cells;
 };
 
+const { NativeCalendar } = NativeModules as any;
+
+function useNativeCalendarCells(monthStart: Date) {
+  const [cells, setCells] = useState(() => buildCalendarCells(monthStart));
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCells = async () => {
+      if (Platform.OS === 'android' && NativeCalendar?.getMonthMatrix) {
+        try {
+          const data = await NativeCalendar.getMonthMatrix(
+            monthStart.getFullYear(),
+            monthStart.getMonth(),
+          );
+          if (cancelled) return;
+          const mapped = data.map((item: any) => ({
+            key: item.key,
+            date: parseDateKey(item.dateKey),
+            isCurrentMonth: !!item.isCurrentMonth,
+          }));
+          setCells(mapped);
+          return;
+        } catch (nativeError) {
+          // fall back to JS calendar build if native module fails
+        }
+      }
+      if (!cancelled) {
+        setCells(buildCalendarCells(monthStart));
+      }
+    };
+
+    loadCells();
+    return () => {
+      cancelled = true;
+    };
+  }, [monthStart.getFullYear(), monthStart.getMonth()]);
+
+  return cells;
+}
+
 // const emptyResult = {
 //   score: 0,
 //   grade: '',
@@ -131,6 +173,21 @@ function formatDateKey(date: any): string {
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function parseDateKey(dateKey: string) {
+  if (dateKey instanceof Date) return new Date(dateKey);
+  if (typeof dateKey !== 'string') {
+    const fallback = new Date(dateKey);
+    return Number.isNaN(fallback.getTime()) ? new Date() : fallback;
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) {
+    const fallback = new Date(dateKey);
+    return Number.isNaN(fallback.getTime()) ? new Date() : fallback;
+  }
+  const [, y, m, d] = match;
+  return new Date(Number(y), Number(m) - 1, Number(d), 12, 0, 0);
 }
 
 const initialCalendarForm = () => ({
@@ -154,6 +211,14 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [noteStage, setNoteStage] = useState<'text' | 'source'>('text');
+  const [editingNote, setEditingNote] = useState<any | null>(null);
+  const [editDraft, setEditDraft] = useState({
+    text: '',
+    sourceType: DEFAULT_SOURCE,
+    sourceOrigin: '',
+    additionalDetails: '',
+    dateKey: formatDateKey(new Date()),
+  });
 
   const selectedDateKey = useMemo(() => formatDateKey(selectedDate), [selectedDate]);
   const todayKey = useMemo(() => formatDateKey(new Date()), []);
@@ -236,7 +301,7 @@ export default function App() {
   const handleFormChange = useCallback((field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
     if (field === 'dateKey') {
-      const parsed = new Date(`${value}T00:00:00`);
+      const parsed = parseDateKey(value);
       if (!Number.isNaN(parsed.getTime())) {
         setSelectedDate(parsed);
         setCurrentMonth(startOfMonth(parsed));
@@ -277,7 +342,7 @@ export default function App() {
       const updated = insertOrUpdateNote(notes, newNote);
       await persistNotes(updated);
 
-      const savedDate = new Date(`${form.dateKey}T00:00:00`);
+      const savedDate = parseDateKey(form.dateKey);
       const fallbackDate = Number.isNaN(savedDate.getTime()) ? new Date() : savedDate;
       setForm(prev => ({
         ...initialCalendarForm(),
@@ -338,7 +403,7 @@ export default function App() {
 
   const handleAddNoteForDate = useCallback(
     (dateKey?: string) => {
-      const parsed = dateKey ? new Date(`${dateKey}T00:00:00`) : new Date();
+      const parsed = dateKey ? parseDateKey(dateKey) : new Date();
       const normalized = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
       const normalizedKey = formatDateKey(normalized);
 
@@ -353,6 +418,59 @@ export default function App() {
     [],
   );
 
+  const handleStartEdit = useCallback((note: any) => {
+    setEditDraft({
+      text: note.text || '',
+      sourceType: note.sourceType || DEFAULT_SOURCE,
+      sourceOrigin: note.sourceOrigin || '',
+      additionalDetails: note.additionalDetails || '',
+      dateKey: note.dateKey || formatDateKey(new Date()),
+    });
+    setEditingNote(note);
+  }, []);
+
+  const handleEditChange = useCallback((field: string, value: string) => {
+    setEditDraft(prev => ({
+      ...prev,
+      [field]: value,
+    }));
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingNote(null);
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingNote) return;
+    const trimmedText = editDraft.text.trim();
+    if (!trimmedText) {
+      setError('Note text cannot be empty.');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(editDraft.dateKey)) {
+      setError('Enter the date as YYYY-MM-DD.');
+      return;
+    }
+
+    try {
+      const updatedNote = sanitizeNote({
+        ...editingNote,
+        text: trimmedText,
+        sourceType: editDraft.sourceType,
+        sourceOrigin: editDraft.sourceOrigin,
+        additionalDetails: editDraft.additionalDetails,
+        dateKey: editDraft.dateKey,
+      });
+      const filtered = notes.filter(note => note.id !== editingNote.id);
+      const next = insertOrUpdateNote(filtered, updatedNote);
+      await persistNotes(next);
+      setEditingNote(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update note';
+      setError(message);
+    }
+  }, [editDraft, editingNote, notes, persistNotes]);
+
   const renderContent = () => {
     switch (activePage) {
       case 'notes':
@@ -364,6 +482,7 @@ export default function App() {
             submitting={submitting}
             notes={notes}
             onDelete={handleDelete}
+            onEdit={handleStartEdit}
             error={error}
             noteStage={noteStage}
             onAdvanceStage={handleAdvanceStage}
@@ -377,6 +496,7 @@ export default function App() {
             sourceSlices={sourceSlices}
             onDelete={handleDelete}
             loading={loading}
+            onEdit={handleStartEdit}
           />
         );
       case 'calendar':
@@ -396,6 +516,7 @@ export default function App() {
             onRefresh={handleRefresh}
             onDelete={handleDelete}
             onAddNote={handleAddNoteForDate}
+            onEditNote={handleStartEdit}
           />
         );
     }
@@ -435,6 +556,15 @@ export default function App() {
           </View>
         </View>
       )}
+
+      {editingNote ? (
+        <EditNoteModal
+          draft={editDraft}
+          onChange={handleEditChange}
+          onCancel={handleCancelEdit}
+          onSave={handleSaveEdit}
+        />
+      ) : null}
     </View>
   );
 }
@@ -456,6 +586,7 @@ function CalendarView({
   onRefresh,
   onDelete,
   onAddNote,
+  onEditNote,
 }) {
   const monthLabel = useMemo(() => {
     try {
@@ -465,8 +596,15 @@ function CalendarView({
     }
   }, [currentMonth]);
 
-  const calendarCells = useMemo(() => buildCalendarCells(currentMonth), [currentMonth]);
+  const calendarCells = useNativeCalendarCells(currentMonth);
   const noteKeySet = useMemo(() => new Set(notes.map(note => note.dateKey)), [notes]);
+  const calendarWeeks = useMemo(() => {
+    const weeks: typeof calendarCells[] = [];
+    for (let i = 0; i < calendarCells.length; i += 7) {
+      weeks.push(calendarCells.slice(i, i + 7));
+    }
+    return weeks;
+  }, [calendarCells]);
   const selectedNotes = useMemo(
     () => notes.filter(note => note.dateKey === selectedDateKey),
     [notes, selectedDateKey],
@@ -508,35 +646,39 @@ function CalendarView({
             </View>
 
             <View style={styles.calendarGrid}>
-              {calendarCells.map(cell => {
-                const cellKey = formatDateKey(cell.date);
-                const isSelected = cellKey === selectedDateKey;
-                const isToday = cellKey === todayKey;
-                const hasNotes = noteKeySet.has(cellKey);
-                return (
-                  <Pressable
-                    key={cell.key}
-                    style={[
-                      styles.calendarDay,
-                      !cell.isCurrentMonth && styles.calendarDayMuted,
-                      isSelected && styles.calendarDaySelected,
-                      isToday && styles.calendarDayToday,
-                    ]}
-                    onPress={() => onSelectDate(cell.date)}
-                  >
-                    <Text
-                      style={[
-                        styles.calendarDayLabel,
-                        !cell.isCurrentMonth && styles.calendarDayLabelMuted,
-                        isSelected && styles.calendarDayLabelSelected,
-                      ]}
-                    >
-                      {cell.date.getDate()}
-                    </Text>
-                    {hasNotes ? <View style={styles.calendarDayDot} /> : null}
-                  </Pressable>
-                );
-              })}
+              {calendarWeeks.map((week, index) => (
+                <View key={`${week[0]?.key || index}-${index}`} style={styles.calendarWeekRow}>
+                  {week.map(cell => {
+                    const cellKey = formatDateKey(cell.date);
+                    const isSelected = cellKey === selectedDateKey;
+                    const isToday = cellKey === todayKey;
+                    const hasNotes = noteKeySet.has(cellKey);
+                    return (
+                      <Pressable
+                        key={cell.key}
+                        style={[
+                          styles.calendarDay,
+                          !cell.isCurrentMonth && styles.calendarDayMuted,
+                          isSelected && styles.calendarDaySelected,
+                          isToday && styles.calendarDayToday,
+                        ]}
+                        onPress={() => onSelectDate(cell.date)}
+                      >
+                        <Text
+                          style={[
+                            styles.calendarDayLabel,
+                            !cell.isCurrentMonth && styles.calendarDayLabelMuted,
+                            isSelected && styles.calendarDayLabelSelected,
+                          ]}
+                        >
+                          {cell.date.getDate()}
+                        </Text>
+                        {hasNotes ? <View style={styles.calendarDayDot} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ))}
             </View>
 
             <View style={styles.calendarSelectedActions}>
@@ -573,7 +715,7 @@ function CalendarView({
           ) : selectedNotes.length === 0 ? (
             <Text style={styles.calendarNoteEmpty}>No notes for this day. Capture one from the form.</Text>
           ) : (
-            <NoteList notes={selectedNotes} onDelete={onDelete} />
+            <NoteList notes={selectedNotes} onEdit={onEditNote} onDelete={onDelete} />
           )}
         </View>
       </View>
@@ -739,6 +881,7 @@ function NotesView({
   submitting,
   notes,
   onDelete,
+  onEdit,
   error,
   noteStage,
   onAdvanceStage,
@@ -780,7 +923,7 @@ function NotesView({
           </View>
         </View>
 
-        <NoteList notes={orderedNotes} onDelete={onDelete} showDate />
+        <NoteList notes={orderedNotes} onDelete={onDelete} onEdit={onEdit} showDate />
       </View>
     </ScrollView>
   );
@@ -788,7 +931,7 @@ function NotesView({
 
 function NoteDateSelector({ selectedDateKey, onSelectDate }) {
   const initialDate = useMemo(() => {
-    const parsed = new Date(`${selectedDateKey}T00:00:00`);
+    const parsed = parseDateKey(selectedDateKey);
     if (Number.isNaN(parsed.getTime())) return new Date();
     return parsed;
   }, [selectedDateKey]);
@@ -803,7 +946,14 @@ function NoteDateSelector({ selectedDateKey, onSelectDate }) {
     }
   }, [pickerMonth]);
 
-  const pickerCells = useMemo(() => buildCalendarCells(pickerMonth), [pickerMonth]);
+  const pickerCells = useNativeCalendarCells(pickerMonth);
+  const pickerWeeks = useMemo(() => {
+    const weeks: typeof pickerCells[] = [];
+    for (let i = 0; i < pickerCells.length; i += 7) {
+      weeks.push(pickerCells.slice(i, i + 7));
+    }
+    return weeks;
+  }, [pickerCells]);
 
   return (
     <View style={[styles.featureCard, styles.noteDateCard]}>
@@ -834,35 +984,39 @@ function NoteDateSelector({ selectedDateKey, onSelectDate }) {
             ))}
           </View>
           <View style={styles.noteDateGrid}>
-            {pickerCells.map(cell => {
-              const key = formatDateKey(cell.date);
-              const active = key === selectedDateKey;
-              return (
-                <Pressable
-                  key={cell.key}
-                  style={[
-                    styles.noteDateDay,
-                    !cell.isCurrentMonth && styles.noteDateDayMuted,
-                    active && styles.noteDateDayActive,
-                  ]}
-                  onPress={() => {
-                    onSelectDate(key);
-                    setPickerMonth(startOfMonth(cell.date));
-                    setIsOpen(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.noteDateDayLabel,
-                      !cell.isCurrentMonth && styles.noteDateDayLabelMuted,
-                      active && styles.noteDateDayLabelActive,
-                    ]}
-                  >
-                    {cell.date.getDate()}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            {pickerWeeks.map((week, index) => (
+              <View key={`${week[0]?.key || index}-${index}`} style={styles.calendarWeekRow}>
+                {week.map(cell => {
+                  const key = formatDateKey(cell.date);
+                  const active = key === selectedDateKey;
+                  return (
+                    <Pressable
+                      key={cell.key}
+                      style={[
+                        styles.noteDateDay,
+                        !cell.isCurrentMonth && styles.noteDateDayMuted,
+                        active && styles.noteDateDayActive,
+                      ]}
+                      onPress={() => {
+                        onSelectDate(key);
+                        setPickerMonth(startOfMonth(cell.date));
+                        setIsOpen(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.noteDateDayLabel,
+                          !cell.isCurrentMonth && styles.noteDateDayLabelMuted,
+                          active && styles.noteDateDayLabelActive,
+                        ]}
+                      >
+                        {cell.date.getDate()}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
           </View>
         </View>
       ) : null}
@@ -870,7 +1024,74 @@ function NoteDateSelector({ selectedDateKey, onSelectDate }) {
   );
 }
 
-function InsightsView({ notes, sourceSlices, onDelete, loading }) {
+function EditNoteModal({ draft, onChange, onCancel, onSave }) {
+  return (
+    <View style={styles.editModalOverlay}>
+      <View style={styles.editModalPanel}>
+        <View style={styles.editModalHeader}>
+          <Text style={styles.editModalTitle}>Edit note</Text>
+          <Pressable onPress={onCancel}>
+            <Text style={styles.editModalClose}>×</Text>
+          </Pressable>
+        </View>
+
+        <TextInput
+          style={styles.calendarNoteEditor}
+          multiline
+          placeholder="Update your note..."
+          placeholderTextColor="#94A3B8"
+          value={draft.text}
+          onChangeText={value => onChange('text', value)}
+          textAlignVertical="top"
+        />
+
+        <OptionPillGroup
+          label="Source"
+          options={CALENDAR_SOURCE_OPTIONS}
+          value={draft.sourceType}
+          onChange={value => onChange('sourceType', value)}
+        />
+
+        <TextInput
+          style={styles.calendarInput}
+          placeholder="Source origin (e.g. Sign, Podcast...)"
+          placeholderTextColor="#94A3B8"
+          value={draft.sourceOrigin}
+          onChangeText={value => onChange('sourceOrigin', value)}
+        />
+
+        <TextInput
+          style={styles.calendarNoteEditor}
+          multiline
+          placeholder="Additional details"
+          placeholderTextColor="#94A3B8"
+          value={draft.additionalDetails}
+          onChangeText={value => onChange('additionalDetails', value)}
+          textAlignVertical="top"
+        />
+
+        <TextInput
+          style={styles.calendarInput}
+          placeholder="Date (YYYY-MM-DD)"
+          placeholderTextColor="#94A3B8"
+          value={draft.dateKey}
+          onChangeText={value => onChange('dateKey', value)}
+        />
+
+        <View style={styles.editModalActions}>
+          <Pressable style={styles.stageSecondaryButton} onPress={onCancel}>
+            <Text style={styles.stageSecondaryLabel}>Cancel</Text>
+          </Pressable>
+          <Pressable style={styles.stagePrimaryButton} onPress={onSave}>
+            <Text style={styles.stagePrimaryLabel}>Save changes</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function InsightsView({ notes, sourceSlices, onDelete, loading, onEdit }) {
   const orderedNotes = useMemo(
     () => [...notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)),
     [notes],
@@ -898,7 +1119,7 @@ function InsightsView({ notes, sourceSlices, onDelete, loading }) {
         {loading ? (
           <ActivityIndicator style={styles.calendarNoteLoading} />
         ) : (
-          <NoteList notes={orderedNotes} onDelete={onDelete} showDate />
+          <NoteList notes={orderedNotes} onEdit={onEdit} onDelete={onDelete} showDate />
         )}
       </View>
     </ScrollView>
@@ -930,7 +1151,7 @@ function insertOrUpdateNote(list, note) {
   return next;
 }
 
-function NoteList({ notes, onDelete, showDate = false }) {
+function NoteList({ notes, onEdit, onDelete, showDate = false }) {
   if (!notes.length) {
     return <Text style={styles.calendarNoteEmpty}>Nothing logged yet.</Text>;
   }
@@ -952,7 +1173,7 @@ function NoteList({ notes, onDelete, showDate = false }) {
                 <Text style={styles.calendarNoteSource}>{sourceDisplay}</Text>
               </View>
             <View style={styles.noteActions}>
-              <Pressable>
+              <Pressable onPress={() => onEdit && onEdit(note)}>
                 <Text style={styles.calendarNoteEdit}>Edit</Text>
               </Pressable>
               <Pressable onPress={() => onDelete(note.id)}>
@@ -985,7 +1206,7 @@ function sanitizeNote(note) {
 }
 
 function formatDisplayDate(dateKey) {
-  const date = new Date(`${dateKey}T00:00:00`);
+  const date = parseDateKey(dateKey);
   if (Number.isNaN(date.getTime())) return dateKey;
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
