@@ -51,6 +51,7 @@ const CALENDAR_SOURCE_OPTIONS = [
   { value: 'study', label: 'Study session' },
   { value: 'friends', label: 'Friends' },
   { value: 'media', label: 'Media' },
+  { value: 'reading', label: 'Reading' },
   { value: 'websearch', label: 'Web search' },
   { value: 'environment', label: 'Environment' },
 ];
@@ -59,6 +60,7 @@ const SOURCE_LABELS = {
   study: 'Study session',
   friends: 'Friends',
   media: 'Media',
+  reading: 'Reading',
   websearch: 'Web search',
   environment: 'Environment',
   other: 'Other',
@@ -73,6 +75,7 @@ const SOURCE_COLORS = {
   study: '#2563eb',
   friends: '#ec4899',
   media: '#f59e0b',
+  reading: '#a855f7',
   websearch: '#10b981',
   environment: '#06b6d4',
   other: '#94a3b8',
