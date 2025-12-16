@@ -2,6 +2,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  BackHandler,
   NativeModules,
   Platform,
   Pressable,
@@ -394,6 +396,59 @@ export default function App() {
 
   const openSidebar = useCallback(() => setSidebarVisible(true), []);
   const closeSidebar = useCallback(() => setSidebarVisible(false), []);
+
+  const handleExitApp = useCallback(() => {
+    if (Platform.OS === 'ios') {
+      Alert.alert('Close app', 'iOS does not allow apps to close themselves. Please swipe up to close.');
+      return;
+    }
+
+    const doExitWeb = () => {
+        try {
+          fetch('/__tensai_exit', {
+            method: 'POST',
+            headers: { 'X-Tensai-Exit': '1' },
+          }).catch(() => null);
+        } catch (_err) {
+          // ignore
+        }
+
+        setTimeout(() => {
+          try {
+            window.close();
+          } catch {
+            // ignore
+          }
+          try {
+            window.location.href = 'about:blank';
+          } catch {
+            // ignore
+          }
+        }, 150);
+    };
+
+    const doExitNative = () => {
+      try {
+        BackHandler.exitApp();
+      } catch {
+        // ignore
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const ok = typeof window !== 'undefined' ? window.confirm('Exit and stop the local web server?') : false;
+      if (ok) {
+        doExitWeb();
+      }
+      return;
+    }
+
+    Alert.alert('Exit', 'Close Tensai Note?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Exit', style: 'destructive', onPress: doExitNative },
+    ]);
+  }, []);
+
   const handleSelectPage = useCallback((pageKey: string) => {
     setActivePage(pageKey);
     setSidebarVisible(false);
@@ -556,6 +611,11 @@ export default function App() {
                 </Pressable>
               );
             })}
+
+            <View style={styles.sidebarDivider} />
+            <Pressable style={[styles.sidebarItem, styles.sidebarExitItem]} onPress={handleExitApp}>
+              <Text style={[styles.sidebarLabel, styles.sidebarExitLabel]}>Exit</Text>
+            </Pressable>
           </View>
         </View>
       )}
@@ -1238,10 +1298,6 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
     y: cy + r * Math.sin(angle - Math.PI / 2),
   };
 }
-
-
-
-
 
 
 

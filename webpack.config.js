@@ -74,4 +74,40 @@ module.exports = {
             template: path.join(__dirname, 'public/index.html'),
         }),
     ],
+    devServer: {
+        host: 'localhost',
+        setupMiddlewares: (middlewares, devServer) => {
+            if (!devServer || !devServer.app) {
+                return middlewares;
+            }
+
+            devServer.app.post('/__tensai_exit', (req, res) => {
+                const origin = req.headers.origin || '';
+                const referer = req.headers.referer || '';
+                const host = req.headers.host || '';
+                const exitHeader = req.headers['x-tensai-exit'];
+
+                const originLooksLocal =
+                    typeof origin === 'string' &&
+                    (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'));
+                const refererLooksLocal =
+                    typeof referer === 'string' &&
+                    (referer.startsWith('http://localhost') || referer.startsWith('http://127.0.0.1'));
+                const localHost =
+                    typeof host === 'string' && (host.startsWith('localhost') || host.startsWith('127.0.0.1'));
+
+                if (!localHost || exitHeader !== '1' || (!originLooksLocal && origin !== '' && !refererLooksLocal)) {
+                    res.status(403).send('Forbidden');
+                    return;
+                }
+
+                res.status(200).send('Shutting down');
+                setTimeout(() => {
+                    process.exit(0);
+                }, 250);
+            });
+
+            return middlewares;
+        },
+    },
 };
