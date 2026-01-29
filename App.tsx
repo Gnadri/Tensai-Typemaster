@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   Alert,
   BackHandler,
-  NativeModules,
   Platform,
   Pressable,
   RefreshControl,
@@ -85,12 +84,6 @@ const SOURCE_COLORS = {
 
 const TAU = Math.PI * 2;
 
-const PAGES = [
-  { key: 'calendar', label: 'Calendar' },
-  { key: 'notes', label: 'Notes' },
-  { key: 'insights', label: 'Insights' },
-];
-
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
@@ -122,32 +115,12 @@ const buildCalendarCells = (monthStart: Date) => {
   return cells;
 };
 
-const { NativeCalendar } = NativeModules as any;
-
 function useNativeCalendarCells(monthStart: Date) {
   const [cells, setCells] = useState(() => buildCalendarCells(monthStart));
 
   useEffect(() => {
     let cancelled = false;
     const loadCells = async () => {
-      if (Platform.OS === 'android' && NativeCalendar?.getMonthMatrix) {
-        try {
-          const data = await NativeCalendar.getMonthMatrix(
-            monthStart.getFullYear(),
-            monthStart.getMonth(),
-          );
-          if (cancelled) return;
-          const mapped = data.map((item: any) => ({
-            key: item.key,
-            date: parseDateKey(item.dateKey),
-            isCurrentMonth: !!item.isCurrentMonth,
-          }));
-          setCells(mapped);
-          return;
-        } catch (nativeError) {
-          // fall back to JS calendar build if native module fails
-        }
-      }
       if (!cancelled) {
         setCells(buildCalendarCells(monthStart));
       }
@@ -205,7 +178,6 @@ const initialCalendarForm = () => ({
 });
 
 export default function App() {
-  const [activePage, setActivePage] = useState('calendar');
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -214,7 +186,6 @@ export default function App() {
   const [form, setForm] = useState(() => initialCalendarForm());
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const [sidebarVisible, setSidebarVisible] = useState(false);
   const [noteStage, setNoteStage] = useState<'text' | 'source'>('text');
   const [editingNote, setEditingNote] = useState<any | null>(null);
   const [editDraft, setEditDraft] = useState({
@@ -394,9 +365,6 @@ export default function App() {
     setNoteStage('text');
   }, []);
 
-  const openSidebar = useCallback(() => setSidebarVisible(true), []);
-  const closeSidebar = useCallback(() => setSidebarVisible(false), []);
-
   const handleExitApp = useCallback(() => {
     if (Platform.OS === 'ios') {
       Alert.alert('Close app', 'iOS does not allow apps to close themselves. Please swipe up to close.');
@@ -449,16 +417,6 @@ export default function App() {
     ]);
   }, []);
 
-  const handleSelectPage = useCallback((pageKey: string) => {
-    setActivePage(pageKey);
-    setSidebarVisible(false);
-  }, []);
-
-  const handleOpenNotes = useCallback(() => {
-    setNoteStage('text');
-    handleSelectPage('notes');
-  }, [handleSelectPage]);
-
   const handleAddNoteForDate = useCallback(
     (dateKey?: string) => {
       const parsed = dateKey ? parseDateKey(dateKey) : new Date();
@@ -470,8 +428,6 @@ export default function App() {
         dateKey: normalizedKey,
       }));
       setNoteStage('text');
-      setSidebarVisible(false);
-      setActivePage('notes');
     },
     [],
   );
@@ -529,41 +485,13 @@ export default function App() {
     }
   }, [editDraft, editingNote, notes, persistNotes]);
 
-  const renderContent = () => {
-    switch (activePage) {
-      case 'notes':
-        return (
-          <NotesView
-            form={form}
-            onChangeForm={handleFormChange}
-            onSubmit={handleSubmit}
-            submitting={submitting}
-            notes={notes}
-            onDelete={handleDelete}
-            onEdit={handleStartEdit}
-            error={error}
-            noteStage={noteStage}
-            onAdvanceStage={handleAdvanceStage}
-            onBackStage={handleBackStage}
-          />
-        );
-      case 'insights':
-        return (
-          <InsightsView
-            notes={notes}
-            sourceSlices={sourceSlices}
-            onDelete={handleDelete}
-            loading={loading}
-            onEdit={handleStartEdit}
-          />
-        );
-      case 'calendar':
-      default:
-        return (
-          <CalendarView
+  return (
+    <View style={styles.appShell}>
+      <View style={styles.appLayout}>
+        <View style={styles.mainContent}>
+          <DashboardView
             notes={notes}
             loading={loading}
-            error={error}
             refreshing={refreshing}
             currentMonth={currentMonth}
             selectedDateKey={selectedDateKey}
@@ -575,50 +503,20 @@ export default function App() {
             onDelete={handleDelete}
             onAddNote={handleAddNoteForDate}
             onEditNote={handleStartEdit}
+            onExitApp={handleExitApp}
+            form={form}
+            onChangeForm={handleFormChange}
+            onSubmit={handleSubmit}
+            submitting={submitting}
+            noteStage={noteStage}
+            onAdvanceStage={handleAdvanceStage}
+            onBackStage={handleBackStage}
+            sourceSlices={sourceSlices}
+            onEdit={handleStartEdit}
+            error={error}
           />
-        );
-    }
-  };
-
-  return (
-    <View style={styles.appShell}>
-      <Pressable style={styles.menuFab} onPress={openSidebar}>
-        <Text style={styles.menuButtonLabel}>Menu</Text>
-      </Pressable>
-      <View style={styles.appLayout}>
-        <View style={styles.mainContent}>{renderContent()}</View>
-      </View>
-
-      <Pressable style={styles.fab} onPress={handleOpenNotes}>
-        <Text style={styles.fabLabel}>Note</Text>
-      </Pressable>
-
-      {sidebarVisible && (
-        <View style={styles.sidebarOverlay}>
-          <Pressable style={styles.sidebarBackdrop} onPress={closeSidebar} />
-          <View style={styles.sidebarPanel}>
-            {PAGES.map(page => {
-              const isActive = activePage === page.key;
-              return (
-                <Pressable
-                  key={page.key}
-                  style={[styles.sidebarItem, isActive && styles.sidebarItemActive]}
-                  onPress={() => handleSelectPage(page.key)}
-                >
-                  <Text style={[styles.sidebarLabel, isActive && styles.sidebarLabelActive]}>
-                    {page.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-
-            <View style={styles.sidebarDivider} />
-            <Pressable style={[styles.sidebarItem, styles.sidebarExitItem]} onPress={handleExitApp}>
-              <Text style={[styles.sidebarLabel, styles.sidebarExitLabel]}>Exit</Text>
-            </Pressable>
-          </View>
         </View>
-      )}
+      </View>
 
       {editingNote ? (
         <EditNoteModal
@@ -638,7 +536,6 @@ export default function App() {
 function CalendarView({
   notes,
   loading,
-  error,
   refreshing,
   currentMonth,
   selectedDateKey,
@@ -650,7 +547,12 @@ function CalendarView({
   onDelete,
   onAddNote,
   onEditNote,
+  embedded = false,
 }) {
+  const Container = embedded ? View : ScrollView;
+  const containerProps = embedded
+    ? { style: styles.dashboardSection }
+    : { contentContainerStyle: styles.featureContent };
   const monthLabel = useMemo(() => {
     try {
       return currentMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
@@ -674,115 +576,121 @@ function CalendarView({
   );
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.featureContent}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    <Container
+      {...containerProps}
+      refreshControl={
+        embedded ? undefined : <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
     >
       <Text style={styles.featureHeadline}>Practice calendar</Text>
       <View style={styles.calendarLayout}>
-        <View style={[styles.featureCard, styles.calendarWrapper]}>
-          <View style={styles.calendarBoard}>
-            <View style={styles.calendarBoardHeader}>
-              <Pressable
-                accessibilityLabel="Previous month"
-                onPress={() => onMonthChange(-1)}
-                style={styles.calendarHeaderButton}
-              >
-                <Text style={styles.calendarHeaderButtonLabel}>{'<'}</Text>
-              </Pressable>
-              <Text style={styles.calendarBoardTitle}>{monthLabel}</Text>
-              <Pressable
-                accessibilityLabel="Next month"
-                onPress={() => onMonthChange(1)}
-                style={styles.calendarHeaderButton}
-              >
-                <Text style={styles.calendarHeaderButtonLabel}>{'>'}</Text>
-              </Pressable>
-            </View>
+        <View style={styles.calendarSplit}>
+          <View style={[styles.featureCard, styles.calendarWrapper, styles.calendarPane]}>
+            <View style={styles.calendarBoard}>
+              <View style={styles.calendarBoardHeader}>
+                <Pressable
+                  accessibilityLabel="Previous month"
+                  onPress={() => onMonthChange(-1)}
+                  style={styles.calendarHeaderButton}
+                >
+                  <Text style={styles.calendarHeaderButtonLabel}>{'<'}</Text>
+                </Pressable>
+                <Text style={styles.calendarBoardTitle}>{monthLabel}</Text>
+                <Pressable
+                  accessibilityLabel="Next month"
+                  onPress={() => onMonthChange(1)}
+                  style={styles.calendarHeaderButton}
+                >
+                  <Text style={styles.calendarHeaderButtonLabel}>{'>'}</Text>
+                </Pressable>
+              </View>
 
-            <View style={styles.calendarWeekdays}>
-              {WEEKDAYS.map(day => (
-                <Text key={day} style={styles.calendarWeekdayLabel}>
-                  {day}
-                </Text>
-              ))}
-            </View>
+              <View style={styles.calendarWeekdays}>
+                {WEEKDAYS.map(day => (
+                  <Text key={day} style={styles.calendarWeekdayLabel}>
+                    {day}
+                  </Text>
+                ))}
+              </View>
 
-            <View style={styles.calendarGrid}>
-              {calendarWeeks.map((week, index) => (
-                <View key={`${week[0]?.key || index}-${index}`} style={styles.calendarWeekRow}>
-                  {week.map(cell => {
-                    const cellKey = formatDateKey(cell.date);
-                    const isSelected = cellKey === selectedDateKey;
-                    const isToday = cellKey === todayKey;
-                    const hasNotes = noteKeySet.has(cellKey);
-                    return (
-                      <Pressable
-                        key={cell.key}
-                        style={[
-                          styles.calendarDay,
-                          !cell.isCurrentMonth && styles.calendarDayMuted,
-                          isSelected && styles.calendarDaySelected,
-                          isToday && styles.calendarDayToday,
-                        ]}
-                        onPress={() => onSelectDate(cell.date)}
-                      >
-                        <Text
+              <View style={styles.calendarGrid}>
+                {calendarWeeks.map((week, index) => (
+                  <View key={`${week[0]?.key || index}-${index}`} style={styles.calendarWeekRow}>
+                    {week.map(cell => {
+                      const cellKey = formatDateKey(cell.date);
+                      const isSelected = cellKey === selectedDateKey;
+                      const isToday = cellKey === todayKey;
+                      const hasNotes = noteKeySet.has(cellKey);
+                      return (
+                        <Pressable
+                          key={cell.key}
                           style={[
-                            styles.calendarDayLabel,
-                            !cell.isCurrentMonth && styles.calendarDayLabelMuted,
-                            isSelected && styles.calendarDayLabelSelected,
+                            styles.calendarDay,
+                            !cell.isCurrentMonth && styles.calendarDayMuted,
+                            isSelected && styles.calendarDaySelected,
+                            isToday && styles.calendarDayToday,
                           ]}
+                          onPress={() => onSelectDate(cell.date)}
                         >
-                          {cell.date.getDate()}
-                        </Text>
-                        {hasNotes ? <View style={styles.calendarDayDot} /> : null}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
+                          <Text
+                            style={[
+                              styles.calendarDayLabel,
+                              !cell.isCurrentMonth && styles.calendarDayLabelMuted,
+                              isSelected && styles.calendarDayLabelSelected,
+                            ]}
+                          >
+                            {cell.date.getDate()}
+                          </Text>
+                          {hasNotes ? <View style={styles.calendarDayDot} /> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
 
-            <View style={styles.calendarSelectedActions}>
-              <Text style={styles.calendarSelectedLabel}>
-                Selected: {formatDisplayDate(selectedDateKey)}
-              </Text>
-              <Pressable onPress={onJumpToday} style={styles.calendarTodayButton}>
-                <Text style={styles.calendarTodayLabel}>Today</Text>
+              <View style={styles.calendarSelectedActions}>
+                <Text style={styles.calendarSelectedLabel}>
+                  Selected: {formatDisplayDate(selectedDateKey)}
+                </Text>
+                <Pressable onPress={onJumpToday} style={styles.calendarTodayButton}>
+                  <Text style={styles.calendarTodayLabel}>Today</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.featureCard, styles.calendarNotePane, styles.calendarNotesPane]}>
+            <View style={styles.calendarNotePaneHeader}>
+              <View>
+                <Text style={styles.calendarNotePaneTitle}>{formatDisplayDate(selectedDateKey)}</Text>
+                <Text style={styles.calendarNotePaneCount}>
+                  {selectedNotes.length
+                    ? `${selectedNotes.length} note${selectedNotes.length === 1 ? '' : 's'} saved`
+                    : 'No notes saved yet'}
+                </Text>
+              </View>
+              <Pressable
+                style={styles.calendarAddButton}
+                onPress={() => onAddNote(selectedDateKey)}
+              >
+                <Text style={styles.calendarAddButtonLabel}>Add note</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
 
-        <View style={[styles.featureCard, styles.calendarNotePane]}>
-          <View style={styles.calendarNotePaneHeader}>
-            <View>
-              <Text style={styles.calendarNotePaneTitle}>{formatDisplayDate(selectedDateKey)}</Text>
-              <Text style={styles.calendarNotePaneCount}>
-                {selectedNotes.length
-                  ? `${selectedNotes.length} note${selectedNotes.length === 1 ? '' : 's'} saved`
-                  : 'No notes saved yet'}
-              </Text>
-            </View>
-            <Pressable
-              style={styles.calendarAddButton}
-              onPress={() => onAddNote(selectedDateKey)}
-            >
-              <Text style={styles.calendarAddButtonLabel}>Add note</Text>
-            </Pressable>
+            <ScrollView style={styles.calendarNoteScrollArea} contentContainerStyle={styles.calendarNoteScrollContent}>
+              {loading ? (
+                <ActivityIndicator style={styles.calendarNoteLoading} />
+              ) : selectedNotes.length === 0 ? (
+                <Text style={styles.calendarNoteEmpty}>No notes for this day. Capture one from the form.</Text>
+              ) : (
+                <NoteList notes={selectedNotes} onEdit={onEditNote} onDelete={onDelete} />
+              )}
+            </ScrollView>
           </View>
-
-          {loading ? (
-            <ActivityIndicator style={styles.calendarNoteLoading} />
-          ) : selectedNotes.length === 0 ? (
-            <Text style={styles.calendarNoteEmpty}>No notes for this day. Capture one from the form.</Text>
-          ) : (
-            <NoteList notes={selectedNotes} onEdit={onEditNote} onDelete={onDelete} />
-          )}
         </View>
       </View>
-    </ScrollView>
+    </Container>
   );
 }
 
@@ -949,14 +857,19 @@ function NotesView({
   noteStage,
   onAdvanceStage,
   onBackStage,
+  embedded = false,
 }) {
+  const Container = embedded ? View : ScrollView;
+  const containerProps = embedded
+    ? { style: styles.dashboardSection }
+    : { contentContainerStyle: styles.featureContent };
   const orderedNotes = useMemo(
     () => [...notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)),
     [notes],
   );
 
   return (
-    <ScrollView contentContainerStyle={styles.featureContent}>
+    <Container {...containerProps}>
       <Text style={styles.featureHeadline}>Note composer</Text>
       <NoteComposer
         form={form}
@@ -986,9 +899,41 @@ function NotesView({
           </View>
         </View>
 
-        <NoteList notes={orderedNotes} onDelete={onDelete} onEdit={onEdit} showDate />
+      <NoteList notes={orderedNotes} onDelete={onDelete} onEdit={onEdit} showDate />
       </View>
-    </ScrollView>
+    </Container>
+  );
+}
+
+function NoteComposerPanel({
+  form,
+  onChangeForm,
+  onSubmit,
+  submitting,
+  error,
+  noteStage,
+  onAdvanceStage,
+  onBackStage,
+}) {
+  return (
+    <View style={styles.dashboardSection}>
+      <Text style={styles.featureHeadline}>Note composer</Text>
+      <NoteComposer
+        form={form}
+        noteStage={noteStage}
+        submitting={submitting}
+        error={error}
+        onChangeForm={onChangeForm}
+        onAdvanceStage={onAdvanceStage}
+        onBackStage={onBackStage}
+        onSubmit={onSubmit}
+      />
+
+      <NoteDateSelector
+        selectedDateKey={form.dateKey}
+        onSelectDate={value => onChangeForm('dateKey', value)}
+      />
+    </View>
   );
 }
 
@@ -1161,7 +1106,7 @@ function InsightsView({ notes, sourceSlices, onDelete, loading, onEdit }) {
   );
 
   return (
-    <ScrollView contentContainerStyle={styles.featureContent}>
+    <View style={styles.dashboardSection}>
       <Text style={styles.featureHeadline}>Insights</Text>
       <View style={[styles.featureCard, styles.calendarWrapper]}>
         <SourceDistributionChart slices={sourceSlices} />
@@ -1185,7 +1130,205 @@ function InsightsView({ notes, sourceSlices, onDelete, loading, onEdit }) {
           <NoteList notes={orderedNotes} onEdit={onEdit} onDelete={onDelete} showDate />
         )}
       </View>
-    </ScrollView>
+    </View>
+  );
+}
+
+function DashboardView({
+  notes,
+  loading,
+  error,
+  refreshing,
+  currentMonth,
+  selectedDateKey,
+  todayKey,
+  onMonthChange,
+  onSelectDate,
+  onJumpToday,
+  onRefresh,
+  onDelete,
+  onAddNote,
+  onEditNote,
+  onExitApp,
+  form,
+  onChangeForm,
+  onSubmit,
+  submitting,
+  noteStage,
+  onAdvanceStage,
+  onBackStage,
+  sourceSlices,
+  onEdit,
+}) {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [historyViewMode, setHistoryViewMode] = useState<'list' | 'grid'>('list');
+  const monthKey = useMemo(() => {
+    const month = `${currentMonth.getMonth() + 1}`.padStart(2, '0');
+    return `${currentMonth.getFullYear()}-${month}`;
+  }, [currentMonth]);
+  const monthlyNotes = useMemo(
+    () =>
+      notes.filter(
+        note => typeof note.dateKey === 'string' && note.dateKey.startsWith(monthKey),
+      ).length,
+    [notes, monthKey],
+  );
+  const orderedNotes = useMemo(
+    () => [...notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)),
+    [notes],
+  );
+
+  const tabs = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'calendar', label: 'Calendar' },
+    { key: 'compose', label: 'Compose' },
+    { key: 'history', label: 'Note history' },
+    { key: 'insights', label: 'Insights' },
+  ];
+
+  return (
+    <View style={styles.dashboardContent}>
+      <View style={styles.dashboardHeader}>
+        <View>
+          <Text style={styles.dashboardTitle}>Tensai Note</Text>
+        </View>
+        <Pressable style={styles.dashboardExitButton} onPress={onExitApp}>
+          <Text style={styles.dashboardExitLabel}>Exit</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.dashboardTabs}>
+        {tabs.map(tab => {
+          const isActive = tab.key === activeTab;
+          return (
+            <Pressable
+              key={tab.key}
+              onPress={() => setActiveTab(tab.key)}
+              style={[styles.dashboardTab, isActive && styles.dashboardTabActive]}
+            >
+              <Text style={[styles.dashboardTabLabel, isActive && styles.dashboardTabLabelActive]}>
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View style={styles.dashboardPanel}>
+        {activeTab === 'overview' ? (
+          <>
+            <View style={styles.dashboardStats}>
+              <View style={styles.dashboardStatCard}>
+                <Text style={styles.dashboardStatValue}>{notes.length}</Text>
+                <Text style={styles.dashboardStatLabel}>Total notes</Text>
+              </View>
+              <View style={styles.dashboardStatCard}>
+                <Text style={styles.dashboardStatValue}>{monthlyNotes}</Text>
+                <Text style={styles.dashboardStatLabel}>This month</Text>
+              </View>
+              <View style={styles.dashboardStatCard}>
+                <Text style={styles.dashboardStatValue}>{sourceSlices.length}</Text>
+                <Text style={styles.dashboardStatLabel}>Sources tracked</Text>
+              </View>
+            </View>
+
+            <CalendarView
+              notes={notes}
+              loading={loading}
+              refreshing={refreshing}
+              currentMonth={currentMonth}
+              selectedDateKey={selectedDateKey}
+              todayKey={todayKey}
+              onMonthChange={onMonthChange}
+              onSelectDate={onSelectDate}
+              onJumpToday={onJumpToday}
+              onRefresh={onRefresh}
+              onDelete={onDelete}
+              onAddNote={onAddNote}
+              onEditNote={onEditNote}
+              embedded
+            />
+          </>
+        ) : null}
+
+        {activeTab === 'calendar' ? (
+          <CalendarView
+            notes={notes}
+            loading={loading}
+            refreshing={refreshing}
+            currentMonth={currentMonth}
+            selectedDateKey={selectedDateKey}
+            todayKey={todayKey}
+            onMonthChange={onMonthChange}
+            onSelectDate={onSelectDate}
+            onJumpToday={onJumpToday}
+            onRefresh={onRefresh}
+            onDelete={onDelete}
+            onAddNote={onAddNote}
+            onEditNote={onEditNote}
+            embedded
+          />
+        ) : null}
+
+        {activeTab === 'compose' ? (
+          <NoteComposerPanel
+            form={form}
+            onChangeForm={onChangeForm}
+            onSubmit={onSubmit}
+            submitting={submitting}
+            error={error}
+            noteStage={noteStage}
+            onAdvanceStage={onAdvanceStage}
+            onBackStage={onBackStage}
+          />
+        ) : null}
+
+        {activeTab === 'history' ? (
+          <ScrollView style={styles.historyScroll} contentContainerStyle={styles.historyContent}>
+            <Text style={styles.featureHeadline}>Note history</Text>
+            <View style={[styles.featureCard, styles.calendarNotePane]}>
+              <View style={styles.calendarNotePaneHeader}>
+                <View>
+                  <Text style={styles.calendarNotePaneTitle}>All notes</Text>
+                  <Text style={styles.calendarNotePaneCount}>
+                    {orderedNotes.length ? `${orderedNotes.length} saved` : 'No notes saved yet'}
+                  </Text>
+                </View>
+                <View style={styles.viewToggleContainer}>
+                  <Pressable
+                    style={[styles.viewToggleButton, historyViewMode === 'list' && styles.viewToggleButtonActive]}
+                    onPress={() => setHistoryViewMode('list')}
+                  >
+                    <Text style={[styles.viewToggleLabel, historyViewMode === 'list' && styles.viewToggleLabelActive]}>List</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.viewToggleButton, historyViewMode === 'grid' && styles.viewToggleButtonActive]}
+                    onPress={() => setHistoryViewMode('grid')}
+                  >
+                    <Text style={[styles.viewToggleLabel, historyViewMode === 'grid' && styles.viewToggleLabelActive]}>Grid</Text>
+                  </Pressable>
+                </View>
+              </View>
+              {historyViewMode === 'list' ? (
+                <NoteList notes={orderedNotes} onDelete={onDelete} onEdit={onEdit} showDate />
+              ) : (
+                <NoteGrid notes={orderedNotes} onDelete={onDelete} onEdit={onEdit} />
+              )}
+            </View>
+          </ScrollView>
+        ) : null}
+
+        {activeTab === 'insights' ? (
+          <InsightsView
+            notes={notes}
+            sourceSlices={sourceSlices}
+            onDelete={onDelete}
+            loading={loading}
+            onEdit={onEdit}
+          />
+        ) : null}
+      </View>
+    </View>
   );
 }
 
@@ -1249,6 +1392,87 @@ function NoteList({ notes, onEdit, onDelete, showDate = false }) {
               <Text style={styles.calendarNoteDetail}>Details: {note.additionalDetails}</Text>
             ) : null}
           </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function NoteGrid({ notes, onEdit, onDelete }) {
+  const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
+
+  if (!notes.length) {
+    return <Text style={styles.calendarNoteEmpty}>Nothing logged yet.</Text>;
+  }
+
+  const toggleExpand = (noteId: string) => {
+    setExpandedNoteId(prev => prev === noteId ? null : noteId);
+  };
+
+  return (
+    <View style={styles.noteGrid}>
+      {notes.map(note => {
+        const sourceLabel = SOURCE_LABELS[note.sourceType] || 'Other';
+        const sourceDisplay = note.sourceOrigin ? `${sourceLabel}: ${note.sourceOrigin}` : sourceLabel;
+        const isExpanded = expandedNoteId === note.id;
+        const truncatedText = note.text.length > 60 ? note.text.slice(0, 60) + '...' : note.text;
+
+        return (
+          <Pressable
+            key={note.id}
+            style={[styles.noteGridItem, isExpanded && styles.noteGridItemExpanded]}
+            onPress={() => toggleExpand(note.id)}
+          >
+            <View style={styles.noteGridHeader}>
+              <Text style={styles.noteGridDate}>{formatDisplayDate(note.dateKey)}</Text>
+              <View style={styles.noteGridBadge}>
+                <Text style={styles.noteGridBadgeText}>{note.language}</Text>
+              </View>
+            </View>
+            
+            <Text style={styles.noteGridText}>
+              {isExpanded ? note.text : truncatedText}
+            </Text>
+            
+            {isExpanded && (
+              <>
+                <View style={styles.noteGridMeta}>
+                  <Text style={styles.noteGridMetaLabel}>Source:</Text>
+                  <Text style={styles.noteGridMetaValue}>{sourceDisplay}</Text>
+                </View>
+                {note.additionalDetails ? (
+                  <View style={styles.noteGridMeta}>
+                    <Text style={styles.noteGridMetaLabel}>Details:</Text>
+                    <Text style={styles.noteGridMetaValue}>{note.additionalDetails}</Text>
+                  </View>
+                ) : null}
+                <View style={styles.noteGridActions}>
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onEdit && onEdit(note);
+                    }}
+                    style={styles.noteGridActionButton}
+                  >
+                    <Text style={styles.noteGridEditText}>Edit</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onDelete(note.id);
+                    }}
+                    style={styles.noteGridActionButton}
+                  >
+                    <Text style={styles.noteGridDeleteText}>Delete</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+            
+            {!isExpanded && (
+              <Text style={styles.noteGridExpandHint}>Tap to expand</Text>
+            )}
+          </Pressable>
         );
       })}
     </View>

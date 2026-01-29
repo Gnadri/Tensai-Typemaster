@@ -1,8 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
-
-// Native module is optional; Android can expose the platform tokenizer here.
-const NATIVE_MODULE_NAME = 'TokenizerModule';
-const nativeTokenizer = NativeModules?.[NATIVE_MODULE_NAME];
+import { Platform } from 'react-native';
 
 let cachedSegmenter;
 
@@ -29,19 +25,6 @@ const normalizeToken = (token, index, text) => {
     partOfSpeech: null,
     reading: null,
   };
-};
-
-const tokenizeWithNative = async (text, options) => {
-  if (!nativeTokenizer?.tokenize) {
-    return null;
-  }
-
-  const rawTokens = await nativeTokenizer.tokenize(text, options ?? {});
-  if (!Array.isArray(rawTokens)) {
-    return null;
-  }
-
-  return rawTokens.map((token, idx) => normalizeToken(token, idx, text));
 };
 
 const getSegmenter = (locale = 'ja') => {
@@ -108,14 +91,9 @@ const tokenizeByCodePoint = (text) => {
   return tokens;
 };
 
-export const isNativeTokenizerAvailable = Boolean(nativeTokenizer?.tokenize);
+export const isNativeTokenizerAvailable = false;
 
 export const ensureTokenizerReady = async () => {
-  if (nativeTokenizer?.ensureReady) {
-    await nativeTokenizer.ensureReady();
-    return true;
-  }
-
   // Nothing to initialize for the JS fallbacks.
   return false;
 };
@@ -127,20 +105,6 @@ export const tokenize = async (text, options = {}) => {
 
   if (!text.length) {
     return [];
-  }
-
-  if (isNativeTokenizerAvailable) {
-    try {
-      const tokens = await tokenizeWithNative(text, options);
-      if (tokens) {
-        return tokens;
-      }
-    } catch (error) {
-      console.warn(
-        `[tokenizerShim] Native tokenizer failed on ${Platform.OS}; falling back to JS implementation`,
-        error,
-      );
-    }
   }
 
   const locale = options.locale || 'ja';
