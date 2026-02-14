@@ -71,6 +71,7 @@ const DEFAULT_LANG = CALENDAR_LANG_OPTIONS[0].value;
 const DEFAULT_SOURCE = CALENDAR_SOURCE_OPTIONS[0].value;
 
 const CALENDAR_NOTES_STORAGE_KEY = 'tensai-note.calendar.local';
+const QUIZ_LEADERBOARD_STORAGE_KEY = 'tensai-note.quiz-leaderboard.v1';
 
 const SOURCE_COLORS = {
   study: '#2563eb',
@@ -86,12 +87,8 @@ const TAU = Math.PI * 2;
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const QUIZ_TIMER_OPTIONS = [
-  { value: 1, label: '1 min' },
-  { value: 3, label: '3 min' },
-  { value: 5, label: '5 min' },
-  { value: 10, label: '10 min' },
-];
+const QUIZ_TIMER_MIN_MINUTES = 1;
+const QUIZ_TIMER_MAX_MINUTES = 30;
 
 const KATAKANA_QUIZ = [
   { id: 'ka', kana: 'カ', answers: ['ka'] },
@@ -290,6 +287,14 @@ const formatTimer = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
   const remaining = seconds % 60;
   return `${minutes.toString().padStart(2, '0')}:${remaining.toString().padStart(2, '0')}`;
+};
+
+const formatMilliseconds = (ms: number) => {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const milliseconds = ms % 1000;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
 };
 
 const initialCalendarForm = () => ({
@@ -1278,7 +1283,10 @@ function KanaQuizView() {
   const [isRunning, setIsRunning] = useState(false);
   const [hasFinished, setHasFinished] = useState(false);
   const [finishReason, setFinishReason] = useState<'time' | 'complete' | null>(null);
+  const [completionTimeMs, setCompletionTimeMs] = useState<number | null>(null);
+  const [leaderboard, setLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number }>>([]);
   const inputRefs = React.useRef<Record<string, TextInput | null>>({});
+  const startTimeRef = React.useRef<number | null>(null);
 
 
   const focusOrder = useMemo(() => {
@@ -1314,6 +1322,36 @@ function KanaQuizView() {
   );
 
   useEffect(() => {
+    const loadLeaderboard = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(QUIZ_LEADERBOARD_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setLeaderboard(Array.isArray(parsed) ? parsed : []);
+        }
+      } catch (err) {
+        console.error('Failed to load leaderboard:', err);
+      }
+    };
+    loadLeaderboard();
+  }, []);
+
+  const saveLeaderboardEntry = useCallback(async (entry: { mode: string; timeMs: number; score: number; total: number; date: number }) => {
+    try {
+      const stored = await AsyncStorage.getItem(QUIZ_LEADERBOARD_STORAGE_KEY);
+      const current = stored ? JSON.parse(stored) : [];
+      const updated = Array.isArray(current) ? [...current, entry] : [entry];
+      // Sort by time (ascending) and keep top 10
+      updated.sort((a, b) => a.timeMs - b.timeMs);
+      const top10 = updated.slice(0, 10);
+      await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, JSON.stringify(top10));
+      setLeaderboard(top10);
+    } catch (err) {
+      console.error('Failed to save leaderboard entry:', err);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!isRunning) return;
     const timer = setInterval(() => {
       setRemainingSeconds(prev => {
@@ -1334,27 +1372,47 @@ function KanaQuizView() {
     if (!quizItems.length) return;
     const allCorrect = quizItems.every(item => isCorrectAnswer(item.id, answers[item.id] || ''));
     if (allCorrect && !hasFinished) {
+      const endTime = Date.now();
+      const elapsedMs = startTimeRef.current ? endTime - startTimeRef.current : 0;
+      setCompletionTimeMs(elapsedMs);
       setHasFinished(true);
       setIsRunning(false);
       setFinishReason('complete');
+      // Save to leaderboard
+      if (elapsedMs > 0) {
+        saveLeaderboardEntry({
+          mode: quizMode,
+          timeMs: elapsedMs,
+          score: quizItems.length,
+          total: quizItems.length,
+          date: Date.now(),
+        });
+      }
     }
-  }, [answers, hasFinished, isCorrectAnswer, quizItems]);
+  }, [answers, hasFinished, isCorrectAnswer, quizItems, quizMode, saveLeaderboardEntry]);
 
   const updateTimerMinutes = (minutes: number) => {
-    setTimerMinutes(minutes);
-    setCustomMinutes(`${minutes}`);
+    const normalized = Math.max(QUIZ_TIMER_MIN_MINUTES, Math.min(QUIZ_TIMER_MAX_MINUTES, minutes));
+    setTimerMinutes(normalized);
+    setCustomMinutes(`${normalized}`);
     if (!isRunning) {
-      setRemainingSeconds(minutes * 60);
+      setRemainingSeconds(normalized * 60);
     }
   };
 
   const applyCustomMinutes = () => {
     const parsed = Number.parseInt(customMinutes, 10);
-    if (Number.isNaN(parsed) || parsed < 1 || parsed > 30) {
-      Alert.alert('Timer minutes', 'Enter a value between 1 and 30.');
+    if (Number.isNaN(parsed) || parsed < QUIZ_TIMER_MIN_MINUTES || parsed > QUIZ_TIMER_MAX_MINUTES) {
+      Alert.alert('Timer minutes', `Enter a value between ${QUIZ_TIMER_MIN_MINUTES} and ${QUIZ_TIMER_MAX_MINUTES}.`);
       return;
     }
     updateTimerMinutes(parsed);
+  };
+
+  const adjustCustomMinutes = (delta: number) => {
+    const parsed = Number.parseInt(customMinutes, 10);
+    const baseMinutes = Number.isNaN(parsed) ? timerMinutes : parsed;
+    updateTimerMinutes(baseMinutes + delta);
   };
 
   const startQuiz = () => {
@@ -1362,8 +1420,10 @@ function KanaQuizView() {
     setAnswers({});
     setHasFinished(false);
     setFinishReason(null);
+    setCompletionTimeMs(null);
     setRemainingSeconds(timerMinutes * 60);
     setIsRunning(true);
+    startTimeRef.current = Date.now();
   };
 
   const resetQuiz = () => {
@@ -1410,6 +1470,10 @@ function KanaQuizView() {
         if (remainingSeconds <= 0) {
           setRemainingSeconds(timerMinutes * 60);
         }
+        // Set start time when quiz auto-starts from typing
+        if (!startTimeRef.current) {
+          startTimeRef.current = Date.now();
+        }
         setIsRunning(true);
       }
       setAnswers(prev => {
@@ -1435,41 +1499,43 @@ function KanaQuizView() {
     <ScrollView style={styles.quizScroll} contentContainerStyle={styles.quizContent}>
       <View style={styles.quizToolbar}>
         <View style={styles.quizToolbarLeft}>
-          <OptionPillGroup
-            label="Quiz type"
-            options={QUIZ_MODES.map(({ value, label }) => ({ value, label }))}
-            value={quizMode}
-            onChange={value => {
-              setQuizMode(value);
-              if (!isRunning) {
-                setQuizItems(shuffleQuiz((QUIZ_MODES.find(option => option.value === value) || QUIZ_MODES[0]).dataset));
-                setAnswers({});
-                setHasFinished(false);
-                setFinishReason(null);
-              }
-            }}
-            compact
-          />
-          <View style={styles.quizTimerSettings}>
+          <View style={styles.quizSettingsRow}>
             <OptionPillGroup
-              label="Timer"
-              options={QUIZ_TIMER_OPTIONS}
-              value={timerMinutes}
-              onChange={updateTimerMinutes}
+              label="Quiz type"
+              options={QUIZ_MODES.map(({ value, label }) => ({ value, label }))}
+              value={quizMode}
+              onChange={value => {
+                setQuizMode(value);
+                if (!isRunning) {
+                  setQuizItems(shuffleQuiz((QUIZ_MODES.find(option => option.value === value) || QUIZ_MODES[0]).dataset));
+                  setAnswers({});
+                  setHasFinished(false);
+                  setFinishReason(null);
+                }
+              }}
               compact
             />
-            <View style={styles.quizCustomTimerRow}>
-              <TextInput
-                style={styles.quizTimerInput}
-                keyboardType="number-pad"
-                value={customMinutes}
-                onChangeText={setCustomMinutes}
-                placeholder="Custom"
-                placeholderTextColor="#94a3b8"
-              />
-              <Pressable style={styles.quizTimerApplyButton} onPress={applyCustomMinutes}>
-                <Text style={styles.quizTimerApplyLabel}>Set</Text>
-              </Pressable>
+            <View style={styles.quizCustomTimerColumn}>
+              <Text style={styles.quizCustomTimerLabel}>Timer</Text>
+              <View style={styles.quizCustomTimerRow}>
+                <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
+                  <Text style={styles.quizTimerStepperLabel}>-</Text>
+                </Pressable>
+                <TextInput
+                  style={styles.quizTimerInput}
+                  keyboardType="number-pad"
+                  value={customMinutes}
+                  onChangeText={text => setCustomMinutes(text.replace(/[^0-9]/g, ''))}
+                  onBlur={applyCustomMinutes}
+                  onSubmitEditing={applyCustomMinutes}
+                  placeholder="5"
+                  placeholderTextColor="#94a3b8"
+                />
+                <Text style={styles.quizTimerUnitLabel}>min</Text>
+                <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(1)}>
+                  <Text style={styles.quizTimerStepperLabel}>+</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
         </View>
@@ -1502,25 +1568,66 @@ function KanaQuizView() {
       <View style={styles.quizTableRow}>
         {hasFinished ? (
           <View style={styles.quizFinishCard}>
-            <Text style={styles.quizFinishTitle}>Quiz Complete</Text>
-            <Text style={styles.quizFinishSubtitle}>
-              {finishReason === 'time' ? 'Time is up.' : 'All answers correct.'}
-            </Text>
-            <View style={styles.quizFinishStats}>
-              <View style={styles.quizFinishStat}>
-                <Text style={styles.quizFinishStatLabel}>Score</Text>
-                <Text style={styles.quizFinishStatValue}>
-                  {score}/{quizItems.length}
+            <View style={styles.quizFinishHeader}>
+              <View>
+                <Text style={styles.quizFinishTitle}>Quiz Complete</Text>
+                <Text style={styles.quizFinishSubtitle}>
+                  {finishReason === 'time' ? 'Time is up.' : 'All answers correct.'}
                 </Text>
               </View>
-              <View style={styles.quizFinishStat}>
-                <Text style={styles.quizFinishStatLabel}>Time Left</Text>
-                <Text style={styles.quizFinishStatValue}>{formatTimer(remainingSeconds)}</Text>
+              <Pressable style={styles.quizFinishButton} onPress={startQuiz}>
+                <Text style={styles.quizFinishButtonLabel}>Play Again</Text>
+              </Pressable>
+            </View>
+            
+            <View style={styles.quizFinishContent}>
+              <View style={styles.quizFinishStatsPanel}>
+                <Text style={styles.quizFinishPanelTitle}>Current Round</Text>
+                <View style={styles.quizFinishStats}>
+                  <View style={styles.quizFinishStat}>
+                    <Text style={styles.quizFinishStatLabel}>Score</Text>
+                    <Text style={styles.quizFinishStatValue}>
+                      {score}/{quizItems.length}
+                    </Text>
+                  </View>
+                  <View style={styles.quizFinishStat}>
+                    <Text style={styles.quizFinishStatLabel}>Time Left</Text>
+                    <Text style={styles.quizFinishStatValue}>{formatTimer(remainingSeconds)}</Text>
+                  </View>
+                  {completionTimeMs !== null && finishReason === 'complete' ? (
+                    <View style={styles.quizFinishStat}>
+                      <Text style={styles.quizFinishStatLabel}>Completion Time</Text>
+                      <Text style={styles.quizFinishStatValue}>{formatMilliseconds(completionTimeMs)}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+              
+              <View style={styles.quizFinishLeaderboardPanel}>
+                {leaderboard.length > 0 ? (
+                  <View style={styles.quizLeaderboard}>
+                    <Text style={styles.quizLeaderboardTitle}>🏆 Top 10 Best Times</Text>
+                    <View style={styles.quizLeaderboardList}>
+                      {leaderboard.map((entry, index) => (
+                        <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
+                          <Text style={styles.quizLeaderboardRank}>#{index + 1}</Text>
+                          <Text style={styles.quizLeaderboardMode}>{entry.mode}</Text>
+                          <Text style={styles.quizLeaderboardTime}>{formatMilliseconds(entry.timeMs)}</Text>
+                          <Text style={styles.quizLeaderboardScore}>
+                            {entry.score}/{entry.total}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.quizLeaderboard}>
+                    <Text style={styles.quizLeaderboardTitle}>🏆 Leaderboard</Text>
+                    <Text style={styles.quizLeaderboardEmpty}>Complete a quiz to see your best times!</Text>
+                  </View>
+                )}
               </View>
             </View>
-            <Pressable style={styles.quizFinishButton} onPress={startQuiz}>
-              <Text style={styles.quizFinishButtonLabel}>Play Again</Text>
-            </Pressable>
           </View>
         ) : (
           columns.map((column, columnIndex) => (
