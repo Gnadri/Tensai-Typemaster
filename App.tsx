@@ -86,6 +86,109 @@ const TAU = Math.PI * 2;
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const QUIZ_TIMER_OPTIONS = [
+  { value: 1, label: '1 min' },
+  { value: 3, label: '3 min' },
+  { value: 5, label: '5 min' },
+  { value: 10, label: '10 min' },
+];
+
+const KATAKANA_QUIZ = [
+  { id: 'ka', kana: 'カ', answers: ['ka'] },
+  { id: 'ki', kana: 'キ', answers: ['ki'] },
+  { id: 'ku', kana: 'ク', answers: ['ku'] },
+  { id: 'ke', kana: 'ケ', answers: ['ke'] },
+  { id: 'ko', kana: 'コ', answers: ['ko'] },
+  { id: 'sa', kana: 'サ', answers: ['sa'] },
+  { id: 'shi', kana: 'シ', answers: ['shi', 'si'] },
+  { id: 'su', kana: 'ス', answers: ['su'] },
+  { id: 'se', kana: 'セ', answers: ['se'] },
+  { id: 'so', kana: 'ソ', answers: ['so'] },
+  { id: 'ta', kana: 'タ', answers: ['ta'] },
+  { id: 'chi', kana: 'チ', answers: ['chi', 'ti'] },
+  { id: 'tsu', kana: 'ツ', answers: ['tsu', 'tu'] },
+  { id: 'te', kana: 'テ', answers: ['te'] },
+  { id: 'to', kana: 'ト', answers: ['to'] },
+  { id: 'na', kana: 'ナ', answers: ['na'] },
+  { id: 'ni', kana: 'ニ', answers: ['ni'] },
+  { id: 'nu', kana: 'ヌ', answers: ['nu'] },
+  { id: 'ne', kana: 'ネ', answers: ['ne'] },
+  { id: 'no', kana: 'ノ', answers: ['no'] },
+  { id: 'ha', kana: 'ハ', answers: ['ha'] },
+  { id: 'hi', kana: 'ヒ', answers: ['hi'] },
+  { id: 'fu', kana: 'フ', answers: ['fu', 'hu'] },
+  { id: 'he', kana: 'ヘ', answers: ['he'] },
+  { id: 'ho', kana: 'ホ', answers: ['ho'] },
+  { id: 'ma', kana: 'マ', answers: ['ma'] },
+  { id: 'mi', kana: 'ミ', answers: ['mi'] },
+  { id: 'mu', kana: 'ム', answers: ['mu'] },
+  { id: 'me', kana: 'メ', answers: ['me'] },
+  { id: 'mo', kana: 'モ', answers: ['mo'] },
+  { id: 'ya', kana: 'ヤ', answers: ['ya'] },
+  { id: 'yu', kana: 'ユ', answers: ['yu'] },
+  { id: 'yo', kana: 'ヨ', answers: ['yo'] },
+  { id: 'ra', kana: 'ラ', answers: ['ra'] },
+  { id: 'ri', kana: 'リ', answers: ['ri'] },
+  { id: 'ru', kana: 'ル', answers: ['ru'] },
+  { id: 're', kana: 'レ', answers: ['re'] },
+  { id: 'ro', kana: 'ロ', answers: ['ro'] },
+  { id: 'wa', kana: 'ワ', answers: ['wa'] },
+  { id: 'n', kana: 'ン', answers: ['n'] },
+  { id: 'a', kana: 'ア', answers: ['a'] },
+  { id: 'i', kana: 'イ', answers: ['i'] },
+  { id: 'u', kana: 'ウ', answers: ['u'] },
+  { id: 'e', kana: 'エ', answers: ['e'] },
+  { id: 'o', kana: 'オ', answers: ['o'] },
+];
+
+const HIRAGANA_QUIZ = [
+  { id: 'ka', kana: 'か', answers: ['ka'] },
+  { id: 'ki', kana: 'き', answers: ['ki'] },
+  { id: 'ku', kana: 'く', answers: ['ku'] },
+  { id: 'ke', kana: 'け', answers: ['ke'] },
+  { id: 'ko', kana: 'こ', answers: ['ko'] },
+  { id: 'sa', kana: 'さ', answers: ['sa'] },
+  { id: 'shi', kana: 'し', answers: ['shi', 'si'] },
+  { id: 'su', kana: 'す', answers: ['su'] },
+  { id: 'se', kana: 'せ', answers: ['se'] },
+  { id: 'so', kana: 'そ', answers: ['so'] },
+  { id: 'ta', kana: 'た', answers: ['ta'] },
+  { id: 'chi', kana: 'ち', answers: ['chi', 'ti'] },
+  { id: 'tsu', kana: 'つ', answers: ['tsu', 'tu'] },
+  { id: 'te', kana: 'て', answers: ['te'] },
+  { id: 'to', kana: 'と', answers: ['to'] },
+  { id: 'na', kana: 'な', answers: ['na'] },
+  { id: 'ni', kana: 'に', answers: ['ni'] },
+  { id: 'nu', kana: 'ぬ', answers: ['nu'] },
+  { id: 'ne', kana: 'ね', answers: ['ne'] },
+  { id: 'no', kana: 'の', answers: ['no'] },
+  { id: 'ha', kana: 'は', answers: ['ha'] },
+  { id: 'hi', kana: 'ひ', answers: ['hi'] },
+  { id: 'fu', kana: 'ふ', answers: ['fu', 'hu'] },
+  { id: 'he', kana: 'へ', answers: ['he'] },
+  { id: 'ho', kana: 'ほ', answers: ['ho'] },
+  { id: 'ma', kana: 'ま', answers: ['ma'] },
+  { id: 'mi', kana: 'み', answers: ['mi'] },
+  { id: 'mu', kana: 'む', answers: ['mu'] },
+  { id: 'me', kana: 'め', answers: ['me'] },
+  { id: 'mo', kana: 'も', answers: ['mo'] },
+  { id: 'ya', kana: 'や', answers: ['ya'] },
+  { id: 'yu', kana: 'ゆ', answers: ['yu'] },
+  { id: 'yo', kana: 'よ', answers: ['yo'] },
+  { id: 'ra', kana: 'ら', answers: ['ra'] },
+  { id: 'ri', kana: 'り', answers: ['ri'] },
+  { id: 'ru', kana: 'る', answers: ['ru'] },
+  { id: 're', kana: 'れ', answers: ['re'] },
+  { id: 'ro', kana: 'ろ', answers: ['ro'] },
+  { id: 'wa', kana: 'わ', answers: ['wa'] },
+  { id: 'n', kana: 'ん', answers: ['n'] },
+  { id: 'a', kana: 'あ', answers: ['a'] },
+  { id: 'i', kana: 'い', answers: ['i'] },
+  { id: 'u', kana: 'う', answers: ['u'] },
+  { id: 'e', kana: 'え', answers: ['e'] },
+  { id: 'o', kana: 'お', answers: ['o'] },
+];
+
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 
 const addMonths = (date: Date, amount: number) => {
@@ -167,6 +270,27 @@ function parseDateKey(dateKey: string) {
   const [, y, m, d] = match;
   return new Date(Number(y), Number(m) - 1, Number(d), 12, 0, 0);
 }
+
+const normalizeRomaji = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z]/g, '');
+
+const shuffleQuiz = (items: any[]) => {
+  const next = [...items];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [next[i], next[j]] = [next[j], next[i]];
+  }
+  return next;
+};
+
+const formatTimer = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
+  return `${minutes.toString().padStart(2, '0')}:${remaining.toString().padStart(2, '0')}`;
+};
 
 const initialCalendarForm = () => ({
   dateKey: formatDateKey(new Date()),
@@ -1134,6 +1258,308 @@ function InsightsView({ notes, sourceSlices, onDelete, loading, onEdit }) {
   );
 }
 
+const QUIZ_MODES = [
+  { value: 'katakana', label: 'Katakana', dataset: KATAKANA_QUIZ },
+  { value: 'hiragana', label: 'Hiragana', dataset: HIRAGANA_QUIZ },
+];
+
+const getQuizDataset = (mode: string) => {
+  const selected = QUIZ_MODES.find(option => option.value === mode) || QUIZ_MODES[0];
+  return selected.dataset;
+};
+
+function KanaQuizView() {
+  const [quizMode, setQuizMode] = useState(QUIZ_MODES[0].value);
+  const [timerMinutes, setTimerMinutes] = useState(5);
+  const [customMinutes, setCustomMinutes] = useState('5');
+  const [quizItems, setQuizItems] = useState(() => shuffleQuiz(getQuizDataset(QUIZ_MODES[0].value)));
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [remainingSeconds, setRemainingSeconds] = useState(() => timerMinutes * 60);
+  const [isRunning, setIsRunning] = useState(false);
+  const [hasFinished, setHasFinished] = useState(false);
+  const [finishReason, setFinishReason] = useState<'time' | 'complete' | null>(null);
+  const inputRefs = React.useRef<Record<string, TextInput | null>>({});
+
+
+  const focusOrder = useMemo(() => {
+    const buckets = [[], [], []];
+    quizItems.forEach((item, index) => {
+      buckets[index % 3].push(item.id);
+    });
+    return buckets.flat();
+  }, [quizItems]);
+
+  const indexById = useMemo(() => {
+    const map: Record<string, number> = {};
+    focusOrder.forEach((id, index) => {
+      map[id] = index;
+    });
+    return map;
+  }, [focusOrder]);
+
+  const acceptedLookup = useMemo(() => {
+    return quizItems.reduce<Record<string, string[]>>((acc, item) => {
+      acc[item.id] = item.answers.map((value: string) => normalizeRomaji(value));
+      return acc;
+    }, {});
+  }, [quizItems]);
+
+  const isCorrectAnswer = useCallback(
+    (id: string, value: string) => {
+      const accepted = acceptedLookup[id] || [];
+      const normalized = normalizeRomaji(value);
+      return normalized.length > 0 && accepted.includes(normalized);
+    },
+    [acceptedLookup],
+  );
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const timer = setInterval(() => {
+      setRemainingSeconds(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setIsRunning(false);
+          setHasFinished(true);
+          setFinishReason('time');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isRunning]);
+
+  useEffect(() => {
+    if (!quizItems.length) return;
+    const allCorrect = quizItems.every(item => isCorrectAnswer(item.id, answers[item.id] || ''));
+    if (allCorrect && !hasFinished) {
+      setHasFinished(true);
+      setIsRunning(false);
+      setFinishReason('complete');
+    }
+  }, [answers, hasFinished, isCorrectAnswer, quizItems]);
+
+  const updateTimerMinutes = (minutes: number) => {
+    setTimerMinutes(minutes);
+    setCustomMinutes(`${minutes}`);
+    if (!isRunning) {
+      setRemainingSeconds(minutes * 60);
+    }
+  };
+
+  const applyCustomMinutes = () => {
+    const parsed = Number.parseInt(customMinutes, 10);
+    if (Number.isNaN(parsed) || parsed < 1 || parsed > 30) {
+      Alert.alert('Timer minutes', 'Enter a value between 1 and 30.');
+      return;
+    }
+    updateTimerMinutes(parsed);
+  };
+
+  const startQuiz = () => {
+    setQuizItems(shuffleQuiz(getQuizDataset(quizMode)));
+    setAnswers({});
+    setHasFinished(false);
+    setFinishReason(null);
+    setRemainingSeconds(timerMinutes * 60);
+    setIsRunning(true);
+  };
+
+  const resetQuiz = () => {
+    setIsRunning(false);
+    setHasFinished(false);
+    setFinishReason(null);
+    setRemainingSeconds(timerMinutes * 60);
+  };
+
+  const score = useMemo(() => {
+    return quizItems.reduce((sum, item) => {
+      const response = answers[item.id];
+      if (!response) return sum;
+      const normalized = normalizeRomaji(response);
+      const accepted = item.answers.map((value: string) => normalizeRomaji(value));
+      return accepted.includes(normalized) ? sum + 1 : sum;
+    }, 0);
+  }, [answers, quizItems]);
+
+  const focusNextAnswer = useCallback(
+    (currentId: string, nextAnswers: Record<string, string>) => {
+      const currentIndex = indexById[currentId] ?? -1;
+      if (currentIndex < 0) return;
+      const total = focusOrder.length;
+      for (let offset = 1; offset <= total; offset += 1) {
+        const nextIndex = currentIndex + offset;
+        if (nextIndex >= total) break;
+        const nextId = focusOrder[nextIndex];
+        if (!isCorrectAnswer(nextId, nextAnswers[nextId] || '')) {
+          const nextRef = inputRefs.current[nextId];
+          if (nextRef && typeof nextRef.focus === 'function') {
+            requestAnimationFrame(() => nextRef.focus());
+          }
+          break;
+        }
+      }
+    },
+    [focusOrder, indexById, isCorrectAnswer],
+  );
+
+  const handleAnswerChange = useCallback(
+    (id: string, text: string) => {
+      if (!isRunning && !hasFinished) {
+        if (remainingSeconds <= 0) {
+          setRemainingSeconds(timerMinutes * 60);
+        }
+        setIsRunning(true);
+      }
+      setAnswers(prev => {
+        const next = { ...prev, [id]: text };
+        if (!hasFinished && isCorrectAnswer(id, text)) {
+          focusNextAnswer(id, next);
+        }
+        return next;
+      });
+    },
+    [focusNextAnswer, hasFinished, isCorrectAnswer, isRunning, remainingSeconds, timerMinutes],
+  );
+
+  const columns = useMemo(() => {
+    const buckets = [[], [], []];
+    quizItems.forEach((item, index) => {
+      buckets[index % 3].push(item);
+    });
+    return buckets;
+  }, [quizItems]);
+
+  return (
+    <ScrollView style={styles.quizScroll} contentContainerStyle={styles.quizContent}>
+      <View style={styles.quizToolbar}>
+        <View style={styles.quizToolbarLeft}>
+          <OptionPillGroup
+            label="Quiz type"
+            options={QUIZ_MODES.map(({ value, label }) => ({ value, label }))}
+            value={quizMode}
+            onChange={value => {
+              setQuizMode(value);
+              if (!isRunning) {
+                setQuizItems(shuffleQuiz((QUIZ_MODES.find(option => option.value === value) || QUIZ_MODES[0]).dataset));
+                setAnswers({});
+                setHasFinished(false);
+                setFinishReason(null);
+              }
+            }}
+            compact
+          />
+          <View style={styles.quizTimerSettings}>
+            <OptionPillGroup
+              label="Timer"
+              options={QUIZ_TIMER_OPTIONS}
+              value={timerMinutes}
+              onChange={updateTimerMinutes}
+              compact
+            />
+            <View style={styles.quizCustomTimerRow}>
+              <TextInput
+                style={styles.quizTimerInput}
+                keyboardType="number-pad"
+                value={customMinutes}
+                onChangeText={setCustomMinutes}
+                placeholder="Custom"
+                placeholderTextColor="#94a3b8"
+              />
+              <Pressable style={styles.quizTimerApplyButton} onPress={applyCustomMinutes}>
+                <Text style={styles.quizTimerApplyLabel}>Set</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+        <View style={styles.quizToolbarRight}>
+          <View style={styles.quizMetaRow}>
+            <View style={styles.quizScoreBlock}>
+              <Text style={styles.quizScoreLabel}>Score</Text>
+              <Text style={styles.quizScoreValue}>
+                {score}/{quizItems.length}
+              </Text>
+            </View>
+            <View style={styles.quizTimerBlock}>
+              <Text style={styles.quizTimerLabel}>Timer</Text>
+              <Text style={[styles.quizTimerValue, hasFinished && styles.quizTimerValueExpired]}>
+                {formatTimer(remainingSeconds)}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.quizActionButtons}>
+            <Pressable style={styles.quizPlayButton} onPress={startQuiz}>
+              <Text style={styles.quizPlayButtonLabel}>Play Quiz</Text>
+            </Pressable>
+            <Pressable style={styles.quizResetButton} onPress={resetQuiz}>
+              <Text style={styles.quizResetButtonLabel}>Reset</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.quizTableRow}>
+        {hasFinished ? (
+          <View style={styles.quizFinishCard}>
+            <Text style={styles.quizFinishTitle}>Quiz Complete</Text>
+            <Text style={styles.quizFinishSubtitle}>
+              {finishReason === 'time' ? 'Time is up.' : 'All answers correct.'}
+            </Text>
+            <View style={styles.quizFinishStats}>
+              <View style={styles.quizFinishStat}>
+                <Text style={styles.quizFinishStatLabel}>Score</Text>
+                <Text style={styles.quizFinishStatValue}>
+                  {score}/{quizItems.length}
+                </Text>
+              </View>
+              <View style={styles.quizFinishStat}>
+                <Text style={styles.quizFinishStatLabel}>Time Left</Text>
+                <Text style={styles.quizFinishStatValue}>{formatTimer(remainingSeconds)}</Text>
+              </View>
+            </View>
+            <Pressable style={styles.quizFinishButton} onPress={startQuiz}>
+              <Text style={styles.quizFinishButtonLabel}>Play Again</Text>
+            </Pressable>
+          </View>
+        ) : (
+          columns.map((column, columnIndex) => (
+            <View key={`quiz-column-${columnIndex}`} style={styles.quizTable}>
+              <View style={styles.quizTableHeader}>
+              <Text style={styles.quizTableHeaderLabel}>Kana</Text>
+              <Text style={styles.quizTableHeaderLabel}>English Syllable</Text>
+            </View>
+              {column.map(item => (
+                <View key={item.id} style={styles.quizTableRowItem}>
+                  <View style={styles.quizKanaCell}>
+                    <Text style={styles.quizKanaText}>{item.kana}</Text>
+                  </View>
+                  <TextInput
+                    ref={ref => {
+                      inputRefs.current[item.id] = ref;
+                    }}
+                    style={styles.quizAnswerInput}
+                    value={answers[item.id] || ''}
+                    editable={!hasFinished}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => focusNextAnswer(item.id, answers)}
+                    onChangeText={text => handleAnswerChange(item.id, text)}
+                    placeholder="Type..."
+                    placeholderTextColor="#64748b"
+                  />
+                </View>
+              ))}
+            </View>
+          ))
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
 function DashboardView({
   notes,
   loading,
@@ -1184,6 +1610,7 @@ function DashboardView({
     { key: 'compose', label: 'Compose' },
     { key: 'history', label: 'Note history' },
     { key: 'insights', label: 'Insights' },
+    { key: 'quiz', label: 'Quiz' },
   ];
 
   return (
@@ -1327,15 +1754,17 @@ function DashboardView({
             onEdit={onEdit}
           />
         ) : null}
+
+        {activeTab === 'quiz' ? <KanaQuizView /> : null}
       </View>
     </View>
   );
 }
 
-function OptionPillGroup({ label, options, value, onChange }) {
+function OptionPillGroup({ label, options, value, onChange, compact = false }) {
   return (
-    <View style={styles.pillGroup}>
-      <Text style={styles.pillLabel}>{label}</Text>
+    <View style={[styles.pillGroup, compact && styles.quizPillGroup]}>
+      <Text style={[styles.pillLabel, compact && styles.quizPillLabel]}>{label}</Text>
       <View style={styles.pillRow}>
         {options.map(option => {
           const selected = option.value === value;
