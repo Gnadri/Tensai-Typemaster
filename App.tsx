@@ -1433,6 +1433,11 @@ const QUIZ_VIEW_OPTIONS = [
   { value: 'typemaster', label: 'TypeMaster' },
   { value: 'leaderboard', label: 'Leaderboard' },
 ];
+const TYPEMASTER_QUEUE_OPTIONS = [
+  { value: 'rapidfire', label: 'Rapidfire' },
+  { value: 'burst', label: 'Burst' },
+];
+const DEFAULT_TYPEMASTER_QUEUE_MODE = TYPEMASTER_QUEUE_OPTIONS[0].value;
 const LEADERBOARD_SCOPE_OPTIONS = [
   { value: 'all_time', label: 'All time' },
   { value: 'session', label: 'Current Session' },
@@ -1455,6 +1460,30 @@ const getQuizModesForFamily = (family: string) => QUIZ_MODES.filter(option => op
 const getQuizModeKey = (mode: string, jlptReadingMode: string = DEFAULT_JLPT_READING_MODE) =>
   mode === 'jlpt_n5' ? `${mode}:${jlptReadingMode}` : mode;
 
+const getTypeMasterModeKey = (quizModeKey: string) => `typemaster:${quizModeKey}`;
+
+const parseTypeMasterModeKey = (mode: string) => {
+  if (!mode.startsWith('typemaster:')) return null;
+  const raw = mode.replace('typemaster:', '');
+  const parts = raw.split(':').filter(Boolean);
+  if (!parts.length) return null;
+  const last = parts[parts.length - 1];
+  const hasQueueMode = TYPEMASTER_QUEUE_OPTIONS.some(option => option.value === last);
+  const queueMode = hasQueueMode ? last : DEFAULT_TYPEMASTER_QUEUE_MODE;
+  const baseParts = hasQueueMode ? parts.slice(0, -1) : parts;
+  const baseMode = baseParts[0] || QUIZ_MODES[0].value;
+  const jlptReadingMode = baseMode === 'jlpt_n5'
+    ? (baseParts[1] || DEFAULT_JLPT_READING_MODE)
+    : null;
+  const normalizedQuizModeKey = baseMode === 'jlpt_n5'
+    ? getQuizModeKey('jlpt_n5', jlptReadingMode || DEFAULT_JLPT_READING_MODE)
+    : baseMode;
+  return {
+    queueMode,
+    quizModeKey: normalizedQuizModeKey,
+  };
+};
+
 const normalizeStoredQuizModeKey = (mode: string) => {
   if (mode.startsWith('endless:')) {
     const withoutEndless = mode.replace('endless:', '');
@@ -1464,11 +1493,9 @@ const normalizeStoredQuizModeKey = (mode: string) => {
     return mode;
   }
   if (mode.startsWith('typemaster:')) {
-    const withoutTypemaster = mode.replace('typemaster:', '');
-    if (withoutTypemaster === 'jlpt_n5') {
-      return `typemaster:${getQuizModeKey('jlpt_n5', DEFAULT_JLPT_READING_MODE)}`;
-    }
-    return mode;
+    const parsed = parseTypeMasterModeKey(mode);
+    if (!parsed) return mode;
+    return getTypeMasterModeKey(parsed.quizModeKey);
   }
   return mode === 'jlpt_n5' ? getQuizModeKey('jlpt_n5', DEFAULT_JLPT_READING_MODE) : mode;
 };
@@ -1487,13 +1514,17 @@ const getQuizModeLabel = (mode: string) => {
 
   // Handle typemaster mode: "typemaster:mode" or "typemaster:mode:jlptReadingMode"
   if (mode.startsWith('typemaster:')) {
-    const withoutTypemaster = mode.replace('typemaster:', '');
-    const [baseMode, jlptReadingMode] = withoutTypemaster.split(':');
+    const parsed = parseTypeMasterModeKey(mode);
+    if (!parsed) return `TypeMaster - ${mode.replace('typemaster:', '')}`;
+    const [baseMode, jlptReadingMode] = parsed.quizModeKey.split(':');
     const selected = QUIZ_MODES.find(option => option.value === baseMode);
-    if (!selected) return `TypeMaster - ${withoutTypemaster}`;
-    if (baseMode !== 'jlpt_n5') return `TypeMaster - ${selected.label}`;
+    const queueLabel = (TYPEMASTER_QUEUE_OPTIONS.find(option => option.value === parsed.queueMode) || TYPEMASTER_QUEUE_OPTIONS[0]).label;
+    if (!selected) return `TypeMaster (${queueLabel}) - ${parsed.quizModeKey}`;
+    if (baseMode !== 'jlpt_n5') return `TypeMaster (${queueLabel}) - ${selected.label}`;
     const selectedJlptMode = JLPT_READING_MODES.find(option => option.value === jlptReadingMode);
-    return selectedJlptMode ? `TypeMaster - JLPT N5 - ${selectedJlptMode.label}` : `TypeMaster - ${selected.label}`;
+    return selectedJlptMode
+      ? `TypeMaster (${queueLabel}) - JLPT N5 - ${selectedJlptMode.label}`
+      : `TypeMaster (${queueLabel}) - ${selected.label}`;
   }
 
   const [baseMode, jlptReadingMode] = mode.split(':');
@@ -1550,6 +1581,13 @@ const getLeaderboardTimeDisplay = (entry: { mode: string; finishReason?: string;
   return formatMilliseconds(entry.timeMs);
 };
 
+const getLeaderboardModeDisplayLabel = (entry: { mode: string; typemasterQueueMode?: string }) => {
+  const baseLabel = getQuizModeLabel(entry.mode);
+  if (!isTypeMasterModeKey(entry.mode)) return baseLabel;
+  const queueLabel = (TYPEMASTER_QUEUE_OPTIONS.find(option => option.value === entry.typemasterQueueMode) || TYPEMASTER_QUEUE_OPTIONS[0]).label;
+  return `${baseLabel} (${queueLabel})`;
+};
+
 const normalizeLeaderboardTimerMinutes = (value: any) => {
   const parsed = Number.parseInt(`${value}`, 10);
   if (Number.isNaN(parsed)) return 5;
@@ -1596,6 +1634,8 @@ function KanaQuizView() {
   const [typemasterScore, setTypemasterScore] = useState(0);
   const [typemasterCurrentInput, setTypemasterCurrentInput] = useState('');
   const [typemasterQueue, setTypemasterQueue] = useState<Array<{ id: string; item: any }>>([]);
+  const [typemasterQueueMode, setTypemasterQueueMode] = useState(DEFAULT_TYPEMASTER_QUEUE_MODE);
+  const [typemasterBurstCursor, setTypemasterBurstCursor] = useState(0);
   const [typemasterIsRunning, setTypemasterIsRunning] = useState(false);
   const [typemasterHasFinished, setTypemasterHasFinished] = useState(false);
   const [typemasterFinishReason, setTypemasterFinishReason] = useState<'time' | 'stopped' | null>(null);
@@ -1770,8 +1810,8 @@ function KanaQuizView() {
   }, [compareLeaderboardEntries, limitLeaderboardPerMode]);
 
   const getEntryIdentity = useCallback(
-    (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number }) =>
-      `${entry.mode}|${normalizeLeaderboardTimerMinutes(entry.timerMinutes)}|${entry.date}|${entry.timeMs}|${entry.score}|${entry.total}|${entry.finishReason || 'complete'}`,
+    (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number; typemasterQueueMode?: string }) =>
+      `${entry.mode}|${normalizeLeaderboardTimerMinutes(entry.timerMinutes)}|${entry.typemasterQueueMode || ''}|${entry.date}|${entry.timeMs}|${entry.score}|${entry.total}|${entry.finishReason || 'complete'}`,
     [],
   );
 
@@ -1989,7 +2029,22 @@ function KanaQuizView() {
     }, 100);
   }, [quizMode, timerMinutes]);
 
-  const stopEndlessMode = useCallback(() => {
+  const resetEndlessToSetup = useCallback(() => {
+    if (endlessAnimationRef.current) {
+      cancelAnimationFrame(endlessAnimationRef.current);
+      endlessAnimationRef.current = null;
+    }
+    setEndlessIsRunning(false);
+    setEndlessHasFinished(false);
+    setEndlessScore(0);
+    setEndlessCurrentInput('');
+    setEndlessVisibleChars([]);
+    setRemainingSeconds(timerMinutes * 60);
+    remainingSecondsRef.current = timerMinutes * 60;
+    timerDeadlineMsRef.current = null;
+  }, [timerMinutes]);
+
+  const stopEndlessMode = useCallback((reason: 'time' | 'stopped' = 'stopped') => {
     if (endlessAnimationRef.current) {
       cancelAnimationFrame(endlessAnimationRef.current);
       endlessAnimationRef.current = null;
@@ -1999,14 +2054,18 @@ function KanaQuizView() {
 
     // Save to leaderboard with 'endless' prefix
     const endlessModeKey = `endless:${activeModeKey}`;
-    const completionTimeMs = timerMinutes * 60 * 1000 - (timerDeadlineMsRef.current ? Math.max(0, timerDeadlineMsRef.current - Date.now()) : 0);
+    const timerTotalMs = timerMinutes * 60 * 1000;
+    const remainingMs = timerDeadlineMsRef.current ? Math.max(0, timerDeadlineMsRef.current - Date.now()) : 0;
+    const completionTimeMs = reason === 'time'
+      ? timerTotalMs
+      : Math.max(0, Math.min(timerTotalMs, timerTotalMs - remainingMs));
     void saveLeaderboardEntry({
       mode: endlessModeKey,
       timeMs: completionTimeMs,
       score: endlessScore,
       total: endlessScore,
       date: Date.now(),
-      finishReason: 'time',
+      finishReason: reason,
       timerMinutes,
     });
   }, [activeModeKey, endlessScore, saveLeaderboardEntry, timerMinutes]);
@@ -2115,7 +2174,7 @@ function KanaQuizView() {
         // Check if the leftmost character has passed the safe zone (failed to answer in time)
         if (sorted.length > 0 && sorted[0].position < -10) {
           // Game over - character reached the left edge
-          setTimeout(() => stopEndlessMode(), 0);
+          setTimeout(() => stopEndlessMode('stopped'), 0);
         }
 
         // Remove characters that have scrolled past the left edge (off screen completely)
@@ -2148,7 +2207,7 @@ function KanaQuizView() {
       setRemainingSeconds(remaining);
 
       if (remaining === 0) {
-        stopEndlessMode();
+        stopEndlessMode('time');
       }
     }, 100);
 
@@ -2171,6 +2230,7 @@ function KanaQuizView() {
 
     setTypemasterScore(0);
     setTypemasterCurrentInput('');
+    setTypemasterBurstCursor(0);
     setTypemasterIsRunning(true);
     setTypemasterHasFinished(false);
     setTypemasterFinishReason(null);
@@ -2186,14 +2246,31 @@ function KanaQuizView() {
     }, 100);
   }, [quizMode, timerMinutes]);
 
+  const resetTypemasterToSetup = useCallback(() => {
+    setTypemasterIsRunning(false);
+    setTypemasterHasFinished(false);
+    setTypemasterFinishReason(null);
+    setTypemasterScore(0);
+    setTypemasterCurrentInput('');
+    setTypemasterQueue([]);
+    setTypemasterBurstCursor(0);
+    setRemainingSeconds(timerMinutes * 60);
+    remainingSecondsRef.current = timerMinutes * 60;
+    timerDeadlineMsRef.current = null;
+  }, [timerMinutes]);
+
   const stopTypemasterMode = useCallback((reason: 'time' | 'stopped' = 'stopped') => {
     setTypemasterIsRunning(false);
     setTypemasterHasFinished(true);
     setTypemasterFinishReason(reason);
 
     // Save to leaderboard with 'typemaster' prefix
-    const typemasterModeKey = `typemaster:${activeModeKey}`;
-    const completionTimeMs = timerMinutes * 60 * 1000 - (timerDeadlineMsRef.current ? Math.max(0, timerDeadlineMsRef.current - Date.now()) : 0);
+    const typemasterModeKey = getTypeMasterModeKey(activeModeKey);
+    const timerTotalMs = timerMinutes * 60 * 1000;
+    const remainingMs = timerDeadlineMsRef.current ? Math.max(0, timerDeadlineMsRef.current - Date.now()) : 0;
+    const completionTimeMs = reason === 'time'
+      ? timerTotalMs
+      : Math.max(0, Math.min(timerTotalMs, timerTotalMs - remainingMs));
     void saveLeaderboardEntry({
       mode: typemasterModeKey,
       timeMs: completionTimeMs,
@@ -2202,8 +2279,9 @@ function KanaQuizView() {
       date: Date.now(),
       finishReason: reason,
       timerMinutes,
+      typemasterQueueMode,
     });
-  }, [activeModeKey, typemasterScore, saveLeaderboardEntry, timerMinutes]);
+  }, [activeModeKey, typemasterQueueMode, typemasterScore, saveLeaderboardEntry, timerMinutes]);
 
   const handleTypemasterInput = useCallback(
     (text: string) => {
@@ -2215,8 +2293,11 @@ function KanaQuizView() {
       setTypemasterQueue(prev => {
         if (prev.length === 0) return prev;
 
-        // Get the current character (first in queue)
-        const targetChar = prev[0];
+        // Get the current character: cursor-based in burst mode, otherwise first in queue.
+        const targetIndex = typemasterQueueMode === 'burst'
+          ? Math.max(0, Math.min(typemasterBurstCursor, prev.length - 1))
+          : 0;
+        const targetChar = prev[targetIndex];
         const targetItem = targetChar.item;
 
         // Check if answer is correct
@@ -2241,7 +2322,24 @@ function KanaQuizView() {
           setTypemasterCurrentInput('');
           setTypemasterScore(s => s + 1);
 
-          // Get new character from queue
+          if (typemasterQueueMode === 'burst') {
+            const nextCursor = typemasterBurstCursor + 1;
+            if (nextCursor < prev.length) {
+              setTypemasterBurstCursor(nextCursor);
+              return prev;
+            }
+
+            if (!typemasterQueueRef.current) return prev;
+            const burstBatch = typemasterQueueRef.current.getNext(5);
+            setTypemasterBurstCursor(0);
+            return burstBatch.map((item, index) => ({
+              id: `${item.id}-${Date.now()}-${index}`,
+              item,
+            }));
+          }
+
+          const updated = prev.slice(1);
+
           let newChar = null;
           if (typemasterQueueRef.current) {
             const newChars = typemasterQueueRef.current.getNext(1);
@@ -2252,9 +2350,6 @@ function KanaQuizView() {
               };
             }
           }
-
-          // Remove first character and add new one to maintain queue of 5
-          const updated = prev.slice(1);
           return newChar ? [...updated, newChar] : updated;
         }
 
@@ -2263,6 +2358,8 @@ function KanaQuizView() {
     },
     [
       typemasterIsRunning,
+      typemasterQueueMode,
+      typemasterBurstCursor,
       isJlptMode,
       isJlptJapaneseInputMode,
       jlptReadingMode,
@@ -2350,7 +2447,9 @@ function KanaQuizView() {
     return buckets;
   }, [columnCount, quizItems]);
   const todayKey = formatDateKey(new Date());
-  const activeLeaderboardModeKey = leaderboardGameType === 'typemaster' ? `typemaster:${activeModeKey}` : activeModeKey;
+  const activeLeaderboardModeKey = leaderboardGameType === 'typemaster'
+    ? getTypeMasterModeKey(activeModeKey)
+    : activeModeKey;
   const scopeLabel = (LEADERBOARD_SCOPE_OPTIONS.find(option => option.value === leaderboardScope) || LEADERBOARD_SCOPE_OPTIONS[0]).label;
   const activeLeaderboardModeLabel = getQuizModeLabel(activeLeaderboardModeKey);
   const activeLeaderboardSource = leaderboardScope === 'session' ? sessionLeaderboard : leaderboard;
@@ -2365,9 +2464,18 @@ function KanaQuizView() {
     [activeLeaderboardModeKey, activeLeaderboardSource, compareLeaderboardEntries, leaderboardScope, timerMinutes, todayKey],
   );
   const completedModeLabel = getQuizModeLabel(activeModeKey);
-  const typemasterModeKey = `typemaster:${activeModeKey}`;
+  const typemasterModeKey = getTypeMasterModeKey(activeModeKey);
   const typemasterCompletedModeLabel = getQuizModeLabel(typemasterModeKey);
   const typemasterCompletionTimeMs = Math.max(0, timerMinutes * 60 * 1000 - remainingSeconds * 1000);
+  const typemasterCurrentTargetIndex = typemasterQueueMode === 'burst'
+    ? Math.max(0, Math.min(typemasterBurstCursor, Math.max(typemasterQueue.length - 1, 0)))
+    : 0;
+  const typemasterCurrentTarget = typemasterQueue.length > 0 ? typemasterQueue[typemasterCurrentTargetIndex] : null;
+  const typemasterHintText = typemasterCurrentTarget
+    ? (isJlptMode
+      ? getJlptAcceptedReadings(typemasterCurrentTarget.item, jlptReadingMode).join('/')
+      : typemasterCurrentTarget.item.answers.join('/'))
+    : 'Start to begin...';
   const activeFamilyModes = getQuizModesForFamily(quizFamily);
   const promptColumnLabel = isJlptJapaneseInputMode ? 'Romaji Reading' : isJlptMode ? 'Kanji' : 'Kana';
   const answerColumnLabel = isJlptJapaneseInputMode ? 'Kanji (日本語 input)' : isJlptMode ? 'Reading' : 'English Syllable';
@@ -2557,13 +2665,34 @@ function KanaQuizView() {
               {formatTimer(remainingSeconds)}
             </Text>
           </View>
+          {quizView === 'typemaster' ? (
+            <View style={[styles.quizSubNavTabs, typemasterIsRunning && { opacity: 0.65 }]}>
+              {TYPEMASTER_QUEUE_OPTIONS.map(option => {
+                const selected = option.value === typemasterQueueMode;
+                return (
+                  <Pressable
+                    key={`typemaster-queue-${option.value}`}
+                    style={[styles.quizSubNavTab, selected && styles.quizSubNavTabActive]}
+                    onPress={() => {
+                      if (typemasterIsRunning) return;
+                      setTypemasterQueueMode(option.value);
+                    }}
+                  >
+                    <Text style={[styles.quizSubNavTabText, selected && styles.quizSubNavTabTextActive]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
           <View style={styles.quizActionButtonsRow}>
             {quizView === 'endless' ? (
               <>
                 <Pressable style={styles.quizPlayButton} onPress={startEndlessMode}>
                   <Text style={styles.quizPlayButtonLabel}>Play Endless</Text>
                 </Pressable>
-                <Pressable style={styles.quizStopButton} onPress={stopEndlessMode}>
+                <Pressable style={styles.quizStopButton} onPress={() => stopEndlessMode('stopped')}>
                   <Text style={styles.quizStopButtonLabel}>Stop</Text>
                 </Pressable>
               </>
@@ -2606,7 +2735,7 @@ function KanaQuizView() {
                       {typemasterFinishReason === 'stopped' ? 'TypeMaster stopped early.' : 'TypeMaster run complete.'}
                     </Text>
                   </View>
-                  <Pressable style={styles.quizFinishButton} onPress={startTypemasterMode}>
+                  <Pressable style={styles.quizFinishButton} onPress={resetTypemasterToSetup}>
                     <Text style={styles.quizFinishButtonLabel}>Play Again</Text>
                   </Pressable>
                 </View>
@@ -2671,7 +2800,7 @@ function KanaQuizView() {
                             <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
                               <Text style={styles.quizLeaderboardRank}>#{index + 1}</Text>
                               <Text style={styles.quizLeaderboardMode}>
-                                {getQuizModeLabel(entry.mode)} - {getLeaderboardFinishReasonLabel(entry)}
+                                {getLeaderboardModeDisplayLabel(entry)} - {getLeaderboardFinishReasonLabel(entry)}
                               </Text>
                               <Text style={[styles.quizLeaderboardTime, isTypeMasterModeKey(entry.mode) && entry.finishReason === 'stopped' && styles.quizLeaderboardTimeStopped]}>
                                 {getLeaderboardTimeDisplay(entry)}
@@ -2810,32 +2939,55 @@ function KanaQuizView() {
                   </Text>
                   <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }}>
                     {typemasterQueue.map((char, index) => (
+                      (() => {
+                        const isBurst = typemasterQueueMode === 'burst';
+                        const isCurrent = isBurst ? index === typemasterBurstCursor : index === 0;
+                        const isTyped = isBurst && index < typemasterBurstCursor;
+                        const charColor = isTyped ? '#64748b' : '#ffffff';
+                        return (
                       <View
                         key={char.id}
                         style={{
                           alignItems: 'center',
-                          padding: 12,
-                          borderRadius: 8,
-                          backgroundColor: index === 0 ? '#334155' : '#1e293b',
-                          borderWidth: index === 0 ? 3 : 2,
-                          borderColor: index === 0 ? '#10b981' : '#475569',
-                          minWidth: 80,
+                          minHeight: 86,
+                          justifyContent: 'flex-start',
                         }}
                       >
-                        <Text
+                        <View
                           style={{
-                            color: index === 0 ? '#10b981' : '#94a3b8',
-                            fontSize: index === 0 ? 48 : 32,
-                            fontWeight: '700',
-                            marginBottom: 4,
+                            alignItems: 'center',
+                            padding: 12,
+                            borderRadius: 8,
+                            backgroundColor: '#1e293b',
+                            borderWidth: 2,
+                            borderColor: '#475569',
+                            minWidth: 80,
                           }}
                         >
-                          {isJlptMode ? getJlptPromptText(char.item, jlptReadingMode) : char.item.kana}
-                        </Text>
-                        {index === 0 && (
-                          <Text style={{ color: '#10b981', fontSize: 12, fontWeight: '600' }}>CURRENT</Text>
-                        )}
+                          <Text
+                            style={{
+                              color: charColor,
+                              fontSize: 32,
+                              fontWeight: '700',
+                              marginBottom: 4,
+                            }}
+                          >
+                            {isJlptMode ? getJlptPromptText(char.item, jlptReadingMode) : char.item.kana}
+                          </Text>
+                        </View>
+                        <View
+                          style={{
+                            width: 34,
+                            height: 3,
+                            borderRadius: 2,
+                            backgroundColor: '#86efac',
+                            marginTop: 6,
+                            opacity: isCurrent ? 1 : 0,
+                          }}
+                        />
                       </View>
+                        );
+                      })()
                     ))}
                   </View>
 
@@ -2871,15 +3023,7 @@ function KanaQuizView() {
                     editable={typemasterIsRunning}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    placeholder={
-                      typemasterShowHints
-                        ? (typemasterQueue.length > 0
-                          ? `Type: ${isJlptMode
-                              ? getJlptAcceptedReadings(typemasterQueue[0].item, jlptReadingMode).join('/')
-                              : typemasterQueue[0].item.answers.join('/')}`
-                          : 'Start to begin...')
-                        : ''
-                    }
+                    placeholder={typemasterShowHints ? `Type: ${typemasterHintText}` : ''}
                     placeholderTextColor="#64748b"
                   />
                 </View>
@@ -2896,7 +3040,7 @@ function KanaQuizView() {
                     <Text style={styles.quizFinishTitle}>Endless Mode Complete</Text>
                     <Text style={styles.quizFinishSubtitle}>Time's up!</Text>
                   </View>
-                  <Pressable style={styles.quizFinishButton} onPress={startEndlessMode}>
+                  <Pressable style={styles.quizFinishButton} onPress={resetEndlessToSetup}>
                     <Text style={styles.quizFinishButtonLabel}>Play Again</Text>
                   </Pressable>
                 </View>
@@ -2975,7 +3119,7 @@ function KanaQuizView() {
                         paddingVertical: 12,
                         borderRadius: 8,
                       }}
-                      onPress={stopEndlessMode}
+                      onPress={() => stopEndlessMode('stopped')}
                     >
                       <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Stop</Text>
                     </Pressable>
@@ -3156,7 +3300,7 @@ function KanaQuizView() {
                       <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
                         <Text style={styles.quizLeaderboardRank}>#{index + 1}</Text>
                         <Text style={styles.quizLeaderboardMode}>
-                          {getQuizModeLabel(entry.mode)} - {getLeaderboardFinishReasonLabel(entry)}
+                          {getLeaderboardModeDisplayLabel(entry)} - {getLeaderboardFinishReasonLabel(entry)}
                         </Text>
                         <Text style={[styles.quizLeaderboardTime, isTypeMasterModeKey(entry.mode) && entry.finishReason === 'stopped' && styles.quizLeaderboardTimeStopped]}>
                           {getLeaderboardTimeDisplay(entry)}
@@ -3318,7 +3462,7 @@ function KanaQuizView() {
                         <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
                           <Text style={styles.quizLeaderboardRank}>#{index + 1}</Text>
                           <Text style={styles.quizLeaderboardMode}>
-                            {getQuizModeLabel(entry.mode)} - {getLeaderboardFinishReasonLabel(entry)}
+                            {getLeaderboardModeDisplayLabel(entry)} - {getLeaderboardFinishReasonLabel(entry)}
                           </Text>
                           <Text style={[styles.quizLeaderboardTime, isTypeMasterModeKey(entry.mode) && entry.finishReason === 'stopped' && styles.quizLeaderboardTimeStopped]}>
                             {getLeaderboardTimeDisplay(entry)}
