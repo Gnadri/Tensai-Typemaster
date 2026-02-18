@@ -268,6 +268,88 @@ const JLPT_N5_KANJI_QUIZ = [
   { id: 'n5_079', kana: '父', answers: ['fu', 'chichi'] },
   { id: 'n5_080', kana: '雨', answers: ['u', 'ame', 'ama'] },
 ];
+const JLPT_N5_ENGLISH_MEANINGS = {
+  n5_001: ['day', 'sun'],
+  n5_002: ['one'],
+  n5_003: ['country', 'nation'],
+  n5_004: ['person', 'human'],
+  n5_005: ['year'],
+  n5_006: ['big', 'large', 'great'],
+  n5_007: ['ten'],
+  n5_008: ['two'],
+  n5_009: ['book'],
+  n5_010: ['middle', 'inside', 'center'],
+  n5_011: ['long'],
+  n5_012: ['exit', 'leave', 'go out'],
+  n5_013: ['three'],
+  n5_014: ['time', 'hour'],
+  n5_015: ['go'],
+  n5_016: ['see', 'look'],
+  n5_017: ['month', 'moon'],
+  n5_018: ['minute', 'part', 'divide'],
+  n5_019: ['after', 'behind'],
+  n5_020: ['before', 'front'],
+  n5_021: ['life', 'birth'],
+  n5_022: ['five'],
+  n5_023: ['between', 'interval', 'space'],
+  n5_024: ['up', 'above'],
+  n5_025: ['east'],
+  n5_026: ['four'],
+  n5_027: ['now'],
+  n5_028: ['gold', 'money'],
+  n5_029: ['nine'],
+  n5_030: ['enter', 'insert'],
+  n5_031: ['study', 'learn'],
+  n5_032: ['high', 'tall'],
+  n5_033: ['yen', 'circle'],
+  n5_034: ['child'],
+  n5_035: ['outside', 'external'],
+  n5_036: ['eight'],
+  n5_037: ['six'],
+  n5_038: ['down', 'below', 'under'],
+  n5_039: ['come'],
+  n5_040: ['spirit', 'energy'],
+  n5_041: ['small', 'little'],
+  n5_042: ['seven'],
+  n5_043: ['mountain'],
+  n5_044: ['talk', 'speak'],
+  n5_045: ['woman', 'female'],
+  n5_046: ['north'],
+  n5_047: ['noon'],
+  n5_048: ['hundred'],
+  n5_049: ['write'],
+  n5_050: ['previous', 'ahead', 'before'],
+  n5_051: ['name'],
+  n5_052: ['river'],
+  n5_053: ['thousand'],
+  n5_054: ['water'],
+  n5_055: ['half'],
+  n5_056: ['man', 'male'],
+  n5_057: ['west'],
+  n5_058: ['electricity', 'electric'],
+  n5_059: ['school'],
+  n5_060: ['language', 'word'],
+  n5_061: ['earth', 'soil'],
+  n5_062: ['tree', 'wood'],
+  n5_063: ['hear', 'ask', 'listen'],
+  n5_064: ['eat', 'food'],
+  n5_065: ['car', 'vehicle'],
+  n5_066: ['what'],
+  n5_067: ['south'],
+  n5_068: ['ten thousand', 'myriad'],
+  n5_069: ['every'],
+  n5_070: ['white'],
+  n5_071: ['heaven', 'sky'],
+  n5_072: ['mother'],
+  n5_073: ['fire'],
+  n5_074: ['right'],
+  n5_075: ['read'],
+  n5_076: ['friend'],
+  n5_077: ['left'],
+  n5_078: ['rest'],
+  n5_079: ['father'],
+  n5_080: ['rain'],
+};
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 
 const addMonths = (date: Date, amount: number) => {
@@ -1420,9 +1502,10 @@ const JLPT_READING_MODES = [
   { value: 'on_kun', label: 'On/Kun (Default)' },
   { value: 'onyomi_only', label: 'Onyomi only' },
   { value: 'kunyomi_only', label: 'Kunyomi only' },
-  { value: 'jp_on_kun_kanji', label: '日本語 Onyomi + Kunyomi' },
+  { value: 'en_on_kun', label: 'English Translate' },
 ];
 const DEFAULT_JLPT_READING_MODE = JLPT_READING_MODES[0].value;
+const JLPT_ENGLISH_TRANSLATE_MODES = ['en_on_kun'];
 const QUIZ_FAMILY_OPTIONS = [
   { value: 'kana', label: 'Kana' },
   { value: 'jlpt', label: 'JLPT' },
@@ -1547,6 +1630,16 @@ const getJlptAcceptedReadings = (item: any, jlptReadingMode: string) => {
   return normalized;
 };
 
+const isJlptEnglishTranslateMode = (jlptReadingMode: string) =>
+  JLPT_ENGLISH_TRANSLATE_MODES.includes(jlptReadingMode);
+const getJlptAcceptedAnswers = (item: any, jlptReadingMode: string) => {
+  if (isJlptEnglishTranslateMode(jlptReadingMode)) {
+    return (JLPT_N5_ENGLISH_MEANINGS[item.id] || [])
+      .map((value: string) => normalizeRomaji(value))
+      .filter(Boolean);
+  }
+  return getJlptAcceptedReadings(item, jlptReadingMode);
+};
 const getJlptPromptText = (item: any, jlptReadingMode: string) => {
   if (jlptReadingMode === 'onyomi_only') {
     return item.kana;
@@ -1645,6 +1738,7 @@ function KanaQuizView() {
 
   const isJlptMode = quizMode === 'jlpt_n5';
   const isJlptJapaneseInputMode = isJlptMode && jlptReadingMode === 'jp_on_kun_kanji';
+  const isJlptEnglishMode = isJlptMode && isJlptEnglishTranslateMode(jlptReadingMode);
   const activeModeKey = getQuizModeKey(quizMode, jlptReadingMode);
   const columnCount = isJlptJapaneseInputMode ? 4 : 5;
 
@@ -1688,7 +1782,7 @@ function KanaQuizView() {
         if (isJlptJapaneseInputMode) {
           acc[item.id] = [item.kana];
         } else {
-          acc[item.id] = getJlptAcceptedReadings(item, jlptReadingMode);
+          acc[item.id] = getJlptAcceptedAnswers(item, jlptReadingMode);
         }
       } else {
         acc[item.id] = item.answers.map((value: string) => normalizeRomaji(value));
@@ -2092,7 +2186,7 @@ function KanaQuizView() {
             isCorrect = sanitized === targetItem.kana;
           } else {
             const normalized = normalizeRomaji(text);
-            const accepted = getJlptAcceptedReadings(targetItem, jlptReadingMode);
+            const accepted = getJlptAcceptedAnswers(targetItem, jlptReadingMode);
             isCorrect = normalized.length > 0 && accepted.includes(normalized);
           }
         } else {
@@ -2308,7 +2402,7 @@ function KanaQuizView() {
             isCorrect = sanitized === targetItem.kana;
           } else {
             const normalized = normalizeRomaji(text);
-            const accepted = getJlptAcceptedReadings(targetItem, jlptReadingMode);
+            const accepted = getJlptAcceptedAnswers(targetItem, jlptReadingMode);
             isCorrect = normalized.length > 0 && accepted.includes(normalized);
           }
         } else {
@@ -2473,13 +2567,25 @@ function KanaQuizView() {
   const typemasterCurrentTarget = typemasterQueue.length > 0 ? typemasterQueue[typemasterCurrentTargetIndex] : null;
   const typemasterHintText = typemasterCurrentTarget
     ? (isJlptMode
-      ? getJlptAcceptedReadings(typemasterCurrentTarget.item, jlptReadingMode).join('/')
+      ? getJlptAcceptedAnswers(typemasterCurrentTarget.item, jlptReadingMode).join('/')
       : typemasterCurrentTarget.item.answers.join('/'))
     : 'Start to begin...';
   const activeFamilyModes = getQuizModesForFamily(quizFamily);
   const promptColumnLabel = isJlptJapaneseInputMode ? 'Romaji Reading' : isJlptMode ? 'Kanji' : 'Kana';
-  const answerColumnLabel = isJlptJapaneseInputMode ? 'Kanji (日本語 input)' : isJlptMode ? 'Reading' : 'English Syllable';
-  const answerPlaceholder = isJlptJapaneseInputMode ? 'Type kanji ...' : isJlptMode ? 'Type reading...' : 'Type...';
+  const answerColumnLabel = isJlptJapaneseInputMode
+    ? 'Kanji (Japanese input)'
+    : isJlptEnglishMode
+      ? 'English Translation'
+      : isJlptMode
+        ? 'Reading'
+        : 'English Syllable';
+  const answerPlaceholder = isJlptJapaneseInputMode
+    ? 'Type kanji ...'
+    : isJlptEnglishMode
+      ? 'Type meaning...'
+      : isJlptMode
+        ? 'Type reading...'
+        : 'Type...';
   const completedModeLeaderboardSource = leaderboardScope === 'session' ? sessionLeaderboard : leaderboard;
   const completedModeLeaderboard = useMemo(
     () =>
@@ -2503,7 +2609,15 @@ function KanaQuizView() {
   );
 
   return (
-    <ScrollView style={styles.quizScroll} contentContainerStyle={styles.quizContent}>
+    <ScrollView
+      style={styles.quizScroll}
+      contentContainerStyle={styles.quizContent}
+      onTouchStart={() => {
+        if (isJlptModeDropdownOpen) {
+          setIsJlptModeDropdownOpen(false);
+        }
+      }}
+    >
       {/* Primary Nav Tabs */}
       <View style={styles.quizNavBar}>
         <View style={styles.quizNavTabs}>
@@ -2584,7 +2698,7 @@ function KanaQuizView() {
             })}
           </View>
           {isJlptMode ? (
-            <View style={styles.quizDropdownWrap}>
+            <View style={styles.quizDropdownWrap} onTouchStart={(event) => event.stopPropagation()}>
               <Text style={styles.quizDropdownLabel}>JLPT Mode</Text>
               <Pressable
                 style={styles.quizDropdownTrigger}
@@ -3231,7 +3345,7 @@ function KanaQuizView() {
                       endlessShowHints
                         ? (endlessVisibleChars.length > 0
                           ? `Type: ${isJlptMode
-                              ? getJlptAcceptedReadings(endlessVisibleChars[0].item, jlptReadingMode).join('/')
+                              ? getJlptAcceptedAnswers(endlessVisibleChars[0].item, jlptReadingMode).join('/')
                               : endlessVisibleChars[0].item.answers.join('/')}`
                           : 'Start to begin...')
                         : ''
@@ -3958,52 +4072,4 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
     y: cy + r * Math.sin(angle - Math.PI / 2),
   };
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
