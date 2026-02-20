@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   BackHandler,
+  Linking,
   Platform,
   Pressable,
   RefreshControl,
@@ -1739,8 +1740,19 @@ function KanaQuizView() {
   const isJlptMode = quizMode === 'jlpt_n5';
   const isJlptJapaneseInputMode = isJlptMode && jlptReadingMode === 'jp_on_kun_kanji';
   const isJlptEnglishMode = isJlptMode && isJlptEnglishTranslateMode(jlptReadingMode);
+  const shouldShowJlptKanjiInfo = isJlptMode && !isJlptJapaneseInputMode;
   const activeModeKey = getQuizModeKey(quizMode, jlptReadingMode);
   const columnCount = isJlptJapaneseInputMode ? 4 : 5;
+
+  const openJishoWord = useCallback(async (kanji: string) => {
+    if (!kanji) return;
+    const url = `https://jisho.org/word/${encodeURIComponent(kanji)}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Unable to open link', 'Could not open Jisho for this kanji.');
+    }
+  }, []);
 
   useEffect(() => {
     const family = getQuizModeFamily(quizMode);
@@ -3076,8 +3088,18 @@ function KanaQuizView() {
                             borderWidth: 2,
                             borderColor: '#475569',
                             minWidth: 80,
+                            position: 'relative',
                           }}
                         >
+                          {shouldShowJlptKanjiInfo ? (
+                            <Pressable
+                              onPress={() => openJishoWord(char.item.kana)}
+                              style={styles.quizKanjiInfoButton}
+                              hitSlop={6}
+                            >
+                              <Text style={styles.quizKanjiInfoLabel}>i</Text>
+                            </Pressable>
+                          ) : null}
                           <Text
                             style={{
                               color: charColor,
@@ -3643,9 +3665,25 @@ function KanaQuizView() {
                 {column.map(item => (
                   <View key={item.id} style={styles.quizTableRowItem}>
                     <View style={[styles.quizKanaCell, isJlptJapaneseInputMode && styles.quizKanaCellWide]}>
-                      <Text style={[styles.quizKanaText, isJlptJapaneseInputMode && styles.quizKanaTextWide]}>
-                        {isJlptMode ? getJlptPromptText(item, jlptReadingMode) : item.kana}
-                      </Text>
+                      <View
+                        style={[
+                          styles.quizKanaCellContent,
+                          isJlptJapaneseInputMode ? { alignItems: 'flex-start' } : null,
+                        ]}
+                      >
+                        {shouldShowJlptKanjiInfo ? (
+                          <Pressable
+                            onPress={() => openJishoWord(item.kana)}
+                            style={styles.quizKanjiInfoButton}
+                            hitSlop={6}
+                          >
+                            <Text style={styles.quizKanjiInfoLabel}>i</Text>
+                          </Pressable>
+                        ) : null}
+                        <Text style={[styles.quizKanaText, isJlptJapaneseInputMode && styles.quizKanaTextWide]}>
+                          {isJlptMode ? getJlptPromptText(item, jlptReadingMode) : item.kana}
+                        </Text>
+                      </View>
                     </View>
                     <TextInput
                       ref={ref => {
