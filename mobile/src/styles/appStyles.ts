@@ -1,9 +1,38 @@
 import { Platform, StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
-  appShell: { flex: 1, padding: 16, backgroundColor: '#0b1223' },
+  appShell: { flex: 1, paddingVertical: 18, paddingHorizontal: 22, backgroundColor: '#030a18' },
   appLayout: { flex: 1, paddingTop: 16, paddingHorizontal: 12, backgroundColor: '#0b1223' },
-  mainContent: { flex: 1, maxWidth: 1400, alignSelf: 'center', width: '100%', backgroundColor: '#0b1223' },
+  mainContent: { flex: 1, maxWidth: 1280, alignSelf: 'center', width: '100%', gap: 12 },
+  appTitleBar: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#203a61',
+    backgroundColor: '#0b162b',
+  },
+  appTitleText: {
+    color: '#f8fafc',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  quizPageFrame: {
+    flex: 1,
+    backgroundColor: '#0f1d38',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#2b4e7d',
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.24,
+    shadowRadius: 16,
+    elevation: 8,
+  },
   dashboardContent: { flex: 1, paddingBottom: 16, paddingHorizontal: 16, gap: 12 },
   dashboardHeader: {
     padding: 12,
@@ -314,7 +343,7 @@ export const styles = StyleSheet.create({
   noteGridEditText: { color: '#06b6d4', fontWeight: '600', fontSize: 13 },
   noteGridDeleteText: { color: '#ef4444', fontWeight: '600', fontSize: 13 },
   quizScroll: { flex: 1 },
-  quizContent: { paddingBottom: 24, gap: 16 },
+  quizContent: { paddingBottom: 24, gap: 16, paddingHorizontal: 2 },
   
   // New Nav Tab Styles
   quizNavBar: {
@@ -634,7 +663,9 @@ export const styles = StyleSheet.create({
   quizTableHeaderLabel: { color: '#f8fafc', fontWeight: '700', fontSize: 12 },
   quizTableRowItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
+    width: '100%',
+    minWidth: 0,
     borderTopWidth: 1,
     borderTopColor: '#334155',
   },
@@ -644,6 +675,9 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#0f172a',
     paddingVertical: 10,
+  },
+  quizKanaCellFocused: {
+    backgroundColor: '#223558',
   },
   quizKanaCellContent: {
     width: '100%',
@@ -683,14 +717,27 @@ export const styles = StyleSheet.create({
   },
   quizAnswerInput: {
     flex: 1,
+    flexBasis: 0,
+    width: '100%',
+    minWidth: 0,
     backgroundColor: '#111827',
     color: '#f8fafc',
     paddingVertical: 10,
     paddingHorizontal: 12,
     fontSize: 14,
     fontWeight: '600',
-    borderLeftWidth: 1,
-    borderLeftColor: '#334155',
+    borderWidth: 1,
+    borderColor: '#334155',
+    ...(Platform.OS === 'web'
+      ? {
+          appearance: 'none',
+          outlineStyle: 'none',
+          outlineWidth: 0,
+          outlineColor: 'transparent',
+          boxShadow: 'none',
+          boxSizing: 'border-box',
+        }
+      : null),
   },
   quizAnswerInputIncorrect: {
     backgroundColor: '#1f1720',

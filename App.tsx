@@ -73,6 +73,7 @@ const DEFAULT_SOURCE = CALENDAR_SOURCE_OPTIONS[0].value;
 
 const CALENDAR_NOTES_STORAGE_KEY = 'tensai-note.calendar.local';
 const QUIZ_LEADERBOARD_STORAGE_KEY = 'tensai-note.quiz-leaderboard.v1';
+const QUIZ_FOCUS_STORAGE_KEY = 'tensai-note.quiz-focus.v1';
 
 const SOURCE_COLORS = {
   study: '#2563eb',
@@ -351,6 +352,16 @@ const JLPT_N5_ENGLISH_MEANINGS = {
   n5_079: ['father'],
   n5_080: ['rain'],
 };
+
+const JLPT_N4_KANJI_SOURCE =
+  '会 同 事 自 社 発 者 地 業 方 新 場 員 立 開 手 力 問 代 明 動 京 目 通 言 理 体 田 主 題 意 不 作 用 度 強 公 持 野 以 思 家 世 多 正 安 院 心 界 教 文 元 重 近 考 画 海 売 知 道 集 別 物 使 品 計 死 特 私 始 朝 運 終 台 広 住 無 真 有 口 少 町 料 工 建 空 急 止 送 切 転 研 足 究 楽 起 着 店 病 質';
+const JLPT_N4_KANJI_QUIZ = JLPT_N4_KANJI_SOURCE.split(/\s+/)
+  .filter(Boolean)
+  .map((kana, index) => ({
+    id: `n4_${`${index + 1}`.padStart(3, '0')}`,
+    kana,
+    answers: [],
+  }));
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 
 const addMonths = (date: Date, amount: number) => {
@@ -538,354 +549,16 @@ const initialCalendarForm = () => ({
 });
 
 export default function App() {
-  const [notes, setNotes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState(() => initialCalendarForm());
-  const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const [noteStage, setNoteStage] = useState<'text' | 'source'>('text');
-  const [editingNote, setEditingNote] = useState<any | null>(null);
-  const [editDraft, setEditDraft] = useState({
-    text: '',
-    sourceType: DEFAULT_SOURCE,
-    sourceOrigin: '',
-    additionalDetails: '',
-    dateKey: formatDateKey(new Date()),
-  });
-
-  const selectedDateKey = useMemo(() => formatDateKey(selectedDate), [selectedDate]);
-  const todayKey = useMemo(() => formatDateKey(new Date()), []);
-
-  const sourceSlices = useMemo(() => {
-    if (!notes.length) {
-      return [];
-    }
-
-    const counts = notes.reduce<Record<string, number>>((acc, note) => {
-      const sourceKey = note.sourceType || 'other';
-      acc[sourceKey] = (acc[sourceKey] || 0) + 1;
-      return acc;
-    }, {});
-
-    const entries = Object.entries(counts)
-      .map(([source, count]) => ({
-        source,
-        count,
-        label: SOURCE_LABELS[source as keyof typeof SOURCE_LABELS] || SOURCE_LABELS.other,
-        color: SOURCE_COLORS[source as keyof typeof SOURCE_COLORS] || SOURCE_COLORS.other,
-      }))
-      .sort((a, b) => b.count - a.count);
-
-    const total = entries.reduce((sum, item) => sum + item.count, 0);
-    if (total === 0) {
-      return [];
-    }
-
-    let angleCursor = 0;
-    return entries.map(entry => {
-      const fraction = entry.count / total;
-      const startAngle = angleCursor;
-      const endAngle = angleCursor + fraction * TAU;
-      angleCursor = endAngle;
-      return { ...entry, fraction, startAngle, endAngle };
-    });
-  }, [notes]);
-
-  const loadNotes = useCallback(async () => {
-    setError(null);
-    try {
-      const stored = await AsyncStorage.getItem(CALENDAR_NOTES_STORAGE_KEY);
-      const parsed = stored ? JSON.parse(stored) : [];
-      const cleaned = Array.isArray(parsed) ? parsed.map(sanitizeNote) : [];
-      cleaned.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-      setNotes(cleaned);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load notes from device storage';
-      setError(message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadNotes();
-  }, [loadNotes]);
-
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadNotes();
-  }, [loadNotes]);
-
-  const handleSelectDate = useCallback((date: Date) => {
-    setSelectedDate(date);
-    setCurrentMonth(startOfMonth(date));
-    setForm(prev => ({ ...prev, dateKey: formatDateKey(date) }));
-  }, []);
-
-  const handleMonthChange = useCallback((direction: number) => {
-    setCurrentMonth(prev => addMonths(prev, direction));
-  }, []);
-
-  const handleJumpToday = useCallback(() => {
-    handleSelectDate(new Date());
-  }, [handleSelectDate]);
-
-  const handleFormChange = useCallback((field, value) => {
-    setForm(prev => ({ ...prev, [field]: value }));
-    if (field === 'dateKey') {
-      const parsed = parseDateKey(value);
-      if (!Number.isNaN(parsed.getTime())) {
-        setSelectedDate(parsed);
-        setCurrentMonth(startOfMonth(parsed));
-      }
-    }
-  }, []);
-
-  const persistNotes = useCallback(async updated => {
-    setNotes(updated);
-    await AsyncStorage.setItem(CALENDAR_NOTES_STORAGE_KEY, JSON.stringify(updated));
-  }, []);
-
-  const handleSubmit = useCallback(async () => {
-    if (submitting) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.dateKey)) {
-      setError('Enter the date as YYYY-MM-DD.');
-      return;
-    }
-    if (!form.text.trim()) {
-      setError('Note text cannot be empty.');
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-    try {
-      const timestamp = Date.now();
-      const newNote = sanitizeNote({
-        id: `local-${timestamp}`,
-        dateKey: form.dateKey,
-        language: form.language,
-        text: form.text.trim(),
-        sourceType: form.sourceType,
-        sourceOrigin: form.sourceOrigin.trim(),
-        additionalDetails: form.additionalDetails.trim(),
-        ts: timestamp,
-      });
-      const updated = insertOrUpdateNote(notes, newNote);
-      await persistNotes(updated);
-
-      const savedDate = parseDateKey(form.dateKey);
-      const fallbackDate = Number.isNaN(savedDate.getTime()) ? new Date() : savedDate;
-      setForm(prev => ({
-        ...initialCalendarForm(),
-        language: prev.language,
-        sourceType: prev.sourceType,
-        sourceOrigin: '',
-        additionalDetails: '',
-        dateKey: formatDateKey(fallbackDate),
-      }));
-      handleSelectDate(fallbackDate);
-      setNoteStage('text');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save note locally';
-      setError(message);
-    } finally {
-      setSubmitting(false);
-    }
-  }, [form, submitting, notes, persistNotes, handleSelectDate]);
-
-  const handleDelete = useCallback(
-    async noteId => {
-      try {
-        const updated = notes.filter(note => note.id !== noteId);
-        await persistNotes(updated);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to delete note locally';
-        setError(message);
-      }
-    },
-    [notes, persistNotes],
-  );
-
-  const handleAdvanceStage = useCallback(() => {
-    if (!form.text.trim()) {
-      setError('Note text cannot be empty.');
-      return;
-    }
-    setError(null);
-    setNoteStage('source');
-  }, [form.text]);
-
-  const handleBackStage = useCallback(() => {
-    setError(null);
-    setNoteStage('text');
-  }, []);
-
-  const handleExitApp = useCallback(() => {
-    if (Platform.OS === 'ios') {
-      Alert.alert('Close app', 'iOS does not allow apps to close themselves. Please swipe up to close.');
-      return;
-    }
-
-    const doExitWeb = () => {
-        try {
-          fetch('/__tensai_exit', {
-            method: 'POST',
-            headers: { 'X-Tensai-Exit': '1' },
-          }).catch(() => null);
-        } catch (_err) {
-          // ignore
-        }
-
-        setTimeout(() => {
-          try {
-            window.close();
-          } catch {
-            // ignore
-          }
-          try {
-            window.location.href = 'about:blank';
-          } catch {
-            // ignore
-          }
-        }, 150);
-    };
-
-    const doExitNative = () => {
-      try {
-        BackHandler.exitApp();
-      } catch {
-        // ignore
-      }
-    };
-
-    if (Platform.OS === 'web') {
-      const ok = typeof window !== 'undefined' ? window.confirm('Exit and stop the local web server?') : false;
-      if (ok) {
-        doExitWeb();
-      }
-      return;
-    }
-
-    Alert.alert('Exit', 'Close Tensai Note?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Exit', style: 'destructive', onPress: doExitNative },
-    ]);
-  }, []);
-
-  const handleAddNoteForDate = useCallback(
-    (dateKey?: string) => {
-      const parsed = dateKey ? parseDateKey(dateKey) : new Date();
-      const normalized = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-      const normalizedKey = formatDateKey(normalized);
-
-      setForm(prev => ({
-        ...prev,
-        dateKey: normalizedKey,
-      }));
-      setNoteStage('text');
-    },
-    [],
-  );
-
-  const handleStartEdit = useCallback((note: any) => {
-    setEditDraft({
-      text: note.text || '',
-      sourceType: note.sourceType || DEFAULT_SOURCE,
-      sourceOrigin: note.sourceOrigin || '',
-      additionalDetails: note.additionalDetails || '',
-      dateKey: note.dateKey || formatDateKey(new Date()),
-    });
-    setEditingNote(note);
-  }, []);
-
-  const handleEditChange = useCallback((field: string, value: string) => {
-    setEditDraft(prev => ({
-      ...prev,
-      [field]: value,
-    }));
-  }, []);
-
-  const handleCancelEdit = useCallback(() => {
-    setEditingNote(null);
-  }, []);
-
-  const handleSaveEdit = useCallback(async () => {
-    if (!editingNote) return;
-    const trimmedText = editDraft.text.trim();
-    if (!trimmedText) {
-      setError('Note text cannot be empty.');
-      return;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(editDraft.dateKey)) {
-      setError('Enter the date as YYYY-MM-DD.');
-      return;
-    }
-
-    try {
-      const updatedNote = sanitizeNote({
-        ...editingNote,
-        text: trimmedText,
-        sourceType: editDraft.sourceType,
-        sourceOrigin: editDraft.sourceOrigin,
-        additionalDetails: editDraft.additionalDetails,
-        dateKey: editDraft.dateKey,
-      });
-      const filtered = notes.filter(note => note.id !== editingNote.id);
-      const next = insertOrUpdateNote(filtered, updatedNote);
-      await persistNotes(next);
-      setEditingNote(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update note';
-      setError(message);
-    }
-  }, [editDraft, editingNote, notes, persistNotes]);
-
   return (
     <View style={styles.appShell}>
-      <View style={styles.appLayout}>
-        <View style={styles.mainContent}>
-          <DashboardView
-            notes={notes}
-            loading={loading}
-            refreshing={refreshing}
-            currentMonth={currentMonth}
-            selectedDateKey={selectedDateKey}
-            todayKey={todayKey}
-            onMonthChange={handleMonthChange}
-            onSelectDate={handleSelectDate}
-            onJumpToday={handleJumpToday}
-            onRefresh={handleRefresh}
-            onDelete={handleDelete}
-            onAddNote={handleAddNoteForDate}
-            onEditNote={handleStartEdit}
-            onExitApp={handleExitApp}
-            form={form}
-            onChangeForm={handleFormChange}
-            onSubmit={handleSubmit}
-            submitting={submitting}
-            noteStage={noteStage}
-            onAdvanceStage={handleAdvanceStage}
-            onBackStage={handleBackStage}
-            sourceSlices={sourceSlices}
-            onEdit={handleStartEdit}
-            error={error}
-          />
+      <View style={styles.mainContent}>
+        <View style={styles.appTitleBar}>
+          <Text style={styles.appTitleText}>Tensai TypeMaster</Text>
+        </View>
+        <View style={styles.quizPageFrame}>
+          <KanaQuizView />
         </View>
       </View>
-
-      {editingNote ? (
-        <EditNoteModal
-          draft={editDraft}
-          onChange={handleEditChange}
-          onCancel={handleCancelEdit}
-          onSave={handleSaveEdit}
-        />
-      ) : null}
     </View>
   );
 }
@@ -1498,18 +1171,22 @@ const QUIZ_MODES = [
   { value: 'katakana', label: 'Katakana', tabLabel: 'Katakana', family: 'kana', dataset: KATAKANA_QUIZ },
   { value: 'hiragana', label: 'Hiragana', tabLabel: 'Hiragana', family: 'kana', dataset: HIRAGANA_QUIZ },
   { value: 'jlpt_n5', label: 'JLPT N5 (On/Kun)', tabLabel: 'N5', family: 'jlpt', dataset: JLPT_N5_KANJI_QUIZ },
+  { value: 'jlpt_n4', label: 'JLPT N4', tabLabel: 'N4', family: 'jlpt', dataset: JLPT_N4_KANJI_QUIZ },
+  { value: 'focus', label: 'Focus', tabLabel: 'Focus', family: 'focus', dataset: [] },
 ];
 const JLPT_READING_MODES = [
   { value: 'on_kun', label: 'On/Kun (Default)' },
   { value: 'onyomi_only', label: 'Onyomi only' },
   { value: 'kunyomi_only', label: 'Kunyomi only' },
   { value: 'en_on_kun', label: 'English Translate' },
+  { value: 'jp_on_kun_kanji', label: 'Kanji Input' },
 ];
 const DEFAULT_JLPT_READING_MODE = JLPT_READING_MODES[0].value;
 const JLPT_ENGLISH_TRANSLATE_MODES = ['en_on_kun'];
 const QUIZ_FAMILY_OPTIONS = [
   { value: 'kana', label: 'Kana' },
   { value: 'jlpt', label: 'JLPT' },
+  { value: 'focus', label: 'Focus' },
 ];
 const QUIZ_VIEW_OPTIONS = [
   { value: 'quiz', label: 'Quiz' },
@@ -1531,6 +1208,40 @@ const LEADERBOARD_GAME_OPTIONS = [
   { value: 'typemaster', label: 'TypeMaster' },
 ];
 
+const isJlptQuizMode = (mode: string) => mode.startsWith('jlpt_');
+
+const getDefaultQuizModeForWeb = () => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return QUIZ_MODES[0].value;
+  }
+  const anyWindow = window as any;
+  const explicit = anyWindow.__TENSAI_DEFAULT_QUIZ_MODE__;
+  if (typeof explicit === 'string' && QUIZ_MODES.some(option => option.value === explicit)) {
+    return explicit;
+  }
+  const modeFromUrl = new URLSearchParams(window.location.search).get('mode');
+  if (modeFromUrl && QUIZ_MODES.some(option => option.value === modeFromUrl)) {
+    return modeFromUrl;
+  }
+  return QUIZ_MODES[0].value;
+};
+
+const getDefaultQuizViewForWeb = () => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return QUIZ_VIEW_OPTIONS[0].value;
+  }
+  const anyWindow = window as any;
+  const explicit = anyWindow.__TENSAI_DEFAULT_QUIZ_VIEW__;
+  if (typeof explicit === 'string' && QUIZ_VIEW_OPTIONS.some(option => option.value === explicit)) {
+    return explicit;
+  }
+  const viewFromUrl = new URLSearchParams(window.location.search).get('view');
+  if (viewFromUrl && QUIZ_VIEW_OPTIONS.some(option => option.value === viewFromUrl)) {
+    return viewFromUrl;
+  }
+  return QUIZ_VIEW_OPTIONS[0].value;
+};
+
 const getQuizDataset = (mode: string) => {
   const selected = QUIZ_MODES.find(option => option.value === mode) || QUIZ_MODES[0];
   return selected.dataset;
@@ -1542,9 +1253,14 @@ const getQuizModeFamily = (mode: string) => {
 const getQuizModesForFamily = (family: string) => QUIZ_MODES.filter(option => option.family === family);
 
 const getQuizModeKey = (mode: string, jlptReadingMode: string = DEFAULT_JLPT_READING_MODE) =>
-  mode === 'jlpt_n5' ? `${mode}:${jlptReadingMode}` : mode;
+  isJlptQuizMode(mode) || mode === 'focus' ? `${mode}:${jlptReadingMode}` : mode;
 
 const getTypeMasterModeKey = (quizModeKey: string) => `typemaster:${quizModeKey}`;
+const isFocusModeKey = (mode: string) =>
+  mode === 'focus' ||
+  mode.startsWith('focus:') ||
+  mode.startsWith('endless:focus') ||
+  mode.startsWith('typemaster:focus');
 
 const parseTypeMasterModeKey = (mode: string) => {
   if (!mode.startsWith('typemaster:')) return null;
@@ -1556,11 +1272,11 @@ const parseTypeMasterModeKey = (mode: string) => {
   const queueMode = hasQueueMode ? last : DEFAULT_TYPEMASTER_QUEUE_MODE;
   const baseParts = hasQueueMode ? parts.slice(0, -1) : parts;
   const baseMode = baseParts[0] || QUIZ_MODES[0].value;
-  const jlptReadingMode = baseMode === 'jlpt_n5'
+  const jlptReadingMode = isJlptQuizMode(baseMode)
     ? (baseParts[1] || DEFAULT_JLPT_READING_MODE)
     : null;
-  const normalizedQuizModeKey = baseMode === 'jlpt_n5'
-    ? getQuizModeKey('jlpt_n5', jlptReadingMode || DEFAULT_JLPT_READING_MODE)
+  const normalizedQuizModeKey = isJlptQuizMode(baseMode)
+    ? getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE)
     : baseMode;
   return {
     queueMode,
@@ -1571,8 +1287,8 @@ const parseTypeMasterModeKey = (mode: string) => {
 const normalizeStoredQuizModeKey = (mode: string) => {
   if (mode.startsWith('endless:')) {
     const withoutEndless = mode.replace('endless:', '');
-    if (withoutEndless === 'jlpt_n5') {
-      return `endless:${getQuizModeKey('jlpt_n5', DEFAULT_JLPT_READING_MODE)}`;
+    if (isJlptQuizMode(withoutEndless)) {
+      return `endless:${getQuizModeKey(withoutEndless, DEFAULT_JLPT_READING_MODE)}`;
     }
     return mode;
   }
@@ -1581,7 +1297,7 @@ const normalizeStoredQuizModeKey = (mode: string) => {
     if (!parsed) return mode;
     return getTypeMasterModeKey(parsed.quizModeKey);
   }
-  return mode === 'jlpt_n5' ? getQuizModeKey('jlpt_n5', DEFAULT_JLPT_READING_MODE) : mode;
+  return isJlptQuizMode(mode) ? getQuizModeKey(mode, DEFAULT_JLPT_READING_MODE) : mode;
 };
 
 const getQuizModeLabel = (mode: string) => {
@@ -1591,7 +1307,7 @@ const getQuizModeLabel = (mode: string) => {
     const [baseMode, jlptReadingMode] = withoutEndless.split(':');
     const selected = QUIZ_MODES.find(option => option.value === baseMode);
     if (!selected) return `Endless - ${withoutEndless}`;
-    if (baseMode !== 'jlpt_n5') return `Endless - ${selected.label}`;
+    if (!isJlptQuizMode(baseMode)) return `Endless - ${selected.label}`;
     const selectedJlptMode = JLPT_READING_MODES.find(option => option.value === jlptReadingMode);
     return selectedJlptMode ? `Endless - JLPT N5 - ${selectedJlptMode.label}` : `Endless - ${selected.label}`;
   }
@@ -1604,7 +1320,7 @@ const getQuizModeLabel = (mode: string) => {
     const selected = QUIZ_MODES.find(option => option.value === baseMode);
     const queueLabel = (TYPEMASTER_QUEUE_OPTIONS.find(option => option.value === parsed.queueMode) || TYPEMASTER_QUEUE_OPTIONS[0]).label;
     if (!selected) return `TypeMaster (${queueLabel}) - ${parsed.quizModeKey}`;
-    if (baseMode !== 'jlpt_n5') return `TypeMaster (${queueLabel}) - ${selected.label}`;
+    if (!isJlptQuizMode(baseMode)) return `TypeMaster (${queueLabel}) - ${selected.label}`;
     const selectedJlptMode = JLPT_READING_MODES.find(option => option.value === jlptReadingMode);
     return selectedJlptMode
       ? `TypeMaster (${queueLabel}) - JLPT N5 - ${selectedJlptMode.label}`
@@ -1614,7 +1330,7 @@ const getQuizModeLabel = (mode: string) => {
   const [baseMode, jlptReadingMode] = mode.split(':');
   const selected = QUIZ_MODES.find(option => option.value === baseMode);
   if (!selected) return mode;
-  if (baseMode !== 'jlpt_n5') return selected.label;
+  if (!isJlptQuizMode(baseMode)) return selected.label;
   const selectedJlptMode = JLPT_READING_MODES.find(option => option.value === jlptReadingMode);
   return selectedJlptMode ? `JLPT N5 - ${selectedJlptMode.label}` : selected.label;
 };
@@ -1689,16 +1405,20 @@ const normalizeLeaderboardTimerMinutes = (value: any) => {
 };
 
 function KanaQuizView() {
-  const [quizView, setQuizView] = useState(QUIZ_VIEW_OPTIONS[0].value);
-  const [quizMode, setQuizMode] = useState(QUIZ_MODES[0].value);
+  const defaultQuizMode = useMemo(() => getDefaultQuizModeForWeb(), []);
+  const defaultQuizView = useMemo(() => getDefaultQuizViewForWeb(), []);
+  const [quizView, setQuizView] = useState(defaultQuizView);
+  const [quizMode, setQuizMode] = useState(defaultQuizMode);
   const [jlptReadingMode, setJlptReadingMode] = useState(DEFAULT_JLPT_READING_MODE);
   const [isJlptModeDropdownOpen, setIsJlptModeDropdownOpen] = useState(false);
-  const [quizFamily, setQuizFamily] = useState(getQuizModeFamily(QUIZ_MODES[0].value));
+  const [quizFamily, setQuizFamily] = useState(getQuizModeFamily(defaultQuizMode));
   const [leaderboardScope, setLeaderboardScope] = useState(LEADERBOARD_SCOPE_OPTIONS[0].value);
   const [leaderboardGameType, setLeaderboardGameType] = useState(LEADERBOARD_GAME_OPTIONS[0].value);
   const [timerMinutes, setTimerMinutes] = useState(1);
   const [customMinutes, setCustomMinutes] = useState('1');
-  const [quizItems, setQuizItems] = useState(() => shuffleQuiz(getQuizDataset(QUIZ_MODES[0].value)));
+  const [quizItems, setQuizItems] = useState(() =>
+    defaultQuizMode === 'focus' ? [] : shuffleQuiz(getQuizDataset(defaultQuizMode)),
+  );
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [remainingSeconds, setRemainingSeconds] = useState(() => timerMinutes * 60);
   const [isRunning, setIsRunning] = useState(false);
@@ -1736,11 +1456,64 @@ function KanaQuizView() {
   const [typemasterShowHints, setTypemasterShowHints] = useState(true);
   const typemasterQueueRef = React.useRef<CharacterQueue | null>(null);
   const typemasterInputRef = React.useRef<TextInput | null>(null);
+  const [focusedItems, setFocusedItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
 
-  const isJlptMode = quizMode === 'jlpt_n5';
-  const isJlptJapaneseInputMode = isJlptMode && jlptReadingMode === 'jp_on_kun_kanji';
-  const isJlptEnglishMode = isJlptMode && isJlptEnglishTranslateMode(jlptReadingMode);
-  const shouldShowJlptKanjiInfo = isJlptMode && !isJlptJapaneseInputMode;
+  const focusDataset = useMemo(
+    () => focusedItems.map(entry => ({ ...entry.item, __focusSourceMode: entry.sourceMode })),
+    [focusedItems],
+  );
+  const focusLookup = useMemo(() => new Set(focusedItems.map(entry => entry.key)), [focusedItems]);
+  const getFocusItemKey = useCallback((item: any, sourceMode: string) => {
+    const idPart = item?.id || item?.kana || '';
+    return `${sourceMode}:${idPart}`;
+  }, []);
+  const getItemSourceMode = useCallback(
+    (item: any) => item?.__focusSourceMode || (quizMode === 'focus' ? 'jlpt_n4' : quizMode),
+    [quizMode],
+  );
+  const isFocusedItem = useCallback(
+    (item: any, sourceMode?: string) => {
+      const resolvedSourceMode = sourceMode || getItemSourceMode(item);
+      return focusLookup.has(getFocusItemKey(item, resolvedSourceMode));
+    },
+    [focusLookup, getFocusItemKey, getItemSourceMode],
+  );
+  const getDatasetForMode = useCallback(
+    (mode: string) => (mode === 'focus' ? focusDataset : getQuizDataset(mode)),
+    [focusDataset],
+  );
+  const saveFocusedItems = useCallback(async (items: Array<{ key: string; sourceMode: string; item: any }>) => {
+    setFocusedItems(items);
+    await AsyncStorage.setItem(QUIZ_FOCUS_STORAGE_KEY, JSON.stringify(items));
+  }, []);
+  const toggleFocusedItem = useCallback(
+    async (item: any, sourceMode?: string) => {
+      const resolvedSourceMode = sourceMode || getItemSourceMode(item);
+      const key = getFocusItemKey(item, resolvedSourceMode);
+      const plainItem = {
+        id: item.id,
+        kana: item.kana,
+        answers: Array.isArray(item.answers) ? item.answers : [],
+      };
+      const existing = focusedItems.some(entry => entry.key === key);
+      const next = existing
+        ? focusedItems.filter(entry => entry.key !== key)
+        : [...focusedItems, { key, sourceMode: resolvedSourceMode, item: plainItem }];
+      await saveFocusedItems(next);
+      if (quizMode === 'focus') {
+        setQuizItems(shuffleQuiz(next.map(entry => ({ ...entry.item, __focusSourceMode: entry.sourceMode }))));
+      }
+    },
+    [focusedItems, getFocusItemKey, getItemSourceMode, quizMode, saveFocusedItems],
+  );
+
+  const isJlptMode = isJlptQuizMode(quizMode);
+  const isFocusMode = quizMode === 'focus';
+  const isJlptStyleMode = isJlptMode || isFocusMode;
+  const isJlptJapaneseInputMode = isJlptStyleMode && jlptReadingMode === 'jp_on_kun_kanji';
+  const isJlptEnglishMode = isJlptStyleMode && isJlptEnglishTranslateMode(jlptReadingMode);
+  const isKanjiStudyMode = isJlptStyleMode;
+  const shouldShowJlptKanjiInfo = isKanjiStudyMode && !isJlptJapaneseInputMode;
   const activeModeKey = getQuizModeKey(quizMode, jlptReadingMode);
   const columnCount = isJlptJapaneseInputMode ? 4 : 5;
 
@@ -1762,10 +1535,45 @@ function KanaQuizView() {
   }, [quizFamily, quizMode]);
 
   useEffect(() => {
-    if (!isJlptMode) {
+    const loadFocusedItems = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(QUIZ_FOCUS_STORAGE_KEY);
+        if (!stored) return;
+        const parsed = JSON.parse(stored);
+        if (!Array.isArray(parsed)) return;
+        const cleaned = parsed
+          .filter(entry => entry && entry.item && entry.sourceMode)
+          .map(entry => ({
+            key: entry.key || `${entry.sourceMode}:${entry.item?.id || entry.item?.kana || ''}`,
+            sourceMode: entry.sourceMode,
+            item: {
+              id: entry.item.id,
+              kana: entry.item.kana,
+              answers: Array.isArray(entry.item.answers) ? entry.item.answers : [],
+            },
+          }));
+        setFocusedItems(cleaned);
+      } catch (err) {
+        console.error('Failed to load focus items:', err);
+      }
+    };
+    void loadFocusedItems();
+  }, []);
+
+  useEffect(() => {
+    if (quizMode !== 'focus') return;
+    setQuizItems(shuffleQuiz(getDatasetForMode('focus')));
+    setAnswers({});
+    setHasFinished(false);
+    setFinishReason(null);
+    setCompletionTimeMs(null);
+  }, [getDatasetForMode, quizMode]);
+
+  useEffect(() => {
+    if (!isJlptStyleMode) {
       setIsJlptModeDropdownOpen(false);
     }
-  }, [isJlptMode]);
+  }, [isJlptStyleMode]);
 
   useEffect(() => {
     remainingSecondsRef.current = remainingSeconds;
@@ -1790,18 +1598,19 @@ function KanaQuizView() {
 
   const acceptedLookup = useMemo(() => {
     return quizItems.reduce<Record<string, string[]>>((acc, item) => {
-      if (isJlptMode) {
+      if (isJlptStyleMode) {
         if (isJlptJapaneseInputMode) {
           acc[item.id] = [item.kana];
         } else {
-          acc[item.id] = getJlptAcceptedAnswers(item, jlptReadingMode);
+          const jlptAccepted = getJlptAcceptedAnswers(item, jlptReadingMode);
+          acc[item.id] = jlptAccepted.length ? jlptAccepted : [item.kana];
         }
       } else {
         acc[item.id] = item.answers.map((value: string) => normalizeRomaji(value));
       }
       return acc;
     }, {});
-  }, [isJlptJapaneseInputMode, isJlptMode, jlptReadingMode, quizItems]);
+  }, [isJlptJapaneseInputMode, isJlptStyleMode, jlptReadingMode, quizItems]);
 
   const isCorrectAnswer = useCallback(
     (id: string, value: string) => {
@@ -1810,6 +1619,11 @@ function KanaQuizView() {
         const sanitized = sanitizeJapaneseInput(value).trim();
         if (!sanitized || !JAPANESE_INPUT_CHAR_REGEX.test(sanitized)) return false;
         return accepted.includes(sanitized);
+      }
+      const hasJapaneseAccepted = accepted.some(entry => JAPANESE_INPUT_CHAR_REGEX.test(entry || ''));
+      if (hasJapaneseAccepted) {
+        const sanitized = sanitizeJapaneseInput(value).trim();
+        return sanitized.length > 0 && accepted.includes(sanitized);
       }
       const normalized = normalizeRomaji(value);
       return normalized.length > 0 && accepted.includes(normalized);
@@ -1874,6 +1688,9 @@ function KanaQuizView() {
   }, [limitLeaderboardPerMode]);
 
   const saveLeaderboardEntry = useCallback(async (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; timerMinutes?: number }) => {
+    if (isFocusModeKey(entry.mode)) {
+      return null;
+    }
     try {
       const normalizedEntry = {
         ...entry,
@@ -2070,7 +1887,12 @@ function KanaQuizView() {
   };
 
   const startQuiz = () => {
-    setQuizItems(shuffleQuiz(getQuizDataset(quizMode)));
+    const dataset = getDatasetForMode(quizMode);
+    if (!dataset.length) {
+      Alert.alert('Focus list is empty', 'Add kanji to Focus by clicking a kanji in Quiz or TypeMaster.');
+      return;
+    }
+    setQuizItems(shuffleQuiz(dataset));
     setAnswers({});
     setHasFinished(false);
     setFinishReason(null);
@@ -2084,7 +1906,7 @@ function KanaQuizView() {
 
   const resetQuiz = () => {
     setIsRunning(false);
-    setQuizItems(shuffleQuiz(getQuizDataset(quizMode)));
+    setQuizItems(shuffleQuiz(getDatasetForMode(quizMode)));
     setAnswers({});
     setHasFinished(false);
     setFinishReason(null);
@@ -2106,7 +1928,11 @@ function KanaQuizView() {
 
   // Endless mode functions
   const startEndlessMode = useCallback(() => {
-    const dataset = getQuizDataset(quizMode);
+    const dataset = getDatasetForMode(quizMode);
+    if (!dataset.length) {
+      Alert.alert('Focus list is empty', 'Add kanji to Focus by clicking a kanji in Quiz or TypeMaster.');
+      return;
+    }
     endlessQueueRef.current = new CharacterQueue(dataset);
 
     // Initialize with 3 characters spread across the screen
@@ -2133,7 +1959,7 @@ function KanaQuizView() {
         endlessInputRef.current.focus();
       }
     }, 100);
-  }, [quizMode, timerMinutes]);
+  }, [getDatasetForMode, quizMode, timerMinutes]);
 
   const resetEndlessToSetup = useCallback(() => {
     if (endlessAnimationRef.current) {
@@ -2192,7 +2018,7 @@ function KanaQuizView() {
 
         // Check if answer is correct
         let isCorrect = false;
-        if (isJlptMode) {
+        if (isJlptStyleMode) {
           if (isJlptJapaneseInputMode) {
             const sanitized = sanitizeJapaneseInput(text).trim();
             isCorrect = sanitized === targetItem.kana;
@@ -2245,7 +2071,7 @@ function KanaQuizView() {
     },
     [
       endlessIsRunning,
-      isJlptMode,
+      isJlptStyleMode,
       isJlptJapaneseInputMode,
       jlptReadingMode,
     ]
@@ -2322,7 +2148,11 @@ function KanaQuizView() {
 
   // TypeMaster mode functions
   const startTypemasterMode = useCallback(() => {
-    const dataset = getQuizDataset(quizMode);
+    const dataset = getDatasetForMode(quizMode);
+    if (!dataset.length) {
+      Alert.alert('Focus list is empty', 'Add kanji to Focus by clicking a kanji in Quiz or TypeMaster.');
+      return;
+    }
     typemasterQueueRef.current = new CharacterQueue(dataset);
 
     // Initialize with 5 characters in the queue
@@ -2350,7 +2180,7 @@ function KanaQuizView() {
         typemasterInputRef.current.focus();
       }
     }, 100);
-  }, [quizMode, timerMinutes]);
+  }, [getDatasetForMode, quizMode, timerMinutes]);
 
   const resetTypemasterToSetup = useCallback(() => {
     setTypemasterIsRunning(false);
@@ -2408,7 +2238,7 @@ function KanaQuizView() {
 
         // Check if answer is correct
         let isCorrect = false;
-        if (isJlptMode) {
+        if (isJlptStyleMode) {
           if (isJlptJapaneseInputMode) {
             const sanitized = sanitizeJapaneseInput(text).trim();
             isCorrect = sanitized === targetItem.kana;
@@ -2466,7 +2296,7 @@ function KanaQuizView() {
       typemasterIsRunning,
       typemasterQueueMode,
       typemasterBurstCursor,
-      isJlptMode,
+      isJlptStyleMode,
       isJlptJapaneseInputMode,
       jlptReadingMode,
     ]
@@ -2506,7 +2336,17 @@ function KanaQuizView() {
         if (!isCorrectAnswer(nextId, nextAnswers[nextId] || '')) {
           const nextRef = inputRefs.current[nextId];
           if (nextRef && typeof nextRef.focus === 'function') {
-            requestAnimationFrame(() => nextRef.focus());
+            requestAnimationFrame(() => {
+              if (Platform.OS === 'web') {
+                try {
+                  nextRef.focus({ preventScroll: true });
+                  return;
+                } catch {
+                  // Fallback for environments that do not support focus options.
+                }
+              }
+              nextRef.focus();
+            });
           }
           break;
         }
@@ -2578,24 +2418,24 @@ function KanaQuizView() {
     : 0;
   const typemasterCurrentTarget = typemasterQueue.length > 0 ? typemasterQueue[typemasterCurrentTargetIndex] : null;
   const typemasterHintText = typemasterCurrentTarget
-    ? (isJlptMode
+    ? (isKanjiStudyMode
       ? getJlptAcceptedAnswers(typemasterCurrentTarget.item, jlptReadingMode).join('/')
       : typemasterCurrentTarget.item.answers.join('/'))
     : 'Start to begin...';
   const activeFamilyModes = getQuizModesForFamily(quizFamily);
-  const promptColumnLabel = isJlptJapaneseInputMode ? 'Romaji Reading' : isJlptMode ? 'Kanji' : 'Kana';
+  const promptColumnLabel = isJlptJapaneseInputMode ? 'Romaji Reading' : isKanjiStudyMode ? 'Kanji' : 'Kana';
   const answerColumnLabel = isJlptJapaneseInputMode
     ? 'Kanji (Japanese input)'
     : isJlptEnglishMode
       ? 'English Translation'
-      : isJlptMode
+      : isKanjiStudyMode
         ? 'Reading'
         : 'English Syllable';
   const answerPlaceholder = isJlptJapaneseInputMode
     ? 'Type kanji ...'
     : isJlptEnglishMode
       ? 'Type meaning...'
-      : isJlptMode
+      : isKanjiStudyMode
         ? 'Type reading...'
         : 'Type...';
   const completedModeLeaderboardSource = leaderboardScope === 'session' ? sessionLeaderboard : leaderboard;
@@ -2672,7 +2512,7 @@ function KanaQuizView() {
                     setFinishReason(null);
                     setLastRecordUpdate(null);
                     timerDeadlineMsRef.current = null;
-                    setQuizItems(shuffleQuiz(getQuizDataset(nextMode)));
+                    setQuizItems(shuffleQuiz(getDatasetForMode(nextMode)));
                   }}
                 >
                   <Text style={[styles.quizSubNavTabText, selected && styles.quizSubNavTabTextActive]}>
@@ -2694,7 +2534,7 @@ function KanaQuizView() {
                     if (isRunning) return;
                     setQuizMode(value);
                     setIsJlptModeDropdownOpen(false);
-                    setQuizItems(shuffleQuiz(getQuizDataset(value)));
+                    setQuizItems(shuffleQuiz(getDatasetForMode(value)));
                     setAnswers({});
                     setHasFinished(false);
                     setFinishReason(null);
@@ -2709,7 +2549,7 @@ function KanaQuizView() {
               );
             })}
           </View>
-          {isJlptMode ? (
+          {isJlptStyleMode ? (
             <View style={styles.quizDropdownWrap} onTouchStart={(event) => event.stopPropagation()}>
               <Text style={styles.quizDropdownLabel}>JLPT Mode</Text>
               <Pressable
@@ -2754,43 +2594,27 @@ function KanaQuizView() {
         </View>
 
         <View style={styles.quizControlsSection}>
-          <View style={styles.quizTimerControl}>
-            <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
-              <Text style={styles.quizTimerStepperLabel}>-</Text>
-            </Pressable>
-            <TextInput
-              style={styles.quizTimerInput}
-              keyboardType="number-pad"
-              value={customMinutes}
-              onChangeText={text => setCustomMinutes(text.replace(/[^0-9]/g, ''))}
-              onBlur={applyCustomMinutes}
-              onSubmitEditing={applyCustomMinutes}
-              placeholder="1"
-              placeholderTextColor="#94a3b8"
-            />
-            <Text style={styles.quizTimerUnitLabel}>min</Text>
-            <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(1)}>
-              <Text style={styles.quizTimerStepperLabel}>+</Text>
-            </Pressable>
-          </View>
-          <View style={styles.quizStatBlock}>
-            <Text style={styles.quizStatLabel}>
-              {quizView === 'endless' || quizView === 'typemaster' ? 'Characters' : 'Score'}
-            </Text>
-            <Text style={styles.quizStatValue}>
-              {quizView === 'endless'
-                ? endlessScore
-                : quizView === 'typemaster'
-                  ? typemasterScore
-                  : `${score}/${quizItems.length}`}
-            </Text>
-          </View>
-          <View style={styles.quizStatBlock}>
-            <Text style={styles.quizStatLabel}>Timer</Text>
-            <Text style={[styles.quizStatValueTimer, (hasFinished || endlessHasFinished || typemasterHasFinished) && styles.quizTimerValueExpired]}>
-              {formatTimer(remainingSeconds)}
-            </Text>
-          </View>
+          {quizView !== 'quiz' ? (
+            <View style={styles.quizTimerControl}>
+              <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
+                <Text style={styles.quizTimerStepperLabel}>-</Text>
+              </Pressable>
+              <TextInput
+                style={styles.quizTimerInput}
+                keyboardType="number-pad"
+                value={customMinutes}
+                onChangeText={text => setCustomMinutes(text.replace(/[^0-9]/g, ''))}
+                onBlur={applyCustomMinutes}
+                onSubmitEditing={applyCustomMinutes}
+                placeholder="1"
+                placeholderTextColor="#94a3b8"
+              />
+              <Text style={styles.quizTimerUnitLabel}>min</Text>
+              <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(1)}>
+                <Text style={styles.quizTimerStepperLabel}>+</Text>
+              </Pressable>
+            </View>
+          ) : null}
           {quizView === 'typemaster' ? (
             <View style={[styles.quizSubNavTabs, typemasterIsRunning && { opacity: 0.65 }]}>
               {TYPEMASTER_QUEUE_OPTIONS.map(option => {
@@ -2812,6 +2636,24 @@ function KanaQuizView() {
               })}
             </View>
           ) : null}
+          <View style={styles.quizStatBlock}>
+            <Text style={styles.quizStatLabel}>
+              {quizView === 'endless' || quizView === 'typemaster' ? 'Characters' : 'Score'}
+            </Text>
+            <Text style={styles.quizStatValue}>
+              {quizView === 'endless'
+                ? endlessScore
+                : quizView === 'typemaster'
+                  ? typemasterScore
+                  : `${score}/${quizItems.length}`}
+            </Text>
+          </View>
+          <View style={styles.quizStatBlock}>
+            <Text style={styles.quizStatLabel}>Timer</Text>
+            <Text style={[styles.quizStatValueTimer, (hasFinished || endlessHasFinished || typemasterHasFinished) && styles.quizTimerValueExpired]}>
+              {formatTimer(remainingSeconds)}
+            </Text>
+          </View>
           <View style={styles.quizActionButtonsRow}>
             {quizView === 'endless' ? (
               <>
@@ -2838,9 +2680,6 @@ function KanaQuizView() {
                 </Pressable>
                 <Pressable style={styles.quizStopButton} onPress={stopQuiz}>
                   <Text style={styles.quizStopButtonLabel}>Stop</Text>
-                </Pressable>
-                <Pressable style={styles.quizResetButton} onPress={resetQuiz}>
-                  <Text style={styles.quizResetButtonLabel}>Reset</Text>
                 </Pressable>
               </>
             )}
@@ -3070,6 +2909,7 @@ function KanaQuizView() {
                         const isCurrent = isBurst ? index === typemasterBurstCursor : index === 0;
                         const isTyped = isBurst && index < typemasterBurstCursor;
                         const charColor = isTyped ? '#64748b' : '#ffffff';
+                        const isFocusedChar = isFocusedItem(char.item);
                         return (
                       <View
                         key={char.id}
@@ -3084,9 +2924,9 @@ function KanaQuizView() {
                             alignItems: 'center',
                             padding: 12,
                             borderRadius: 8,
-                            backgroundColor: '#1e293b',
+                            backgroundColor: isFocusedChar ? '#334155' : '#1e293b',
                             borderWidth: 2,
-                            borderColor: '#475569',
+                            borderColor: isFocusedChar ? '#93c5fd' : '#475569',
                             minWidth: 80,
                             position: 'relative',
                           }}
@@ -3100,16 +2940,23 @@ function KanaQuizView() {
                               <Text style={styles.quizKanjiInfoLabel}>i</Text>
                             </Pressable>
                           ) : null}
-                          <Text
-                            style={{
-                              color: charColor,
-                              fontSize: 32,
-                              fontWeight: '700',
-                              marginBottom: 4,
+                          <Pressable
+                            onPress={() => {
+                              if (!isKanjiStudyMode) return;
+                              void toggleFocusedItem(char.item);
                             }}
                           >
-                            {isJlptMode ? getJlptPromptText(char.item, jlptReadingMode) : char.item.kana}
-                          </Text>
+                            <Text
+                              style={{
+                                color: charColor,
+                                fontSize: 32,
+                                fontWeight: '700',
+                                marginBottom: 4,
+                              }}
+                            >
+                            {isJlptStyleMode ? getJlptPromptText(char.item, jlptReadingMode) : char.item.kana}
+                            </Text>
+                          </Pressable>
                         </View>
                         <View
                           style={{
@@ -3310,7 +3157,7 @@ function KanaQuizView() {
                           textShadowRadius: 4,
                         }}
                       >
-                        {isJlptMode ? getJlptPromptText(char.item, jlptReadingMode) : char.item.kana}
+                        {isJlptStyleMode ? getJlptPromptText(char.item, jlptReadingMode) : char.item.kana}
                       </Text>
                     </View>
                   ))}
@@ -3366,7 +3213,7 @@ function KanaQuizView() {
                     placeholder={
                       endlessShowHints
                         ? (endlessVisibleChars.length > 0
-                          ? `Type: ${isJlptMode
+                          ? `Type: ${isJlptStyleMode
                               ? getJlptAcceptedAnswers(endlessVisibleChars[0].item, jlptReadingMode).join('/')
                               : endlessVisibleChars[0].item.answers.join('/')}`
                           : 'Start to begin...')
@@ -3664,7 +3511,13 @@ function KanaQuizView() {
               <View style={styles.quizTableBody}>
                 {column.map(item => (
                   <View key={item.id} style={styles.quizTableRowItem}>
-                    <View style={[styles.quizKanaCell, isJlptJapaneseInputMode && styles.quizKanaCellWide]}>
+                    <View
+                      style={[
+                        styles.quizKanaCell,
+                        isJlptJapaneseInputMode && styles.quizKanaCellWide,
+                        isFocusedItem(item) && styles.quizKanaCellFocused,
+                      ]}
+                    >
                       <View
                         style={[
                           styles.quizKanaCellContent,
@@ -3680,9 +3533,21 @@ function KanaQuizView() {
                             <Text style={styles.quizKanjiInfoLabel}>i</Text>
                           </Pressable>
                         ) : null}
-                        <Text style={[styles.quizKanaText, isJlptJapaneseInputMode && styles.quizKanaTextWide]}>
-                          {isJlptMode ? getJlptPromptText(item, jlptReadingMode) : item.kana}
-                        </Text>
+                        <Pressable
+                          onPress={() => {
+                            if (!isKanjiStudyMode) return;
+                            void toggleFocusedItem(item);
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.quizKanaText,
+                              isJlptJapaneseInputMode && styles.quizKanaTextWide,
+                            ]}
+                          >
+                            {isJlptStyleMode ? getJlptPromptText(item, jlptReadingMode) : item.kana}
+                          </Text>
+                        </Pressable>
                       </View>
                     </View>
                     <TextInput
@@ -3704,6 +3569,13 @@ function KanaQuizView() {
                       returnKeyType="next"
                       blurOnSubmit={false}
                       onSubmitEditing={() => focusNextAnswer(item.id, answers)}
+                      onFocus={event => {
+                        if (Platform.OS !== 'web') return;
+                        const target = (event as any)?.target as HTMLInputElement | undefined;
+                        if (target && typeof target.scrollLeft === 'number') {
+                          target.scrollLeft = 0;
+                        }
+                      }}
                       onChangeText={text => handleAnswerChange(item.id, text)}
                       placeholder={answerPlaceholder}
                       placeholderTextColor="#64748b"

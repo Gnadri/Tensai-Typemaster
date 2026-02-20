@@ -15,6 +15,7 @@ const babelLoaderConfiguration = {
     // Add every directory that needs to be compiled by Babel during the build.
     include: [
         path.resolve(appDirectory, 'index.web.js'),
+        path.resolve(appDirectory, 'popup.js'),
         path.resolve(appDirectory, 'App.tsx'),
         path.resolve(appDirectory, 'mobile'),
         ...compileNodeModules,
@@ -42,12 +43,13 @@ const imageLoaderConfiguration = {
 
 module.exports = {
     entry: {
-        app: path.join(__dirname, 'index.web.js'),
+        quiz: path.join(__dirname, 'index.web.js'),
+        popup: path.join(__dirname, 'popup.js'),
     },
     output: {
         path: path.resolve(appDirectory, 'dist'),
-        publicPath: '/',
-        filename: 'rnw.bundle.js',
+        publicPath: '',
+        filename: '[name].bundle.js',
     },
     resolve: {
         extensions: [
@@ -62,6 +64,9 @@ module.exports = {
             'react-native$': 'react-native-web',
             '@react-native-async-storage/async-storage': '@react-native-async-storage/async-storage/lib/commonjs/index.js',
         },
+        fallback: {
+            buffer: require.resolve('buffer/'),
+        },
     },
     module: {
         rules: [
@@ -71,43 +76,14 @@ module.exports = {
     },
     plugins: [
         new HtmlWebpackPlugin({
-            template: path.join(__dirname, 'public/index.html'),
+            template: path.join(__dirname, 'public/quiz.html'),
+            filename: 'quiz.html',
+            chunks: ['quiz'],
+        }),
+        new HtmlWebpackPlugin({
+            template: path.join(__dirname, 'public/popup.html'),
+            filename: 'popup.html',
+            chunks: ['popup'],
         }),
     ],
-    devServer: {
-        host: 'localhost',
-        setupMiddlewares: (middlewares, devServer) => {
-            if (!devServer || !devServer.app) {
-                return middlewares;
-            }
-
-            devServer.app.post('/__tensai_exit', (req, res) => {
-                const origin = req.headers.origin || '';
-                const referer = req.headers.referer || '';
-                const host = req.headers.host || '';
-                const exitHeader = req.headers['x-tensai-exit'];
-
-                const originLooksLocal =
-                    typeof origin === 'string' &&
-                    (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'));
-                const refererLooksLocal =
-                    typeof referer === 'string' &&
-                    (referer.startsWith('http://localhost') || referer.startsWith('http://127.0.0.1'));
-                const localHost =
-                    typeof host === 'string' && (host.startsWith('localhost') || host.startsWith('127.0.0.1'));
-
-                if (!localHost || exitHeader !== '1' || (!originLooksLocal && origin !== '' && !refererLooksLocal)) {
-                    res.status(403).send('Forbidden');
-                    return;
-                }
-
-                res.status(200).send('Shutting down');
-                setTimeout(() => {
-                    process.exit(0);
-                }, 250);
-            });
-
-            return middlewares;
-        },
-    },
 };

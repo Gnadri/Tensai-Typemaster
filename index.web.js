@@ -1,9 +1,12 @@
-import { AppRegistry } from 'react-native';
+import React from 'react';
+import { createRoot } from 'react-dom/client';
 import App from './App';
-import { name as appName } from './app.json';
 
-AppRegistry.registerComponent(appName, () => App);
-AppRegistry.runApplication(appName, {
-    initialProps: {},
-    rootTag: document.getElementById('app-root'),
-});
+const rootElement = document.getElementById('app-root');
+
+if (!rootElement) {
+    throw new Error('Missing #app-root element');
+}
+
+const root = createRoot(rootElement);
+root.render(<App />);

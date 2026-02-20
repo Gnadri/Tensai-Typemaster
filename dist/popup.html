@@ -1,0 +1,265 @@
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tensai TypeMaster</title><style>:root {
+      --bg: #020817;
+      --panel: #0f172a;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #22d3ee;
+      --accent-strong: #06b6d4;
+      --border: #1e293b;
+      --ok: #10b981;
+      --bad: #ef4444;
+      --warn: #f59e0b;
+    }
+
+    html, body {
+      margin: 0;
+      width: 360px;
+      min-height: 500px;
+      background: radial-gradient(circle at 15% 10%, #0f3b5f 0%, var(--bg) 45%);
+      color: var(--text);
+      font-family: "Segoe UI", "Inter", sans-serif;
+    }
+
+    body {
+      padding: 14px;
+      box-sizing: border-box;
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.95));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .label {
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 38px;
+      line-height: 1.1;
+      font-weight: 800;
+    }
+
+    .full-app {
+      border: 1px solid #35537e;
+      background: transparent;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 9px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .controls {
+      margin-top: 8px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .select {
+      flex: 1;
+      min-width: 0;
+      background: #0d1b33;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-weight: 700;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      background: #0d1b33;
+      border-radius: 8px;
+      padding: 6px 8px;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .pill button {
+      border: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #2563eb;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .pill .value {
+      min-width: 16px;
+      text-align: center;
+    }
+
+    .stats {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stat {
+      border: 1px solid var(--border);
+      background: #0d1b33;
+      border-radius: 8px;
+      padding: 6px 8px;
+      min-width: 62px;
+    }
+
+    .stat .k {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .stat .v {
+      margin-top: 2px;
+      font-size: 18px;
+      font-weight: 800;
+      color: #38bdf8;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .actions button {
+      border: none;
+      border-radius: 9px;
+      padding: 9px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    #mini-start {
+      color: #03202a;
+      background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+    }
+
+    #mini-play-again {
+      width: 100%;
+      border: none;
+      border-radius: 9px;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      color: #03202a;
+      background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+      transition: transform 120ms ease, filter 120ms ease;
+    }
+
+    #mini-play-again:hover {
+      filter: brightness(1.05);
+    }
+
+    #mini-play-again:active {
+      transform: translateY(1px);
+    }
+
+    #mini-stop {
+      color: var(--warn);
+      background: transparent;
+      border: 2px solid var(--warn);
+    }
+
+    .mini {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: rgba(15, 23, 42, 0.75);
+    }
+
+    .mini-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mini-row {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      min-height: 52px;
+      align-items: stretch;
+    }
+
+    .kanji-cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      font-weight: 800;
+      background: #12213c;
+      border-right: 1px solid var(--border);
+      user-select: none;
+    }
+
+    .answer-input {
+      border: 0;
+      outline: none;
+      background: #0f1d34;
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 700;
+      padding: 0 12px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .answer-input::placeholder {
+      color: #64748b;
+    }
+
+    .status {
+      min-height: 18px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .status.ok {
+      color: var(--ok);
+    }
+
+    .status.bad {
+      color: var(--bad);
+    }</style><script defer="defer" src="popup.bundle.js"></script></head><body><section class="card"><div class="topbar"><div><div class="label">Focus Trainer</div><h1>Tensai TypeMaster</h1></div><button id="open-quiz" class="full-app" type="button">Full App</button></div><div class="controls"><div class="row"><select id="mini-reading-mode" class="select"><option value="on_kun">On/Kun (Default)</option><option value="onyomi_only">Onyomi only</option><option value="kunyomi_only">Kunyomi only</option><option value="en_on_kun">English translate</option></select><div class="pill"><button id="minus-minute" type="button">-</button> <span class="value" id="minute-value">1</span> <button id="plus-minute" type="button">+</button> <span>min</span></div></div><div class="row"><div class="stats"><div class="stat"><div class="k">Score</div><div class="v" id="mini-score">0</div></div><div class="stat"><div class="k">Timer</div><div class="v" id="mini-timer">01:00</div></div></div><div class="actions"><button id="mini-start" type="button">Start</button> <button id="mini-stop" type="button">Stop</button></div></div></div><div id="mini-live"><div class="mini"><div class="mini-head"><span id="mini-label">Kanji Prompt</span> <span id="mini-count">0</span></div><div class="mini-row"><div id="mini-kanji" class="kanji-cell">-</div><input id="mini-answer" class="answer-input" placeholder="Type reading..."/></div></div><div id="mini-status" class="status"></div></div><div id="mini-complete" class="mini" style="display:none;"><div class="mini-head"><span>Mini Session Complete</span> <span>Time up</span></div><div style="padding:12px;"><div class="row" style="margin-bottom:10px;"><div class="stat"><div class="k">Score</div><div class="v" id="mini-final-score">0</div></div><div class="stat"><div class="k">Completion</div><div class="v" id="mini-final-time">00:00</div></div></div><button id="mini-play-again" type="button">Play Again</button></div></div></section></body></html>
