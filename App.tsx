@@ -1580,13 +1580,7 @@ function KanaQuizView() {
   }, [remainingSeconds]);
 
 
-  const focusOrder = useMemo(() => {
-    const buckets = Array.from({ length: columnCount }, () => []);
-    quizItems.forEach((item, index) => {
-      buckets[index % columnCount].push(item.id);
-    });
-    return buckets.flat();
-  }, [columnCount, quizItems]);
+  const focusOrder = useMemo(() => quizItems.map(item => item.id), [quizItems]);
 
   const indexById = useMemo(() => {
     const map: Record<string, number> = {};
@@ -2594,7 +2588,7 @@ function KanaQuizView() {
         </View>
 
         <View style={styles.quizControlsSection}>
-          {quizView !== 'quiz' ? (
+          {quizView !== 'leaderboard' && quizView !== 'endless' && quizView !== 'typemaster' ? (
             <View style={styles.quizTimerControl}>
               <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
                 <Text style={styles.quizTimerStepperLabel}>-</Text>
@@ -2860,6 +2854,27 @@ function KanaQuizView() {
                       <Text style={{ color: '#94a3b8', fontSize: 14 }}>Show hints</Text>
                     </Pressable>
                   </View>
+                  <View style={styles.quizInlineTimerWrap}>
+                    <View style={styles.quizTimerControl}>
+                      <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
+                        <Text style={styles.quizTimerStepperLabel}>-</Text>
+                      </Pressable>
+                      <TextInput
+                        style={styles.quizTimerInput}
+                        keyboardType="number-pad"
+                        value={customMinutes}
+                        onChangeText={text => setCustomMinutes(text.replace(/[^0-9]/g, ''))}
+                        onBlur={applyCustomMinutes}
+                        onSubmitEditing={applyCustomMinutes}
+                        placeholder="1"
+                        placeholderTextColor="#94a3b8"
+                      />
+                      <Text style={styles.quizTimerUnitLabel}>min</Text>
+                      <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(1)}>
+                        <Text style={styles.quizTimerStepperLabel}>+</Text>
+                      </Pressable>
+                    </View>
+                  </View>
                   {!typemasterIsRunning && (
                     <Pressable
                       style={{
@@ -3080,6 +3095,27 @@ function KanaQuizView() {
                       </View>
                       <Text style={{ color: '#94a3b8', fontSize: 14 }}>Show hints</Text>
                     </Pressable>
+                  </View>
+                  <View style={styles.quizInlineTimerWrap}>
+                    <View style={styles.quizTimerControl}>
+                      <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
+                        <Text style={styles.quizTimerStepperLabel}>-</Text>
+                      </Pressable>
+                      <TextInput
+                        style={styles.quizTimerInput}
+                        keyboardType="number-pad"
+                        value={customMinutes}
+                        onChangeText={text => setCustomMinutes(text.replace(/[^0-9]/g, ''))}
+                        onBlur={applyCustomMinutes}
+                        onSubmitEditing={applyCustomMinutes}
+                        placeholder="1"
+                        placeholderTextColor="#94a3b8"
+                      />
+                      <Text style={styles.quizTimerUnitLabel}>min</Text>
+                      <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(1)}>
+                        <Text style={styles.quizTimerStepperLabel}>+</Text>
+                      </Pressable>
+                    </View>
                   </View>
                   {!endlessIsRunning && (
                     <Pressable
@@ -3508,7 +3544,7 @@ function KanaQuizView() {
                 <Text style={styles.quizTableHeaderLabel}>{promptColumnLabel}</Text>
                 <Text style={styles.quizTableHeaderLabel}>{answerColumnLabel}</Text>
               </View>
-              <View style={styles.quizTableBody}>
+              <View style={[styles.quizTableBody, quizMode === 'focus' && styles.quizTableBodyTopAligned]}>
                 {column.map(item => (
                   <View key={item.id} style={styles.quizTableRowItem}>
                     <View

@@ -517,6 +517,12 @@ export const styles = StyleSheet.create({
   quizStatValue: { color: '#f8fafc', fontSize: 16, fontWeight: '800' },
   quizStatValueTimer: { color: '#38bdf8', fontSize: 16, fontWeight: '800' },
   quizActionButtonsRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  quizInlineTimerWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
   quizToolbarHidden: { display: 'none' },
 
   // Legacy styles (keeping for compatibility)
@@ -652,6 +658,9 @@ export const styles = StyleSheet.create({
   quizTableBody: {
     flex: 1,
     justifyContent: 'flex-end',
+  },
+  quizTableBodyTopAligned: {
+    justifyContent: 'flex-start',
   },
   quizTableHeader: {
     flexDirection: 'row',

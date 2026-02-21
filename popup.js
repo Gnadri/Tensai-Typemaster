@@ -28,6 +28,36 @@ const normalizeRomaji = (value) =>
     .trim()
     .replace(/[^a-z]/g, '');
 
+const shuffleQuiz = (items) => {
+  const next = [...items];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [next[i], next[j]] = [next[j], next[i]];
+  }
+  return next;
+};
+
+function createCharacterQueue(items) {
+  const pool = [...items];
+  let currentCycle = shuffleQuiz([...items]);
+  let nextIndex = 0;
+
+  return {
+    getNext(count = 1) {
+      const result = [];
+      for (let i = 0; i < count; i += 1) {
+        if (nextIndex >= currentCycle.length) {
+          currentCycle = shuffleQuiz([...pool]);
+          nextIndex = 0;
+        }
+        result.push(currentCycle[nextIndex]);
+        nextIndex += 1;
+      }
+      return result;
+    },
+  };
+}
+
 const state = {
   readingMode: 'on_kun',
   focusItems: [],
@@ -42,6 +72,8 @@ const state = {
   timerId: null,
   startedAt: null,
   completedAt: null,
+  queue: null,
+  showHints: true,
 };
 
 function getEl(id) {
@@ -74,6 +106,11 @@ function parseFocusItems() {
 
 function updateActiveDataset() {
   state.activeItems = state.focusItems.length > 0 ? state.focusItems : state.jlptItems;
+}
+
+function rebuildQueue() {
+  updateActiveDataset();
+  state.queue = createCharacterQueue(state.activeItems);
 }
 
 function formatTimer(seconds) {
@@ -109,7 +146,11 @@ function pickNextItem() {
     state.current = null;
     return null;
   }
-  state.current = state.activeItems[Math.floor(Math.random() * state.activeItems.length)];
+  if (!state.queue) {
+    rebuildQueue();
+  }
+  const [next] = state.queue.getNext(1);
+  state.current = next || null;
   return state.current;
 }
 
@@ -137,7 +178,7 @@ function stopGame(reasonText = '') {
 }
 
 function startGame() {
-  updateActiveDataset();
+  rebuildQueue();
   if (!state.activeItems.length) {
     setStatus('No dataset available.', 'bad');
     render();
@@ -195,7 +236,7 @@ function renderComplete() {
 function render() {
   const mode = getEl('mini-reading-mode');
   const label = getEl('mini-label');
-  const count = getEl('mini-count');
+  const hintToggle = getEl('mini-hint-toggle');
   const kanjiCell = getEl('mini-kanji');
   const input = getEl('mini-answer');
   const score = getEl('mini-score');
@@ -205,8 +246,8 @@ function render() {
   renderComplete();
 
   if (mode) mode.value = state.readingMode;
-  if (label) label.textContent = state.readingMode === 'en_on_kun' ? 'Kanji -> English' : 'Kanji -> Reading';
-  if (count) count.textContent = `${state.activeItems.length}`;
+  if (label) label.textContent = 'Kanji';
+  if (hintToggle) hintToggle.textContent = `Hint: ${state.showHints ? 'On' : 'Off'}`;
   if (score) score.textContent = `${state.score}`;
   if (minuteValue) minuteValue.textContent = `${state.timerMinutes}`;
   renderTimer();
@@ -221,7 +262,11 @@ function render() {
 
   kanjiCell.textContent = state.current.kana;
   input.disabled = !state.running;
-  input.placeholder = state.readingMode === 'en_on_kun' ? 'Type meaning...' : 'Type reading...';
+  if (state.showHints) {
+    input.placeholder = state.readingMode === 'en_on_kun' ? 'Type meaning...' : 'Type reading...';
+  } else {
+    input.placeholder = '';
+  }
   if (state.running) input.focus();
 }
 
@@ -255,7 +300,7 @@ function adjustMinutes(delta) {
 
 document.addEventListener('DOMContentLoaded', () => {
   state.focusItems = parseFocusItems();
-  updateActiveDataset();
+  rebuildQueue();
   pickNextItem();
   render();
 
@@ -273,6 +318,13 @@ document.addEventListener('DOMContentLoaded', () => {
   getEl('mini-stop').addEventListener('click', () => stopGame('Stopped'));
   getEl('mini-play-again').addEventListener('click', startGame);
   getEl('open-quiz').addEventListener('click', openFullApp);
+  const hintToggle = getEl('mini-hint-toggle');
+  if (hintToggle) {
+    hintToggle.addEventListener('click', () => {
+      state.showHints = !state.showHints;
+      render();
+    });
+  }
 
   const input = getEl('mini-answer');
   input.addEventListener('input', (event) => handleAnswerInput(event.target.value));
