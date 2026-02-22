@@ -355,13 +355,118 @@ const JLPT_N5_ENGLISH_MEANINGS = {
 
 const JLPT_N4_KANJI_SOURCE =
   '会 同 事 自 社 発 者 地 業 方 新 場 員 立 開 手 力 問 代 明 動 京 目 通 言 理 体 田 主 題 意 不 作 用 度 強 公 持 野 以 思 家 世 多 正 安 院 心 界 教 文 元 重 近 考 画 海 売 知 道 集 別 物 使 品 計 死 特 私 始 朝 運 終 台 広 住 無 真 有 口 少 町 料 工 建 空 急 止 送 切 転 研 足 究 楽 起 着 店 病 質';
+const JLPT_N4_KANJI_DETAILS: Record<string, { readings: string[]; meanings: string[] }> = {
+  会: { readings: ['kai', 'e', 'au'], meanings: ['meet', 'meeting', 'association'] },
+  同: { readings: ['dou', 'onaji'], meanings: ['same', 'identical'] },
+  事: { readings: ['ji', 'koto'], meanings: ['matter', 'thing', 'incident'] },
+  自: { readings: ['ji', 'mizuka'], meanings: ['self', 'oneself'] },
+  社: { readings: ['sha', 'yashiro'], meanings: ['company', 'society', 'shrine'] },
+  発: { readings: ['hatsu'], meanings: ['depart', 'emit', 'start'] },
+  者: { readings: ['sha', 'mono'], meanings: ['person', 'one who'] },
+  地: { readings: ['chi', 'ji'], meanings: ['ground', 'earth', 'place'] },
+  業: { readings: ['gyou', 'waza'], meanings: ['business', 'work', 'profession'] },
+  方: { readings: ['hou', 'kata'], meanings: ['direction', 'way', 'method'] },
+  新: { readings: ['shin', 'atara'], meanings: ['new'] },
+  場: { readings: ['jou', 'ba'], meanings: ['place', 'location'] },
+  員: { readings: ['in'], meanings: ['member', 'staff'] },
+  立: { readings: ['ritsu', 'tatsu'], meanings: ['stand', 'establish'] },
+  開: { readings: ['kai', 'aku'], meanings: ['open'] },
+  手: { readings: ['shu', 'te'], meanings: ['hand'] },
+  力: { readings: ['ryoku', 'chikara'], meanings: ['power', 'strength'] },
+  問: { readings: ['mon', 'tou'], meanings: ['question', 'problem', 'ask'] },
+  代: { readings: ['dai', 'yo'], meanings: ['generation', 'substitute', 'charge'] },
+  明: { readings: ['mei', 'aka'], meanings: ['bright', 'clear'] },
+  動: { readings: ['dou', 'ugo'], meanings: ['move', 'motion'] },
+  京: { readings: ['kyou'], meanings: ['capital'] },
+  目: { readings: ['moku', 'me'], meanings: ['eye', 'item'] },
+  通: { readings: ['tsuu', 'tooru'], meanings: ['pass', 'through', 'commute'] },
+  言: { readings: ['gen', 'i'], meanings: ['say', 'word'] },
+  理: { readings: ['ri'], meanings: ['reason', 'logic'] },
+  体: { readings: ['tai', 'karada'], meanings: ['body'] },
+  田: { readings: ['den', 'ta'], meanings: ['rice field'] },
+  主: { readings: ['shu', 'nushi'], meanings: ['main', 'master', 'owner'] },
+  題: { readings: ['dai'], meanings: ['topic', 'title', 'problem'] },
+  意: { readings: ['i'], meanings: ['meaning', 'intent'] },
+  不: { readings: ['fu'], meanings: ['not', 'un-'] },
+  作: { readings: ['saku', 'tsuku'], meanings: ['make', 'create'] },
+  用: { readings: ['you', 'mochi'], meanings: ['use', 'business', 'task'] },
+  度: { readings: ['do', 'tabi'], meanings: ['degree', 'time', 'occurrence'] },
+  強: { readings: ['kyou', 'tsuyo'], meanings: ['strong'] },
+  公: { readings: ['kou', 'oo'], meanings: ['public', 'official'] },
+  持: { readings: ['ji', 'mo'], meanings: ['hold', 'have'] },
+  野: { readings: ['ya', 'no'], meanings: ['field', 'plain'] },
+  以: { readings: ['i'], meanings: ['by means of', 'since'] },
+  思: { readings: ['shi', 'omo'], meanings: ['think', 'feel'] },
+  家: { readings: ['ka', 'ie'], meanings: ['house', 'home', 'family'] },
+  世: { readings: ['sei', 'yo'], meanings: ['world', 'generation'] },
+  多: { readings: ['ta', 'oo'], meanings: ['many', 'much'] },
+  正: { readings: ['sei', 'tadashi'], meanings: ['correct', 'right'] },
+  安: { readings: ['an', 'yasu'], meanings: ['cheap', 'safe', 'peaceful'] },
+  院: { readings: ['in'], meanings: ['institution', 'temple', 'hospital'] },
+  心: { readings: ['shin', 'kokoro'], meanings: ['heart', 'mind'] },
+  界: { readings: ['kai'], meanings: ['world', 'boundary'] },
+  教: { readings: ['kyou', 'oshie'], meanings: ['teach', 'education'] },
+  文: { readings: ['bun', 'fumi'], meanings: ['sentence', 'writing', 'literature'] },
+  元: { readings: ['gen', 'moto'], meanings: ['origin', 'former', 'base'] },
+  重: { readings: ['juu', 'omo'], meanings: ['heavy', 'important'] },
+  近: { readings: ['kin', 'chika'], meanings: ['near'] },
+  考: { readings: ['kou', 'kangae'], meanings: ['think', 'consider'] },
+  画: { readings: ['ga', 'kaku'], meanings: ['picture', 'plan'] },
+  海: { readings: ['kai', 'umi'], meanings: ['sea', 'ocean'] },
+  売: { readings: ['bai', 'uru'], meanings: ['sell'] },
+  知: { readings: ['chi', 'shiru'], meanings: ['know'] },
+  道: { readings: ['dou', 'michi'], meanings: ['road', 'way', 'path'] },
+  集: { readings: ['shuu', 'atsu'], meanings: ['gather', 'collect'] },
+  別: { readings: ['betsu', 'waka'], meanings: ['separate', 'distinguish'] },
+  物: { readings: ['butsu', 'mono'], meanings: ['thing', 'object'] },
+  使: { readings: ['shi', 'tsuka'], meanings: ['use'] },
+  品: { readings: ['hin', 'shina'], meanings: ['item', 'goods', 'quality'] },
+  計: { readings: ['kei', 'haka'], meanings: ['measure', 'plan', 'total'] },
+  死: { readings: ['shi', 'shi'], meanings: ['die', 'death'] },
+  特: { readings: ['toku'], meanings: ['special'] },
+  私: { readings: ['shi', 'watashi'], meanings: ['private', 'I', 'me'] },
+  始: { readings: ['shi', 'haji'], meanings: ['begin', 'start'] },
+  朝: { readings: ['chou', 'asa'], meanings: ['morning'] },
+  運: { readings: ['un', 'hakobu'], meanings: ['carry', 'luck', 'transport'] },
+  終: { readings: ['shuu', 'owa'], meanings: ['end', 'finish'] },
+  台: { readings: ['dai'], meanings: ['stand', 'platform', 'counter'] },
+  広: { readings: ['kou', 'hiro'], meanings: ['wide', 'broad'] },
+  住: { readings: ['juu', 'su'], meanings: ['live', 'reside'] },
+  無: { readings: ['mu', 'na'], meanings: ['none', 'without'] },
+  真: { readings: ['shin', 'ma'], meanings: ['true', 'real'] },
+  有: { readings: ['yuu', 'a'], meanings: ['have', 'exist'] },
+  口: { readings: ['kou', 'kuchi'], meanings: ['mouth'] },
+  少: { readings: ['shou', 'suko'], meanings: ['few', 'little'] },
+  町: { readings: ['chou', 'machi'], meanings: ['town'] },
+  料: { readings: ['ryou'], meanings: ['fee', 'material', 'charge'] },
+  工: { readings: ['kou', 'takumi'], meanings: ['craft', 'construction'] },
+  建: { readings: ['ken', 'ta'], meanings: ['build'] },
+  空: { readings: ['kuu', 'sora'], meanings: ['sky', 'empty'] },
+  急: { readings: ['kyuu', 'iso'], meanings: ['hurry', 'sudden'] },
+  止: { readings: ['shi', 'toma'], meanings: ['stop', 'halt'] },
+  送: { readings: ['sou', 'oku'], meanings: ['send'] },
+  切: { readings: ['setsu', 'kiri'], meanings: ['cut', 'switch off'] },
+  転: { readings: ['ten', 'koro'], meanings: ['turn', 'roll', 'transfer'] },
+  研: { readings: ['ken', 'togu'], meanings: ['polish', 'study', 'research'] },
+  足: { readings: ['soku', 'ashi'], meanings: ['foot', 'leg', 'sufficient'] },
+  究: { readings: ['kyuu', 'kiwa'], meanings: ['study', 'research', 'investigate'] },
+  楽: { readings: ['gaku', 'raku', 'tano'], meanings: ['music', 'enjoy', 'comfort'] },
+  起: { readings: ['ki', 'oki'], meanings: ['wake', 'rise', 'happen'] },
+  着: { readings: ['chaku', 'tsu'], meanings: ['arrive', 'wear', 'put on'] },
+  店: { readings: ['ten', 'mise'], meanings: ['shop', 'store'] },
+  病: { readings: ['byou', 'yamai'], meanings: ['illness', 'sick'] },
+  質: { readings: ['shitsu'], meanings: ['quality', 'nature', 'question'] },
+};
 const JLPT_N4_KANJI_QUIZ = JLPT_N4_KANJI_SOURCE.split(/\s+/)
   .filter(Boolean)
   .map((kana, index) => ({
     id: `n4_${`${index + 1}`.padStart(3, '0')}`,
     kana,
-    answers: [],
+    answers: JLPT_N4_KANJI_DETAILS[kana]?.readings || [],
   }));
+const JLPT_N4_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
+  Object.entries(JLPT_N4_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
+);
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 
 const addMonths = (date: Date, amount: number) => {
@@ -1350,12 +1455,20 @@ const getJlptAcceptedReadings = (item: any, jlptReadingMode: string) => {
 const isJlptEnglishTranslateMode = (jlptReadingMode: string) =>
   JLPT_ENGLISH_TRANSLATE_MODES.includes(jlptReadingMode);
 const getJlptAcceptedAnswers = (item: any, jlptReadingMode: string) => {
+  const englishMeanings = ([...(JLPT_N5_ENGLISH_MEANINGS[item.id] || []), ...(JLPT_N4_ENGLISH_MEANINGS_BY_KANA[item.kana] || [])])
+    .map((value: string) => normalizeRomaji(value))
+    .filter(Boolean);
+
   if (isJlptEnglishTranslateMode(jlptReadingMode)) {
-    return (JLPT_N5_ENGLISH_MEANINGS[item.id] || [])
-      .map((value: string) => normalizeRomaji(value))
-      .filter(Boolean);
+    return englishMeanings;
   }
-  return getJlptAcceptedReadings(item, jlptReadingMode);
+  const readings = getJlptAcceptedReadings(item, jlptReadingMode);
+  // N4 entries currently do not have reading arrays; fall back to English meanings
+  // so hints/answers are never blank in JLPT modes.
+  if (!readings.length && englishMeanings.length) {
+    return englishMeanings;
+  }
+  return readings;
 };
 const getJlptPromptText = (item: any, jlptReadingMode: string) => {
   if (jlptReadingMode === 'onyomi_only') {
@@ -1580,7 +1693,25 @@ function KanaQuizView() {
   }, [remainingSeconds]);
 
 
-  const focusOrder = useMemo(() => quizItems.map(item => item.id), [quizItems]);
+  const focusColumnBuckets = useMemo(() => {
+    const buckets = Array.from({ length: columnCount }, () => [] as string[]);
+    quizItems.forEach((item, index) => {
+      buckets[index % columnCount].push(item.id);
+    });
+    return buckets;
+  }, [columnCount, quizItems]);
+
+  const focusOrder = useMemo(() => focusColumnBuckets.flat(), [focusColumnBuckets]);
+
+  const focusDownById = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    focusColumnBuckets.forEach(column => {
+      column.forEach((id, index) => {
+        map[id] = column.slice(index + 1);
+      });
+    });
+    return map;
+  }, [focusColumnBuckets]);
 
   const indexById = useMemo(() => {
     const map: Record<string, number> = {};
@@ -2320,6 +2451,27 @@ function KanaQuizView() {
 
   const focusNextAnswer = useCallback(
     (currentId: string, nextAnswers: Record<string, string>) => {
+      const downwardCandidates = focusDownById[currentId] || [];
+      for (let i = 0; i < downwardCandidates.length; i += 1) {
+        const nextId = downwardCandidates[i];
+        if (isCorrectAnswer(nextId, nextAnswers[nextId] || '')) continue;
+        const nextRef = inputRefs.current[nextId];
+        if (nextRef && typeof nextRef.focus === 'function') {
+          requestAnimationFrame(() => {
+            if (Platform.OS === 'web') {
+              try {
+                nextRef.focus({ preventScroll: true });
+                return;
+              } catch {
+                // Fallback for environments that do not support focus options.
+              }
+            }
+            nextRef.focus();
+          });
+        }
+        return;
+      }
+
       const currentIndex = indexById[currentId] ?? -1;
       if (currentIndex < 0) return;
       const total = focusOrder.length;
@@ -2346,7 +2498,7 @@ function KanaQuizView() {
         }
       }
     },
-    [focusOrder, indexById, isCorrectAnswer],
+    [focusDownById, focusOrder, indexById, isCorrectAnswer],
   );
 
   const handleAnswerChange = useCallback(
@@ -2588,7 +2740,7 @@ function KanaQuizView() {
         </View>
 
         <View style={styles.quizControlsSection}>
-          {quizView !== 'leaderboard' && quizView !== 'endless' && quizView !== 'typemaster' ? (
+          {quizView === 'quiz' ? (
             <View style={styles.quizTimerControl}>
               <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
                 <Text style={styles.quizTimerStepperLabel}>-</Text>
