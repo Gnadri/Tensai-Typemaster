@@ -41,49 +41,56 @@ const imageLoaderConfiguration = {
     },
 };
 
-module.exports = {
-    entry: {
-        quiz: path.join(__dirname, 'index.web.js'),
-        popup: path.join(__dirname, 'popup.js'),
-    },
-    output: {
-        path: path.resolve(appDirectory, 'dist'),
-        publicPath: '',
-        filename: '[name].bundle.js',
-    },
-    resolve: {
-        extensions: [
-            '.web.tsx',
-            '.web.ts',
-            '.tsx',
-            '.ts',
-            '.web.js',
-            '.js',
-        ],
-        alias: {
-            'react-native$': 'react-native-web',
-            '@react-native-async-storage/async-storage': '@react-native-async-storage/async-storage/lib/commonjs/index.js',
+module.exports = (_env, argv = {}) => {
+    const mode = argv.mode || 'production';
+    const isDevelopment = mode === 'development';
+
+    return {
+        mode,
+        devtool: isDevelopment ? 'cheap-module-source-map' : false,
+        entry: {
+            quiz: path.join(__dirname, 'index.web.js'),
+            popup: path.join(__dirname, 'popup.js'),
         },
-        fallback: {
-            buffer: require.resolve('buffer/'),
+        output: {
+            path: path.resolve(appDirectory, 'dist'),
+            publicPath: '',
+            filename: '[name].bundle.js',
         },
-    },
-    module: {
-        rules: [
-            babelLoaderConfiguration,
-            imageLoaderConfiguration,
+        resolve: {
+            extensions: [
+                '.web.tsx',
+                '.web.ts',
+                '.tsx',
+                '.ts',
+                '.web.js',
+                '.js',
+            ],
+            alias: {
+                'react-native$': 'react-native-web',
+                '@react-native-async-storage/async-storage': '@react-native-async-storage/async-storage/lib/commonjs/index.js',
+            },
+            fallback: {
+                buffer: require.resolve('buffer/'),
+            },
+        },
+        module: {
+            rules: [
+                babelLoaderConfiguration,
+                imageLoaderConfiguration,
+            ],
+        },
+        plugins: [
+            new HtmlWebpackPlugin({
+                template: path.join(__dirname, 'public/quiz.html'),
+                filename: 'quiz.html',
+                chunks: ['quiz'],
+            }),
+            new HtmlWebpackPlugin({
+                template: path.join(__dirname, 'public/popup.html'),
+                filename: 'popup.html',
+                chunks: ['popup'],
+            }),
         ],
-    },
-    plugins: [
-        new HtmlWebpackPlugin({
-            template: path.join(__dirname, 'public/quiz.html'),
-            filename: 'quiz.html',
-            chunks: ['quiz'],
-        }),
-        new HtmlWebpackPlugin({
-            template: path.join(__dirname, 'public/popup.html'),
-            filename: 'popup.html',
-            chunks: ['popup'],
-        }),
-    ],
+    };
 };

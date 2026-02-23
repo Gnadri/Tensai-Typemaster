@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Tensai TypeMaster",
+  "version": "1.0.0",
+  "description": "Kana and JLPT quiz trainer with a popup dashboard and fullscreen quiz page.",
+  "permissions": [
+    "storage"
+  ],
+  "icons": {
+    "16": "dist/logo.png",
+    "32": "dist/logo.png",
+    "48": "dist/logo.png",
+    "128": "dist/logo.png"
+  },
+  "action": {
+    "default_title": "Tensai TypeMaster",
+    "default_popup": "dist/popup.html",
+    "default_icon": {
+      "16": "dist/logo.png",
+      "32": "dist/logo.png",
+      "48": "dist/logo.png",
+      "128": "dist/logo.png"
+    }
+  }
+}

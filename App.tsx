@@ -654,11 +654,60 @@ const initialCalendarForm = () => ({
 });
 
 export default function App() {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const handleExtensionReload = useCallback(() => {
+    const runtime = (globalThis as any)?.chrome?.runtime;
+    if (runtime && typeof runtime.reload === 'function') {
+      runtime.reload();
+      return;
+    }
+    Alert.alert('Extension reload', 'Chrome extension runtime API is not available in this view.');
+  }, []);
+
+  const handleUpdatePress = useCallback(() => {
+    setIsSettingsOpen(false);
+    Alert.alert(
+      'Update Extension',
+      'This reloads the extension so Chrome picks up any files already rebuilt in dist. Chrome cannot compile TSX/webpack bundles itself.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reload Extension', onPress: handleExtensionReload },
+      ],
+    );
+  }, [handleExtensionReload]);
+
+  const handleRebuildHelpPress = useCallback(() => {
+    setIsSettingsOpen(false);
+    Alert.alert(
+      'Rebuild Required For App.tsx Changes',
+      'To apply source changes, rebuild dist first: 1) npm install (once) 2) npm run build:extension 3) Reload extension in chrome://extensions',
+    );
+  }, []);
+
   return (
     <View style={styles.appShell}>
       <View style={styles.mainContent}>
         <View style={styles.appTitleBar}>
-          <Text style={styles.appTitleText}>Tensai TypeMaster</Text>
+          <View style={styles.appTitleBarRow}>
+            <Text style={styles.appTitleText}>Tensai TypeMaster v1.02</Text>
+            <Pressable
+              style={styles.appSettingsButton}
+              onPress={() => setIsSettingsOpen(prev => !prev)}
+            >
+              <Text style={styles.appSettingsButtonLabel}>Settings</Text>
+            </Pressable>
+          </View>
+          {isSettingsOpen ? (
+            <View style={styles.appSettingsMenu}>
+              <Pressable style={styles.appSettingsMenuItem} onPress={handleUpdatePress}>
+                <Text style={styles.appSettingsMenuItemLabel}>Update (Reload Extension)</Text>
+              </Pressable>
+              <Pressable style={styles.appSettingsMenuItem} onPress={handleRebuildHelpPress}>
+                <Text style={styles.appSettingsMenuItemLabel}>How To Rebuild dist</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
         <View style={styles.quizPageFrame}>
           <KanaQuizView />
@@ -2295,6 +2344,7 @@ function KanaQuizView() {
     setTypemasterIsRunning(true);
     setTypemasterHasFinished(false);
     setTypemasterFinishReason(null);
+    setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
     timerDeadlineMsRef.current = Date.now() + timerMinutes * 60 * 1000;
@@ -2311,6 +2361,7 @@ function KanaQuizView() {
     setTypemasterIsRunning(false);
     setTypemasterHasFinished(false);
     setTypemasterFinishReason(null);
+    setLastRecordUpdate(null);
     setTypemasterScore(0);
     setTypemasterCurrentInput('');
     setTypemasterQueue([]);
@@ -2332,7 +2383,7 @@ function KanaQuizView() {
     const completionTimeMs = reason === 'time'
       ? timerTotalMs
       : Math.max(0, Math.min(timerTotalMs, timerTotalMs - remainingMs));
-    void saveLeaderboardEntry({
+    const entry = {
       mode: typemasterModeKey,
       timeMs: completionTimeMs,
       score: typemasterScore,
@@ -2341,6 +2392,11 @@ function KanaQuizView() {
       finishReason: reason,
       timerMinutes,
       typemasterQueueMode,
+    };
+    saveLeaderboardEntry(entry).then(result => {
+      if (result) {
+        setLastRecordUpdate({ mode: entry.mode, ...result });
+      }
     });
   }, [activeModeKey, typemasterQueueMode, typemasterScore, saveLeaderboardEntry, timerMinutes]);
 
@@ -2782,54 +2838,78 @@ function KanaQuizView() {
               })}
             </View>
           ) : null}
-          <View style={styles.quizStatBlock}>
-            <Text style={styles.quizStatLabel}>
-              {quizView === 'endless' || quizView === 'typemaster' ? 'Characters' : 'Score'}
-            </Text>
-            <Text style={styles.quizStatValue}>
-              {quizView === 'endless'
-                ? endlessScore
-                : quizView === 'typemaster'
-                  ? typemasterScore
-                  : `${score}/${quizItems.length}`}
-            </Text>
-          </View>
-          <View style={styles.quizStatBlock}>
-            <Text style={styles.quizStatLabel}>Timer</Text>
-            <Text style={[styles.quizStatValueTimer, (hasFinished || endlessHasFinished || typemasterHasFinished) && styles.quizTimerValueExpired]}>
-              {formatTimer(remainingSeconds)}
-            </Text>
-          </View>
-          <View style={styles.quizActionButtonsRow}>
-            {quizView === 'endless' ? (
-              <>
-                <Pressable style={styles.quizPlayButton} onPress={startEndlessMode}>
-                  <Text style={styles.quizPlayButtonLabel}>Play Endless</Text>
-                </Pressable>
-                <Pressable style={styles.quizStopButton} onPress={() => stopEndlessMode('stopped')}>
-                  <Text style={styles.quizStopButtonLabel}>Stop</Text>
-                </Pressable>
-              </>
-            ) : quizView === 'typemaster' ? (
-              <>
-                <Pressable style={styles.quizPlayButton} onPress={startTypemasterMode}>
-                  <Text style={styles.quizPlayButtonLabel}>Play TypeMaster</Text>
-                </Pressable>
-                <Pressable style={styles.quizStopButton} onPress={() => stopTypemasterMode('stopped')}>
-                  <Text style={styles.quizStopButtonLabel}>Stop</Text>
-                </Pressable>
-              </>
-            ) : (
-              <>
-                <Pressable style={styles.quizPlayButton} onPress={startQuiz}>
-                  <Text style={styles.quizPlayButtonLabel}>Play Quiz</Text>
-                </Pressable>
-                <Pressable style={styles.quizStopButton} onPress={stopQuiz}>
-                  <Text style={styles.quizStopButtonLabel}>Stop</Text>
-                </Pressable>
-              </>
-            )}
-          </View>
+          {quizView === 'leaderboard' ? (
+            <View style={styles.quizTimerControl}>
+              <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
+                <Text style={styles.quizTimerStepperLabel}>-</Text>
+              </Pressable>
+              <TextInput
+                style={styles.quizTimerInput}
+                keyboardType="number-pad"
+                value={customMinutes}
+                onChangeText={text => setCustomMinutes(text.replace(/[^0-9]/g, ''))}
+                onBlur={applyCustomMinutes}
+                onSubmitEditing={applyCustomMinutes}
+                placeholder="1"
+                placeholderTextColor="#94a3b8"
+              />
+              <Text style={styles.quizTimerUnitLabel}>min</Text>
+              <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(1)}>
+                <Text style={styles.quizTimerStepperLabel}>+</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              <View style={styles.quizStatBlock}>
+                <Text style={styles.quizStatLabel}>
+                  {quizView === 'endless' || quizView === 'typemaster' ? 'Characters' : 'Score'}
+                </Text>
+                <Text style={styles.quizStatValue}>
+                  {quizView === 'endless'
+                    ? endlessScore
+                    : quizView === 'typemaster'
+                      ? typemasterScore
+                      : `${score}/${quizItems.length}`}
+                </Text>
+              </View>
+              <View style={styles.quizStatBlock}>
+                <Text style={styles.quizStatLabel}>Timer</Text>
+                <Text style={[styles.quizStatValueTimer, (hasFinished || endlessHasFinished || typemasterHasFinished) && styles.quizTimerValueExpired]}>
+                  {formatTimer(remainingSeconds)}
+                </Text>
+              </View>
+              <View style={styles.quizActionButtonsRow}>
+                {quizView === 'endless' ? (
+                  <>
+                    <Pressable style={styles.quizPlayButton} onPress={startEndlessMode}>
+                      <Text style={styles.quizPlayButtonLabel}>Play Endless</Text>
+                    </Pressable>
+                    <Pressable style={styles.quizStopButton} onPress={() => stopEndlessMode('stopped')}>
+                      <Text style={styles.quizStopButtonLabel}>Stop</Text>
+                    </Pressable>
+                  </>
+                ) : quizView === 'typemaster' ? (
+                  <>
+                    <Pressable style={styles.quizPlayButton} onPress={startTypemasterMode}>
+                      <Text style={styles.quizPlayButtonLabel}>Play TypeMaster</Text>
+                    </Pressable>
+                    <Pressable style={styles.quizStopButton} onPress={() => stopTypemasterMode('stopped')}>
+                      <Text style={styles.quizStopButtonLabel}>Stop</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Pressable style={styles.quizPlayButton} onPress={startQuiz}>
+                      <Text style={styles.quizPlayButtonLabel}>Play Quiz</Text>
+                    </Pressable>
+                    <Pressable style={styles.quizStopButton} onPress={stopQuiz}>
+                      <Text style={styles.quizStopButtonLabel}>Stop</Text>
+                    </Pressable>
+                  </>
+                )}
+              </View>
+            </>
+          )}
         </View>
       </View>
 
@@ -2845,6 +2925,15 @@ function KanaQuizView() {
                     <Text style={styles.quizFinishSubtitle}>
                       {typemasterFinishReason === 'stopped' ? 'TypeMaster stopped early.' : 'TypeMaster run complete.'}
                     </Text>
+                    {lastRecordUpdate && lastRecordUpdate.mode === typemasterModeKey ? (
+                      <Text style={[styles.quizRecordNotice, lastRecordUpdate.isNewRecord && styles.quizRecordNoticeNew]}>
+                        {lastRecordUpdate.isNewRecord
+                          ? `New ${typemasterCompletedModeLabel} record!`
+                          : lastRecordUpdate.rank
+                            ? `Placed #${lastRecordUpdate.rank} on ${typemasterCompletedModeLabel} leaderboard.`
+                            : `${typemasterCompletedModeLabel} run saved.`}
+                      </Text>
+                    ) : null}
                   </View>
                   <Pressable style={styles.quizFinishButton} onPress={resetTypemasterToSetup}>
                     <Text style={styles.quizFinishButtonLabel}>Play Again</Text>
@@ -2970,8 +3059,8 @@ function KanaQuizView() {
             ) : (
               // TypeMaster mode game screen
               <View style={{ width: '100%', padding: 20 }}>
-                <View style={{ marginBottom: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View>
+                <View style={styles.typemasterGameHeader}>
+                  <View style={styles.typemasterGameHeaderInfo}>
                     <Text style={{ color: '#e2e8f0', fontSize: 18, fontWeight: '600' }}>
                       Score: {typemasterScore}
                     </Text>
@@ -3006,7 +3095,7 @@ function KanaQuizView() {
                       <Text style={{ color: '#94a3b8', fontSize: 14 }}>Show hints</Text>
                     </Pressable>
                   </View>
-                  <View style={styles.quizInlineTimerWrap}>
+                  <View style={styles.typemasterGameHeaderTimerWrap}>
                     <View style={styles.quizTimerControl}>
                       <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
                         <Text style={styles.quizTimerStepperLabel}>-</Text>
@@ -3027,32 +3116,34 @@ function KanaQuizView() {
                       </Pressable>
                     </View>
                   </View>
-                  {!typemasterIsRunning && (
-                    <Pressable
-                      style={{
-                        backgroundColor: '#10b981',
-                        paddingHorizontal: 24,
-                        paddingVertical: 12,
-                        borderRadius: 8,
-                      }}
-                      onPress={startTypemasterMode}
-                    >
-                      <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Start</Text>
-                    </Pressable>
-                  )}
-                  {typemasterIsRunning && (
-                    <Pressable
-                      style={{
-                        backgroundColor: '#ef4444',
-                        paddingHorizontal: 24,
-                        paddingVertical: 12,
-                        borderRadius: 8,
-                      }}
-                      onPress={() => stopTypemasterMode('stopped')}
-                    >
-                      <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Stop</Text>
-                    </Pressable>
-                  )}
+                  <View style={styles.typemasterGameHeaderActionWrap}>
+                    {!typemasterIsRunning && (
+                      <Pressable
+                        style={{
+                          backgroundColor: '#10b981',
+                          paddingHorizontal: 24,
+                          paddingVertical: 12,
+                          borderRadius: 8,
+                        }}
+                        onPress={startTypemasterMode}
+                      >
+                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Start</Text>
+                      </Pressable>
+                    )}
+                    {typemasterIsRunning && (
+                      <Pressable
+                        style={{
+                          backgroundColor: '#ef4444',
+                          paddingHorizontal: 24,
+                          paddingVertical: 12,
+                          borderRadius: 8,
+                        }}
+                        onPress={() => stopTypemasterMode('stopped')}
+                      >
+                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Stop</Text>
+                      </Pressable>
+                    )}
+                  </View>
                 </View>
 
                 {/* Queue display - show 5 upcoming characters */}
