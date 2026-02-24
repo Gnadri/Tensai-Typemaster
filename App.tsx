@@ -76,9 +76,11 @@ const QUIZ_LEADERBOARD_STORAGE_KEY = 'tensai-note.quiz-leaderboard.v1';
 const QUIZ_FOCUS_STORAGE_KEY = 'tensai-note.quiz-focus.v1';
 const QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-leaderboard-snapshots.v1';
 const QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-focus-snapshots.v1';
+const QUIZ_ACTIVE_FOCUS_SNAPSHOT_STORAGE_KEY = 'tensai-note.quiz-active-focus-snapshot.v1';
 const QUIZ_LEADERBOARD_EXPORT_EVENT = 'tensai:leaderboard-export';
 const QUIZ_LEADERBOARD_IMPORT_EVENT = 'tensai:leaderboard-import';
 const QUIZ_SAVE_MANAGER_OPEN_EVENT = 'tensai:save-manager-open';
+const SAVE_STATES_FILE_EXTENSION = '.tensai-saves.json';
 
 const SOURCE_COLORS = {
   study: '#2563eb',
@@ -677,7 +679,34 @@ export default function App() {
   const handleExtensionReload = useCallback(() => {
     const runtime = (globalThis as any)?.chrome?.runtime;
     if (runtime && typeof runtime.reload === 'function') {
+      const isWeb = Platform.OS === 'web' && typeof window !== 'undefined';
+      const path = isWeb ? window.location.pathname : '';
+      const isQuizPage = isWeb && /(^|\/)(quiz\.html)$/.test(path);
+      const isPopupPage = isWeb && /(^|\/)(popup\.html)$/.test(path);
+
+      // Best-effort refresh for already-open extension pages after the extension reloads.
+      // In some contexts the page is torn down before this runs, so this is not guaranteed.
+      if (isWeb && (isQuizPage || isPopupPage)) {
+        setTimeout(() => {
+          try {
+            window.location.reload();
+          } catch {
+            // If the extension context is already torn down, ignore.
+          }
+        }, 800);
+      }
+
       runtime.reload();
+
+      if (isWeb && isPopupPage) {
+        setTimeout(() => {
+          try {
+            window.close();
+          } catch {
+            // Ignore close failures outside popup contexts.
+          }
+        }, 50);
+      }
       return;
     }
     Alert.alert('Extension reload', 'Chrome extension runtime API is not available in this view.');
@@ -687,7 +716,7 @@ export default function App() {
     setIsSettingsOpen(false);
     Alert.alert(
       'Update Extension',
-      'This reloads the extension so Chrome picks up any files already rebuilt in dist. Chrome cannot compile TSX/webpack bundles itself.',
+      'This reloads the extension so Chrome picks up rebuilt files in dist. If Full App is already open in a tab, you may still need to refresh/reopen that tab after reload.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Reload Extension', onPress: handleExtensionReload },
@@ -720,7 +749,7 @@ export default function App() {
       <View style={styles.mainContent}>
         <View style={styles.appTitleBar}>
           <View style={styles.appTitleBarRow}>
-            <Text style={styles.appTitleText}>Tensai TypeMaster v1.051</Text>
+            <Text style={styles.appTitleText}>Tensai TypeMaster v1.056</Text>
             <Pressable
               style={styles.appSettingsButton}
               onPress={() => setIsSettingsOpen(prev => !prev)}
@@ -1664,7 +1693,8 @@ function KanaQuizView() {
   const [focusedItems, setFocusedItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
   const [isSaveManagerOpen, setIsSaveManagerOpen] = useState(false);
   const [leaderboardSnapshots, setLeaderboardSnapshots] = useState<Array<{ id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }>>([]);
-  const [focusSnapshots, setFocusSnapshots] = useState<Array<{ id: string; name: string; createdAt: number; focusItems: any[] }>>([]);
+  const [focusSnapshots, setFocusSnapshots] = useState<Array<{ id: string; name: string; createdAt: number; focusItems: any[]; focusLeaderboard?: any[] }>>([]);
+  const [activeFocusSnapshotId, setActiveFocusSnapshotId] = useState<string | null>(null);
   const [leaderboardSnapshotName, setLeaderboardSnapshotName] = useState('');
   const [focusSnapshotName, setFocusSnapshotName] = useState('');
 
@@ -1713,11 +1743,12 @@ function KanaQuizView() {
       // Focus leaderboard session is tied to the current focus set; reset it whenever the set changes.
       setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
       setLastRecordUpdate(prev => (prev && isFocusModeKey(prev.mode) ? null : prev));
+      void persistActiveFocusSnapshotId(null);
       if (quizMode === 'focus') {
         setQuizItems(shuffleQuiz(next.map(entry => ({ ...entry.item, __focusSourceMode: entry.sourceMode }))));
       }
     },
-    [focusedItems, getFocusItemKey, getItemSourceMode, quizMode, saveFocusedItems],
+    [focusedItems, getFocusItemKey, getItemSourceMode, persistActiveFocusSnapshotId, quizMode, saveFocusedItems],
   );
 
   const isJlptMode = isJlptQuizMode(quizMode);
@@ -1796,6 +1827,12 @@ function KanaQuizView() {
   useEffect(() => {
     remainingSecondsRef.current = remainingSeconds;
   }, [remainingSeconds]);
+
+  useEffect(() => {
+    if (quizMode === 'focus' && leaderboardScope !== 'session') {
+      setLeaderboardScope('session');
+    }
+  }, [leaderboardScope, quizMode]);
 
 
   const focusColumnBuckets = useMemo(() => {
@@ -1920,9 +1957,10 @@ function KanaQuizView() {
   useEffect(() => {
     const loadSnapshots = async () => {
       try {
-        const [leaderboardRaw, focusRaw] = await Promise.all([
+        const [leaderboardRaw, focusRaw, activeFocusSnapshotRaw] = await Promise.all([
           AsyncStorage.getItem(QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY),
           AsyncStorage.getItem(QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY),
+          AsyncStorage.getItem(QUIZ_ACTIVE_FOCUS_SNAPSHOT_STORAGE_KEY),
         ]);
         const parsedLeaderboard = leaderboardRaw ? JSON.parse(leaderboardRaw) : [];
         const parsedFocus = focusRaw ? JSON.parse(focusRaw) : [];
@@ -1948,9 +1986,11 @@ function KanaQuizView() {
                   name: `${item.name}`,
                   createdAt: Number(item.createdAt) || Date.now(),
                   focusItems: Array.isArray(item.focusItems) ? item.focusItems : [],
+                  focusLeaderboard: Array.isArray(item.focusLeaderboard) ? item.focusLeaderboard : [],
                 }))
             : [],
         );
+        setActiveFocusSnapshotId(activeFocusSnapshotRaw ? `${activeFocusSnapshotRaw}` : null);
       } catch (err) {
         console.error('Failed to load save snapshots:', err);
       }
@@ -2071,6 +2111,25 @@ function KanaQuizView() {
     };
   }, [exportLeaderboardData, importLeaderboardData]);
 
+  const persistActiveFocusSnapshotLeaderboard = useCallback(
+    async (focusEntries: any[]) => {
+      if (!activeFocusSnapshotId) return;
+      const nextSnapshots = focusSnapshots.map(snapshot =>
+        snapshot.id === activeFocusSnapshotId
+          ? { ...snapshot, focusLeaderboard: limitLeaderboardPerMode(focusEntries.filter(entry => isFocusModeKey(entry?.mode))) }
+          : snapshot,
+      );
+      await persistFocusSnapshots(nextSnapshots);
+    },
+    [activeFocusSnapshotId, focusSnapshots, limitLeaderboardPerMode, persistFocusSnapshots],
+  );
+
+  useEffect(() => {
+    if (!activeFocusSnapshotId) return;
+    const focusEntries = sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode));
+    void persistActiveFocusSnapshotLeaderboard(focusEntries);
+  }, [activeFocusSnapshotId, persistActiveFocusSnapshotLeaderboard, sessionLeaderboard]);
+
   const saveLeaderboardEntry = useCallback(async (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; timerMinutes?: number }) => {
     try {
       const isFocusEntry = isFocusModeKey(entry.mode);
@@ -2079,14 +2138,29 @@ function KanaQuizView() {
         timerMinutes: normalizeLeaderboardTimerMinutes(entry.timerMinutes),
       };
       const todayKey = formatDateKey(new Date());
-      setSessionLeaderboard(prev => {
-        const sessionToday = prev.filter(item => formatDateKey(new Date(item.date)) === todayKey);
-        const perModeTop10 = limitLeaderboardPerMode([...sessionToday, normalizedEntry]);
-        return perModeTop10.filter(item => formatDateKey(new Date(item.date)) === todayKey);
-      });
+      const currentSessionEntries = Array.isArray(sessionLeaderboard) ? sessionLeaderboard : [];
+      let nextFocusSessionEntries: any[] = [];
+      let nextSessionLeaderboard: any[] = currentSessionEntries;
+      if (isFocusEntry) {
+        const nonFocusEntries = currentSessionEntries.filter(item => !isFocusModeKey(item.mode));
+        const focusEntries = currentSessionEntries.filter(item => isFocusModeKey(item.mode));
+        const nextFocusEntries = limitLeaderboardPerMode([...focusEntries, normalizedEntry]).filter(item => isFocusModeKey(item.mode));
+        nextFocusSessionEntries = nextFocusEntries;
+        nextSessionLeaderboard = [...nonFocusEntries, ...nextFocusEntries];
+      } else {
+        const focusEntries = currentSessionEntries.filter(item => isFocusModeKey(item.mode));
+        const nonFocusEntries = currentSessionEntries.filter(item => !isFocusModeKey(item.mode));
+        const sessionToday = nonFocusEntries.filter(item => formatDateKey(new Date(item.date)) === todayKey);
+        const perModeTop10 = limitLeaderboardPerMode([...sessionToday, normalizedEntry]).filter(item => !isFocusModeKey(item.mode));
+        const nextSession = perModeTop10.filter(item => formatDateKey(new Date(item.date)) === todayKey);
+        nextFocusSessionEntries = focusEntries;
+        nextSessionLeaderboard = [...focusEntries, ...nextSession];
+      }
+      setSessionLeaderboard(nextSessionLeaderboard);
 
       // Focus mode participates only in Current Session leaderboard (no persisted all-time storage).
       if (isFocusEntry) {
+        await persistActiveFocusSnapshotLeaderboard(nextFocusSessionEntries);
         return null;
       }
 
@@ -2117,17 +2191,138 @@ function KanaQuizView() {
       console.error('Failed to save leaderboard entry:', err);
       return null;
     }
-  }, [compareLeaderboardEntries, limitLeaderboardPerMode]);
+  }, [compareLeaderboardEntries, limitLeaderboardPerMode, persistActiveFocusSnapshotLeaderboard, sessionLeaderboard]);
 
   const persistLeaderboardSnapshots = useCallback(async (next: Array<{ id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }>) => {
     setLeaderboardSnapshots(next);
     await AsyncStorage.setItem(QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY, JSON.stringify(next));
   }, []);
 
-  const persistFocusSnapshots = useCallback(async (next: Array<{ id: string; name: string; createdAt: number; focusItems: any[] }>) => {
+  const persistFocusSnapshots = useCallback(async (next: Array<{ id: string; name: string; createdAt: number; focusItems: any[]; focusLeaderboard?: any[] }>) => {
     setFocusSnapshots(next);
     await AsyncStorage.setItem(QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY, JSON.stringify(next));
   }, []);
+
+  const persistActiveFocusSnapshotId = useCallback(async (snapshotId: string | null) => {
+    setActiveFocusSnapshotId(snapshotId);
+    if (snapshotId) {
+      await AsyncStorage.setItem(QUIZ_ACTIVE_FOCUS_SNAPSHOT_STORAGE_KEY, snapshotId);
+      return;
+    }
+    await AsyncStorage.removeItem(QUIZ_ACTIVE_FOCUS_SNAPSHOT_STORAGE_KEY);
+  }, []);
+
+  const exportSaveStatesData = useCallback(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+      Alert.alert('Unavailable', 'Save state export is only available in the web/extension view.');
+      return;
+    }
+    try {
+      const payload = {
+        version: 1,
+        type: 'tensai-save-states',
+        exportedAt: new Date().toISOString(),
+        leaderboardSnapshots,
+        focusSnapshots,
+        activeFocusSnapshotId,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const stamp = formatDateKey(new Date()).replace(/-/g, '');
+      anchor.href = url;
+      anchor.download = `tensai-save-states-${stamp}${SAVE_STATES_FILE_EXTENSION}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export save states:', err);
+      Alert.alert('Export failed', 'Could not export save states.');
+    }
+  }, [activeFocusSnapshotId, focusSnapshots, leaderboardSnapshots]);
+
+  const importSaveStatesData = useCallback(async () => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+      Alert.alert('Unavailable', 'Save state import is only available in the web/extension view.');
+      return;
+    }
+
+    try {
+      const shouldReplace = window.confirm('Importing save states will replace all Save Manager entries. Continue?');
+      if (!shouldReplace) return;
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = `application/json,.json,${SAVE_STATES_FILE_EXTENSION}`;
+      input.style.display = 'none';
+
+      input.onchange = async () => {
+        try {
+          const file = input.files?.[0];
+          if (!file) return;
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+
+          const rawLeaderboardSnapshots = Array.isArray(parsed?.leaderboardSnapshots) ? parsed.leaderboardSnapshots : [];
+          const rawFocusSnapshots = Array.isArray(parsed?.focusSnapshots) ? parsed.focusSnapshots : [];
+
+          const normalizedLeaderboardSnapshots = rawLeaderboardSnapshots
+            .filter(item => item && typeof item === 'object')
+            .map(item => ({
+              id: item.id ? `${item.id}` : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              name: item.name ? `${item.name}` : 'Imported leaderboard save',
+              createdAt: Number(item.createdAt) || Date.now(),
+              leaderboard: limitLeaderboardPerMode(Array.isArray(item.leaderboard) ? item.leaderboard : []),
+              sessionLeaderboard: limitLeaderboardPerMode(Array.isArray(item.sessionLeaderboard) ? item.sessionLeaderboard : []),
+            }))
+            .slice(0, 50);
+
+          const normalizedFocusSnapshots = rawFocusSnapshots
+            .filter(item => item && typeof item === 'object')
+            .map(item => ({
+              id: item.id ? `${item.id}` : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              name: item.name ? `${item.name}` : 'Imported focus save',
+              createdAt: Number(item.createdAt) || Date.now(),
+              focusItems: Array.isArray(item.focusItems) ? item.focusItems : [],
+              focusLeaderboard: limitLeaderboardPerMode(
+                (Array.isArray(item.focusLeaderboard) ? item.focusLeaderboard : [])
+                  .filter(entry => isFocusModeKey(entry?.mode || '')),
+              ),
+            }))
+            .slice(0, 100);
+
+          const requestedActiveFocusSnapshotId = parsed?.activeFocusSnapshotId ? `${parsed.activeFocusSnapshotId}` : null;
+          const normalizedActiveFocusSnapshotId = requestedActiveFocusSnapshotId &&
+            normalizedFocusSnapshots.some(snapshot => snapshot.id === requestedActiveFocusSnapshotId)
+            ? requestedActiveFocusSnapshotId
+            : null;
+
+          await persistLeaderboardSnapshots(normalizedLeaderboardSnapshots);
+          await persistFocusSnapshots(normalizedFocusSnapshots);
+          await persistActiveFocusSnapshotId(normalizedActiveFocusSnapshotId);
+
+          Alert.alert(
+            'Import complete',
+            `Loaded ${normalizedLeaderboardSnapshots.length} leaderboard saves and ${normalizedFocusSnapshots.length} focus saves.`,
+          );
+        } catch (err) {
+          console.error('Failed to import save states:', err);
+          Alert.alert('Import failed', 'The selected file is not a valid save state export.');
+        } finally {
+          if (input.parentNode) {
+            input.parentNode.removeChild(input);
+          }
+        }
+      };
+
+      document.body.appendChild(input);
+      input.click();
+    } catch (err) {
+      console.error('Failed to open save state import picker:', err);
+      Alert.alert('Import failed', 'Could not open file picker.');
+    }
+  }, [limitLeaderboardPerMode, persistActiveFocusSnapshotId, persistFocusSnapshots, persistLeaderboardSnapshots]);
 
   const createLeaderboardSnapshot = useCallback(async () => {
     const name = leaderboardSnapshotName.trim();
@@ -2190,18 +2385,20 @@ function KanaQuizView() {
         sourceMode: item.sourceMode,
         item: item.item,
       })),
+      focusLeaderboard: sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)),
     };
     const next = [snapshot, ...focusSnapshots].slice(0, 100);
     try {
       await persistFocusSnapshots(next);
+      await persistActiveFocusSnapshotId(snapshot.id);
       setFocusSnapshotName('');
     } catch (err) {
       console.error('Failed to save focus snapshot:', err);
       Alert.alert('Save failed', 'Could not save Focus snapshot.');
     }
-  }, [focusSnapshotName, focusSnapshots, focusedItems, persistFocusSnapshots]);
+  }, [focusSnapshotName, focusSnapshots, focusedItems, persistActiveFocusSnapshotId, persistFocusSnapshots, sessionLeaderboard]);
 
-  const loadFocusSnapshot = useCallback(async (snapshot: { id: string; name: string; createdAt: number; focusItems: any[] }) => {
+  const loadFocusSnapshot = useCallback(async (snapshot: { id: string; name: string; createdAt: number; focusItems: any[]; focusLeaderboard?: any[] }) => {
     try {
       const cleaned = (Array.isArray(snapshot.focusItems) ? snapshot.focusItems : [])
         .filter(entry => entry && entry.item && entry.sourceMode)
@@ -2215,7 +2412,15 @@ function KanaQuizView() {
           },
         }));
       await saveFocusedItems(cleaned);
-      setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
+      const restoredFocusLeaderboard = limitLeaderboardPerMode(
+        (Array.isArray(snapshot.focusLeaderboard) ? snapshot.focusLeaderboard : [])
+          .filter(entry => isFocusModeKey(entry?.mode)),
+      );
+      setSessionLeaderboard(prev => [
+        ...prev.filter(entry => !isFocusModeKey(entry.mode)),
+        ...restoredFocusLeaderboard,
+      ]);
+      await persistActiveFocusSnapshotId(snapshot.id);
       if (quizMode === 'focus') {
         setQuizItems(shuffleQuiz(cleaned.map(entry => ({ ...entry.item, __focusSourceMode: entry.sourceMode }))));
         setAnswers({});
@@ -2228,16 +2433,19 @@ function KanaQuizView() {
       console.error('Failed to load focus snapshot:', err);
       Alert.alert('Load failed', 'Could not load Focus snapshot.');
     }
-  }, [quizMode, saveFocusedItems]);
+  }, [limitLeaderboardPerMode, persistActiveFocusSnapshotId, quizMode, saveFocusedItems]);
 
   const deleteFocusSnapshot = useCallback(async (snapshotId: string) => {
     try {
       await persistFocusSnapshots(focusSnapshots.filter(item => item.id !== snapshotId));
+      if (activeFocusSnapshotId === snapshotId) {
+        await persistActiveFocusSnapshotId(null);
+      }
     } catch (err) {
       console.error('Failed to delete focus snapshot:', err);
       Alert.alert('Delete failed', 'Could not delete Focus snapshot.');
     }
-  }, [focusSnapshots, persistFocusSnapshots]);
+  }, [activeFocusSnapshotId, focusSnapshots, persistActiveFocusSnapshotId, persistFocusSnapshots]);
 
   const getEntryIdentity = useCallback(
     (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number; typemasterQueueMode?: string }) =>
@@ -2249,8 +2457,16 @@ function KanaQuizView() {
     async (target: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped' }) => {
       const targetKey = getEntryIdentity(target);
       try {
+        let nextFocusSessionEntries: any[] = [];
         setLeaderboard(prev => prev.filter(entry => getEntryIdentity(entry) !== targetKey));
-        setSessionLeaderboard(prev => prev.filter(entry => getEntryIdentity(entry) !== targetKey));
+        setSessionLeaderboard(prev => {
+          const next = prev.filter(entry => getEntryIdentity(entry) !== targetKey);
+          nextFocusSessionEntries = next.filter(entry => isFocusModeKey(entry.mode));
+          return next;
+        });
+        if (isFocusModeKey(target.mode)) {
+          await persistActiveFocusSnapshotLeaderboard(nextFocusSessionEntries);
+        }
 
         const stored = await AsyncStorage.getItem(QUIZ_LEADERBOARD_STORAGE_KEY);
         const parsed = stored ? JSON.parse(stored) : [];
@@ -2261,7 +2477,7 @@ function KanaQuizView() {
         console.error('Failed to delete leaderboard entry:', err);
       }
     },
-    [getEntryIdentity],
+    [getEntryIdentity, persistActiveFocusSnapshotLeaderboard],
   );
 
   const requestDeleteLeaderboardEntry = useCallback(
@@ -2680,7 +2896,7 @@ function KanaQuizView() {
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
-    timerDeadlineMsRef.current = Date.now() + timerMinutes * 60 * 1000;
+    timerDeadlineMsRef.current = null;
 
     // Focus input field
     setTimeout(() => {
@@ -2712,7 +2928,9 @@ function KanaQuizView() {
     // Save to leaderboard with 'typemaster' prefix
     const typemasterModeKey = getTypeMasterModeKey(activeModeKey);
     const timerTotalMs = timerMinutes * 60 * 1000;
-    const remainingMs = timerDeadlineMsRef.current ? Math.max(0, timerDeadlineMsRef.current - Date.now()) : 0;
+    const remainingMs = timerDeadlineMsRef.current
+      ? Math.max(0, timerDeadlineMsRef.current - Date.now())
+      : Math.max(0, remainingSecondsRef.current * 1000);
     const completionTimeMs = reason === 'time'
       ? timerTotalMs
       : Math.max(0, Math.min(timerTotalMs, timerTotalMs - remainingMs));
@@ -2733,9 +2951,23 @@ function KanaQuizView() {
     });
   }, [activeModeKey, typemasterQueueMode, typemasterScore, saveLeaderboardEntry, timerMinutes]);
 
+  const armTypemasterTimer = useCallback(() => {
+    if (!typemasterIsRunning || timerDeadlineMsRef.current) return;
+    const startSeconds = remainingSecondsRef.current > 0 ? remainingSecondsRef.current : timerMinutes * 60;
+    timerDeadlineMsRef.current = Date.now() + startSeconds * 1000;
+    // Kick the visible countdown immediately so the timer appears to start on first input.
+    const nextRemaining = Math.max(0, Math.ceil((timerDeadlineMsRef.current - Date.now()) / 1000));
+    setRemainingSeconds(nextRemaining);
+    remainingSecondsRef.current = nextRemaining;
+  }, [timerMinutes, typemasterIsRunning]);
+
   const handleTypemasterInput = useCallback(
     (text: string) => {
       if (!typemasterIsRunning) return;
+
+      if (!timerDeadlineMsRef.current && text.length > 0) {
+        armTypemasterTimer();
+      }
 
       setTypemasterCurrentInput(text);
 
@@ -2813,6 +3045,7 @@ function KanaQuizView() {
       isJlptStyleMode,
       isJlptJapaneseInputMode,
       jlptReadingMode,
+      armTypemasterTimer,
     ]
   );
 
@@ -2932,13 +3165,30 @@ function KanaQuizView() {
   const activeLeaderboardModeKey = leaderboardGameType === 'typemaster'
     ? getTypeMasterModeKey(activeModeKey)
     : activeModeKey;
+  const sessionOnlyLeaderboardScopeOptions = LEADERBOARD_SCOPE_OPTIONS
+    .filter(option => option.value === 'session')
+    .map(option => ({ ...option, label: 'Current Focus Mode Leaderboard' }));
+  const activeLeaderboardScopeOptions = isFocusModeKey(activeLeaderboardModeKey)
+    ? sessionOnlyLeaderboardScopeOptions
+    : LEADERBOARD_SCOPE_OPTIONS;
   const scopeLabel = (LEADERBOARD_SCOPE_OPTIONS.find(option => option.value === leaderboardScope) || LEADERBOARD_SCOPE_OPTIONS[0]).label;
+  const getScopeLabelForMode = (modeKey: string) =>
+    isFocusModeKey(modeKey) && leaderboardScope === 'session'
+      ? 'Current Focus Mode Leaderboard'
+      : scopeLabel;
+  const focusLeaderboardSaveNotice = activeFocusSnapshotId
+    ? `Focus leaderboard positions are saved with the active Focus save state.`
+    : 'Focus leaderboard positions save with a Focus save state. Save or load a Focus set in Settings > Save Manager to keep them.';
   const activeLeaderboardModeLabel = getQuizModeLabel(activeLeaderboardModeKey);
   const activeLeaderboardSource = leaderboardScope === 'session' ? sessionLeaderboard : leaderboard;
   const activeLeaderboard = useMemo(
     () =>
       activeLeaderboardSource
-        .filter(entry => leaderboardScope === 'all_time' || formatDateKey(new Date(entry.date)) === todayKey)
+        .filter(entry => {
+          if (leaderboardScope === 'all_time') return true;
+          if (isFocusModeKey(activeLeaderboardModeKey)) return true;
+          return formatDateKey(new Date(entry.date)) === todayKey;
+        })
         .filter(entry => entry.mode === activeLeaderboardModeKey)
         .filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === timerMinutes)
         .sort(compareLeaderboardEntries)
@@ -2947,7 +3197,16 @@ function KanaQuizView() {
   );
   const completedModeLabel = getQuizModeLabel(activeModeKey);
   const typemasterModeKey = getTypeMasterModeKey(activeModeKey);
+  const completedLeaderboardScopeOptions = isFocusModeKey(activeModeKey)
+    ? sessionOnlyLeaderboardScopeOptions
+    : LEADERBOARD_SCOPE_OPTIONS;
+  const typemasterCompletedLeaderboardScopeOptions = isFocusModeKey(typemasterModeKey)
+    ? sessionOnlyLeaderboardScopeOptions
+    : LEADERBOARD_SCOPE_OPTIONS;
   const typemasterCompletedModeLabel = getQuizModeLabel(typemasterModeKey);
+  const activeScopeLabel = getScopeLabelForMode(activeLeaderboardModeKey);
+  const completedScopeLabel = getScopeLabelForMode(activeModeKey);
+  const typemasterCompletedScopeLabel = getScopeLabelForMode(typemasterModeKey);
   const typemasterCompletionTimeMs = Math.max(0, timerMinutes * 60 * 1000 - remainingSeconds * 1000);
   const typemasterCurrentTargetIndex = typemasterQueueMode === 'burst'
     ? Math.max(0, Math.min(typemasterBurstCursor, Math.max(typemasterQueue.length - 1, 0)))
@@ -2978,7 +3237,11 @@ function KanaQuizView() {
   const completedModeLeaderboard = useMemo(
     () =>
       completedModeLeaderboardSource
-        .filter(entry => leaderboardScope === 'all_time' || formatDateKey(new Date(entry.date)) === todayKey)
+        .filter(entry => {
+          if (leaderboardScope === 'all_time') return true;
+          if (isFocusModeKey(activeModeKey)) return true;
+          return formatDateKey(new Date(entry.date)) === todayKey;
+        })
         .filter(entry => entry.mode === activeModeKey)
         .filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === timerMinutes)
         .sort(compareLeaderboardEntries)
@@ -2988,7 +3251,11 @@ function KanaQuizView() {
   const typemasterCompletedModeLeaderboard = useMemo(
     () =>
       completedModeLeaderboardSource
-        .filter(entry => leaderboardScope === 'all_time' || formatDateKey(new Date(entry.date)) === todayKey)
+        .filter(entry => {
+          if (leaderboardScope === 'all_time') return true;
+          if (isFocusModeKey(typemasterModeKey)) return true;
+          return formatDateKey(new Date(entry.date)) === todayKey;
+        })
         .filter(entry => entry.mode === typemasterModeKey)
         .filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === timerMinutes)
         .sort(compareLeaderboardEntries)
@@ -3315,7 +3582,7 @@ function KanaQuizView() {
                     {typemasterCompletedModeLeaderboard.length > 0 ? (
                       <View style={styles.quizLeaderboard}>
                         <View style={styles.quizLeaderboardHeaderRow}>
-                          <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Top 10 ({timerMinutes} min, {scopeLabel})</Text>
+                          <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Top 10 ({timerMinutes} min, {typemasterCompletedScopeLabel})</Text>
                           <View style={styles.quizLeaderboardScopeTabs}>
                             <Pressable
                               style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
@@ -3325,7 +3592,7 @@ function KanaQuizView() {
                                 {isLeaderboardEditMode ? 'Done' : 'Edit'}
                               </Text>
                             </Pressable>
-                            {LEADERBOARD_SCOPE_OPTIONS.map(option => {
+                            {typemasterCompletedLeaderboardScopeOptions.map(option => {
                               const selected = option.value === leaderboardScope;
                               return (
                                 <Pressable
@@ -3341,6 +3608,9 @@ function KanaQuizView() {
                             })}
                           </View>
                         </View>
+                        {isFocusModeKey(typemasterModeKey) && leaderboardScope === 'session' ? (
+                          <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
+                        ) : null}
                         <View style={styles.quizLeaderboardList}>
                           {typemasterCompletedModeLeaderboard.map((entry, index) => (
                             <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
@@ -3370,7 +3640,7 @@ function KanaQuizView() {
                     ) : (
                       <View style={styles.quizLeaderboard}>
                         <View style={styles.quizLeaderboardHeaderRow}>
-                          <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Top 10 ({timerMinutes} min, {scopeLabel})</Text>
+                          <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Top 10 ({timerMinutes} min, {typemasterCompletedScopeLabel})</Text>
                           <View style={styles.quizLeaderboardScopeTabs}>
                             <Pressable
                               style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
@@ -3380,7 +3650,7 @@ function KanaQuizView() {
                                 {isLeaderboardEditMode ? 'Done' : 'Edit'}
                               </Text>
                             </Pressable>
-                            {LEADERBOARD_SCOPE_OPTIONS.map(option => {
+                            {typemasterCompletedLeaderboardScopeOptions.map(option => {
                               const selected = option.value === leaderboardScope;
                               return (
                                 <Pressable
@@ -3396,7 +3666,10 @@ function KanaQuizView() {
                             })}
                           </View>
                         </View>
-                        <Text style={styles.quizLeaderboardEmpty}>No {scopeLabel.toLowerCase()} scores for this mode.</Text>
+                        {isFocusModeKey(typemasterModeKey) && leaderboardScope === 'session' ? (
+                          <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
+                        ) : null}
+                        <Text style={styles.quizLeaderboardEmpty}>No {typemasterCompletedScopeLabel.toLowerCase()} scores for this mode.</Text>
                       </View>
                     )}
                   </View>
@@ -3606,6 +3879,13 @@ function KanaQuizView() {
                       fontWeight: '600',
                     }}
                     value={typemasterCurrentInput}
+                    onKeyPress={event => {
+                      const key = (event as any)?.nativeEvent?.key;
+                      if (!key || key === 'Backspace' || key === 'Shift' || key === 'Alt' || key === 'Control' || key === 'Meta' || key === 'Tab') {
+                        return;
+                      }
+                      armTypemasterTimer();
+                    }}
                     onChangeText={handleTypemasterInput}
                     editable={typemasterIsRunning}
                     autoCapitalize="none"
@@ -3863,7 +4143,7 @@ function KanaQuizView() {
               {activeLeaderboard.length > 0 ? (
                 <View style={styles.quizLeaderboard}>
                   <View style={styles.quizLeaderboardHeaderRow}>
-                    <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} Top 10 ({timerMinutes} min, {scopeLabel})</Text>
+                    <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} Top 10 ({timerMinutes} min, {activeScopeLabel})</Text>
                     <View style={styles.quizLeaderboardScopeTabs}>
                       {LEADERBOARD_GAME_OPTIONS.map(option => {
                         const selected = option.value === leaderboardGameType;
@@ -3887,7 +4167,7 @@ function KanaQuizView() {
                           {isLeaderboardEditMode ? 'Done' : 'Edit'}
                         </Text>
                       </Pressable>
-                      {LEADERBOARD_SCOPE_OPTIONS.map(option => {
+                      {activeLeaderboardScopeOptions.map(option => {
                         const selected = option.value === leaderboardScope;
                         return (
                           <Pressable
@@ -3903,6 +4183,9 @@ function KanaQuizView() {
                       })}
                     </View>
                   </View>
+                  {isFocusModeKey(activeLeaderboardModeKey) && leaderboardScope === 'session' ? (
+                    <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
+                  ) : null}
                   <View style={styles.quizLeaderboardList}>
                     {activeLeaderboard.map((entry, index) => (
                       <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
@@ -3932,7 +4215,7 @@ function KanaQuizView() {
               ) : (
                 <View style={styles.quizLeaderboard}>
                   <View style={styles.quizLeaderboardHeaderRow}>
-                    <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} Top 10 ({timerMinutes} min, {scopeLabel})</Text>
+                    <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} Top 10 ({timerMinutes} min, {activeScopeLabel})</Text>
                     <View style={styles.quizLeaderboardScopeTabs}>
                       {LEADERBOARD_GAME_OPTIONS.map(option => {
                         const selected = option.value === leaderboardGameType;
@@ -3956,7 +4239,7 @@ function KanaQuizView() {
                           {isLeaderboardEditMode ? 'Done' : 'Edit'}
                         </Text>
                       </Pressable>
-                      {LEADERBOARD_SCOPE_OPTIONS.map(option => {
+                      {activeLeaderboardScopeOptions.map(option => {
                         const selected = option.value === leaderboardScope;
                         return (
                           <Pressable
@@ -3972,7 +4255,10 @@ function KanaQuizView() {
                       })}
                     </View>
                   </View>
-                  <Text style={styles.quizLeaderboardEmpty}>No {scopeLabel.toLowerCase()} scores for this mode.</Text>
+                  {isFocusModeKey(activeLeaderboardModeKey) && leaderboardScope === 'session' ? (
+                    <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
+                  ) : null}
+                  <Text style={styles.quizLeaderboardEmpty}>No {activeScopeLabel.toLowerCase()} scores for this mode.</Text>
                 </View>
               )}
             </View>
@@ -4039,7 +4325,7 @@ function KanaQuizView() {
                 {completedModeLeaderboard.length > 0 ? (
                   <View style={styles.quizLeaderboard}>
                     <View style={styles.quizLeaderboardHeaderRow}>
-                      <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Top 10 ({timerMinutes} min, {scopeLabel})</Text>
+                      <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Top 10 ({timerMinutes} min, {completedScopeLabel})</Text>
                       <View style={styles.quizLeaderboardScopeTabs}>
                         <Pressable
                           style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
@@ -4049,7 +4335,7 @@ function KanaQuizView() {
                             {isLeaderboardEditMode ? 'Done' : 'Edit'}
                           </Text>
                         </Pressable>
-                        {LEADERBOARD_SCOPE_OPTIONS.map(option => {
+                        {completedLeaderboardScopeOptions.map(option => {
                           const selected = option.value === leaderboardScope;
                           return (
                             <Pressable
@@ -4065,6 +4351,9 @@ function KanaQuizView() {
                         })}
                       </View>
                     </View>
+                    {isFocusModeKey(activeModeKey) && leaderboardScope === 'session' ? (
+                      <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
+                    ) : null}
                     <View style={styles.quizLeaderboardList}>
                       {completedModeLeaderboard.map((entry, index) => (
                         <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
@@ -4094,7 +4383,7 @@ function KanaQuizView() {
                 ) : (
                   <View style={styles.quizLeaderboard}>
                     <View style={styles.quizLeaderboardHeaderRow}>
-                      <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Top 10 ({timerMinutes} min, {scopeLabel})</Text>
+                      <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Top 10 ({timerMinutes} min, {completedScopeLabel})</Text>
                       <View style={styles.quizLeaderboardScopeTabs}>
                         <Pressable
                           style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
@@ -4104,7 +4393,7 @@ function KanaQuizView() {
                             {isLeaderboardEditMode ? 'Done' : 'Edit'}
                           </Text>
                         </Pressable>
-                        {LEADERBOARD_SCOPE_OPTIONS.map(option => {
+                        {completedLeaderboardScopeOptions.map(option => {
                           const selected = option.value === leaderboardScope;
                           return (
                             <Pressable
@@ -4120,7 +4409,10 @@ function KanaQuizView() {
                         })}
                       </View>
                     </View>
-                    <Text style={styles.quizLeaderboardEmpty}>No {scopeLabel.toLowerCase()} scores for this mode.</Text>
+                    {isFocusModeKey(activeModeKey) && leaderboardScope === 'session' ? (
+                      <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
+                    ) : null}
+                    <Text style={styles.quizLeaderboardEmpty}>No {completedScopeLabel.toLowerCase()} scores for this mode.</Text>
                   </View>
                 )}
               </View>
@@ -4227,6 +4519,17 @@ function KanaQuizView() {
             <ScrollView style={{ width: '100%' }} contentContainerStyle={{ paddingBottom: 8 }}>
               <View style={[styles.featureCard, { marginBottom: 12 }]}>
                 <Text style={[styles.featureHeadline, { marginBottom: 8 }]}>Leaderboard Saves</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                  <Text style={styles.calendarNoteSource}>{`Export/import Save Manager data as *${SAVE_STATES_FILE_EXTENSION}`}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <Pressable style={styles.stageSecondaryButton} onPress={exportSaveStatesData}>
+                      <Text style={styles.stageSecondaryLabel}>Export Save States</Text>
+                    </Pressable>
+                    <Pressable style={styles.stageSecondaryButton} onPress={() => void importSaveStatesData()}>
+                      <Text style={styles.stageSecondaryLabel}>Import Save States</Text>
+                    </Pressable>
+                  </View>
+                </View>
                 <TextInput
                   style={styles.calendarInput}
                   placeholder="Save name (e.g. JLPT practice set A)"
