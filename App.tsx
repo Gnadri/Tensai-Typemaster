@@ -74,6 +74,11 @@ const DEFAULT_SOURCE = CALENDAR_SOURCE_OPTIONS[0].value;
 const CALENDAR_NOTES_STORAGE_KEY = 'tensai-note.calendar.local';
 const QUIZ_LEADERBOARD_STORAGE_KEY = 'tensai-note.quiz-leaderboard.v1';
 const QUIZ_FOCUS_STORAGE_KEY = 'tensai-note.quiz-focus.v1';
+const QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-leaderboard-snapshots.v1';
+const QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-focus-snapshots.v1';
+const QUIZ_LEADERBOARD_EXPORT_EVENT = 'tensai:leaderboard-export';
+const QUIZ_LEADERBOARD_IMPORT_EVENT = 'tensai:leaderboard-import';
+const QUIZ_SAVE_MANAGER_OPEN_EVENT = 'tensai:save-manager-open';
 
 const SOURCE_COLORS = {
   study: '#2563eb',
@@ -656,6 +661,19 @@ const initialCalendarForm = () => ({
 export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  const dispatchLeaderboardSettingsEvent = useCallback((eventName: string) => {
+    setIsSettingsOpen(false);
+    if (Platform.OS !== 'web' || typeof window === 'undefined') {
+      Alert.alert('Unavailable', 'Leaderboard import/export is only available in the web/extension view.');
+      return;
+    }
+    try {
+      window.dispatchEvent(new CustomEvent(eventName));
+    } catch {
+      Alert.alert('Settings action failed', 'Could not trigger the leaderboard import/export action.');
+    }
+  }, []);
+
   const handleExtensionReload = useCallback(() => {
     const runtime = (globalThis as any)?.chrome?.runtime;
     if (runtime && typeof runtime.reload === 'function') {
@@ -685,12 +703,24 @@ export default function App() {
     );
   }, []);
 
+  const handleExportLeaderboardPress = useCallback(() => {
+    dispatchLeaderboardSettingsEvent(QUIZ_LEADERBOARD_EXPORT_EVENT);
+  }, [dispatchLeaderboardSettingsEvent]);
+
+  const handleImportLeaderboardPress = useCallback(() => {
+    dispatchLeaderboardSettingsEvent(QUIZ_LEADERBOARD_IMPORT_EVENT);
+  }, [dispatchLeaderboardSettingsEvent]);
+
+  const handleOpenSaveManagerPress = useCallback(() => {
+    dispatchLeaderboardSettingsEvent(QUIZ_SAVE_MANAGER_OPEN_EVENT);
+  }, [dispatchLeaderboardSettingsEvent]);
+
   return (
     <View style={styles.appShell}>
       <View style={styles.mainContent}>
         <View style={styles.appTitleBar}>
           <View style={styles.appTitleBarRow}>
-            <Text style={styles.appTitleText}>Tensai TypeMaster v1.02</Text>
+            <Text style={styles.appTitleText}>Tensai TypeMaster v1.051</Text>
             <Pressable
               style={styles.appSettingsButton}
               onPress={() => setIsSettingsOpen(prev => !prev)}
@@ -702,6 +732,15 @@ export default function App() {
             <View style={styles.appSettingsMenu}>
               <Pressable style={styles.appSettingsMenuItem} onPress={handleUpdatePress}>
                 <Text style={styles.appSettingsMenuItemLabel}>Update (Reload Extension)</Text>
+              </Pressable>
+              <Pressable style={styles.appSettingsMenuItem} onPress={handleExportLeaderboardPress}>
+                <Text style={styles.appSettingsMenuItemLabel}>Export Leaderboard</Text>
+              </Pressable>
+              <Pressable style={styles.appSettingsMenuItem} onPress={handleImportLeaderboardPress}>
+                <Text style={styles.appSettingsMenuItemLabel}>Import Leaderboard</Text>
+              </Pressable>
+              <Pressable style={styles.appSettingsMenuItem} onPress={handleOpenSaveManagerPress}>
+                <Text style={styles.appSettingsMenuItemLabel}>Save Manager</Text>
               </Pressable>
               <Pressable style={styles.appSettingsMenuItem} onPress={handleRebuildHelpPress}>
                 <Text style={styles.appSettingsMenuItemLabel}>How To Rebuild dist</Text>
@@ -1441,8 +1480,9 @@ const parseTypeMasterModeKey = (mode: string) => {
 const normalizeStoredQuizModeKey = (mode: string) => {
   if (mode.startsWith('endless:')) {
     const withoutEndless = mode.replace('endless:', '');
-    if (isJlptQuizMode(withoutEndless)) {
-      return `endless:${getQuizModeKey(withoutEndless, DEFAULT_JLPT_READING_MODE)}`;
+    const [baseMode, jlptReadingMode] = withoutEndless.split(':');
+    if (isJlptQuizMode(baseMode)) {
+      return `endless:${getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE)}`;
     }
     return mode;
   }
@@ -1451,7 +1491,10 @@ const normalizeStoredQuizModeKey = (mode: string) => {
     if (!parsed) return mode;
     return getTypeMasterModeKey(parsed.quizModeKey);
   }
-  return isJlptQuizMode(mode) ? getQuizModeKey(mode, DEFAULT_JLPT_READING_MODE) : mode;
+  const [baseMode, jlptReadingMode] = mode.split(':');
+  return isJlptQuizMode(baseMode)
+    ? getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE)
+    : mode;
 };
 
 const getQuizModeLabel = (mode: string) => {
@@ -1619,6 +1662,11 @@ function KanaQuizView() {
   const typemasterQueueRef = React.useRef<CharacterQueue | null>(null);
   const typemasterInputRef = React.useRef<TextInput | null>(null);
   const [focusedItems, setFocusedItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
+  const [isSaveManagerOpen, setIsSaveManagerOpen] = useState(false);
+  const [leaderboardSnapshots, setLeaderboardSnapshots] = useState<Array<{ id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }>>([]);
+  const [focusSnapshots, setFocusSnapshots] = useState<Array<{ id: string; name: string; createdAt: number; focusItems: any[] }>>([]);
+  const [leaderboardSnapshotName, setLeaderboardSnapshotName] = useState('');
+  const [focusSnapshotName, setFocusSnapshotName] = useState('');
 
   const focusDataset = useMemo(
     () => focusedItems.map(entry => ({ ...entry.item, __focusSourceMode: entry.sourceMode })),
@@ -1662,6 +1710,9 @@ function KanaQuizView() {
         ? focusedItems.filter(entry => entry.key !== key)
         : [...focusedItems, { key, sourceMode: resolvedSourceMode, item: plainItem }];
       await saveFocusedItems(next);
+      // Focus leaderboard session is tied to the current focus set; reset it whenever the set changes.
+      setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
+      setLastRecordUpdate(prev => (prev && isFocusModeKey(prev.mode) ? null : prev));
       if (quizMode === 'focus') {
         setQuizItems(shuffleQuiz(next.map(entry => ({ ...entry.item, __focusSourceMode: entry.sourceMode }))));
       }
@@ -1681,7 +1732,7 @@ function KanaQuizView() {
 
   const openJishoWord = useCallback(async (kanji: string) => {
     if (!kanji) return;
-    const url = `https://jisho.org/word/${encodeURIComponent(kanji)}`;
+    const url = `https://jisho.org/search/${encodeURIComponent(kanji)}`;
     try {
       await Linking.openURL(url);
     } catch {
@@ -1726,10 +1777,15 @@ function KanaQuizView() {
     if (quizMode !== 'focus') return;
     setQuizItems(shuffleQuiz(getDatasetForMode('focus')));
     setAnswers({});
+    setIsRunning(false);
     setHasFinished(false);
     setFinishReason(null);
     setCompletionTimeMs(null);
-  }, [getDatasetForMode, quizMode]);
+    setLastRecordUpdate(null);
+    setRemainingSeconds(timerMinutes * 60);
+    remainingSecondsRef.current = timerMinutes * 60;
+    timerDeadlineMsRef.current = null;
+  }, [getDatasetForMode, quizMode, timerMinutes]);
 
   useEffect(() => {
     if (!isJlptStyleMode) {
@@ -1861,11 +1917,163 @@ function KanaQuizView() {
     loadLeaderboard();
   }, [limitLeaderboardPerMode]);
 
-  const saveLeaderboardEntry = useCallback(async (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; timerMinutes?: number }) => {
-    if (isFocusModeKey(entry.mode)) {
-      return null;
+  useEffect(() => {
+    const loadSnapshots = async () => {
+      try {
+        const [leaderboardRaw, focusRaw] = await Promise.all([
+          AsyncStorage.getItem(QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY),
+          AsyncStorage.getItem(QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY),
+        ]);
+        const parsedLeaderboard = leaderboardRaw ? JSON.parse(leaderboardRaw) : [];
+        const parsedFocus = focusRaw ? JSON.parse(focusRaw) : [];
+        setLeaderboardSnapshots(
+          Array.isArray(parsedLeaderboard)
+            ? parsedLeaderboard
+                .filter(item => item && item.id && item.name)
+                .map(item => ({
+                  id: `${item.id}`,
+                  name: `${item.name}`,
+                  createdAt: Number(item.createdAt) || Date.now(),
+                  leaderboard: Array.isArray(item.leaderboard) ? item.leaderboard : [],
+                  sessionLeaderboard: Array.isArray(item.sessionLeaderboard) ? item.sessionLeaderboard : [],
+                }))
+            : [],
+        );
+        setFocusSnapshots(
+          Array.isArray(parsedFocus)
+            ? parsedFocus
+                .filter(item => item && item.id && item.name)
+                .map(item => ({
+                  id: `${item.id}`,
+                  name: `${item.name}`,
+                  createdAt: Number(item.createdAt) || Date.now(),
+                  focusItems: Array.isArray(item.focusItems) ? item.focusItems : [],
+                }))
+            : [],
+        );
+      } catch (err) {
+        console.error('Failed to load save snapshots:', err);
+      }
+    };
+    void loadSnapshots();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const openSaveManager = () => setIsSaveManagerOpen(true);
+    window.addEventListener(QUIZ_SAVE_MANAGER_OPEN_EVENT, openSaveManager as EventListener);
+    return () => {
+      window.removeEventListener(QUIZ_SAVE_MANAGER_OPEN_EVENT, openSaveManager as EventListener);
+    };
+  }, []);
+
+  const exportLeaderboardData = useCallback(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+      Alert.alert('Unavailable', 'Leaderboard export is only available in the web/extension view.');
+      return;
     }
     try {
+      const payload = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        storageKey: QUIZ_LEADERBOARD_STORAGE_KEY,
+        leaderboard,
+        sessionLeaderboard,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const stamp = formatDateKey(new Date()).replace(/-/g, '');
+      anchor.href = url;
+      anchor.download = `tensai-leaderboard-${stamp}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export leaderboard:', err);
+      Alert.alert('Export failed', 'Could not export leaderboard data.');
+    }
+  }, [leaderboard, sessionLeaderboard]);
+
+  const importLeaderboardData = useCallback(async () => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+      Alert.alert('Unavailable', 'Leaderboard import is only available in the web/extension view.');
+      return;
+    }
+
+    try {
+      const shouldReplace = window.confirm('Importing will replace the current saved leaderboard. Continue?');
+      if (!shouldReplace) return;
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/json,.json';
+      input.style.display = 'none';
+
+      input.onchange = async () => {
+        try {
+          const file = input.files?.[0];
+          if (!file) return;
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          const rawLeaderboard = Array.isArray(parsed)
+            ? parsed
+            : Array.isArray(parsed?.leaderboard)
+              ? parsed.leaderboard
+              : [];
+          const rawSessionLeaderboard = Array.isArray(parsed?.sessionLeaderboard)
+            ? parsed.sessionLeaderboard
+            : [];
+
+          const normalizedLeaderboard = limitLeaderboardPerMode(rawLeaderboard);
+          const normalizedSession = limitLeaderboardPerMode(rawSessionLeaderboard);
+
+          await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, JSON.stringify(normalizedLeaderboard));
+          setLeaderboard(normalizedLeaderboard);
+          setSessionLeaderboard(normalizedSession);
+          setIsLeaderboardEditMode(false);
+          Alert.alert('Import complete', `Loaded ${normalizedLeaderboard.length} leaderboard entries.`);
+        } catch (err) {
+          console.error('Failed to import leaderboard:', err);
+          Alert.alert('Import failed', 'The selected file is not a valid leaderboard export.');
+        } finally {
+          if (input.parentNode) {
+            input.parentNode.removeChild(input);
+          }
+        }
+      };
+
+      document.body.appendChild(input);
+      input.click();
+    } catch (err) {
+      console.error('Failed to open leaderboard import picker:', err);
+      Alert.alert('Import failed', 'Could not open file picker.');
+    }
+  }, [limitLeaderboardPerMode]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+
+    const handleExport = () => {
+      exportLeaderboardData();
+    };
+    const handleImport = () => {
+      void importLeaderboardData();
+    };
+
+    window.addEventListener(QUIZ_LEADERBOARD_EXPORT_EVENT, handleExport as EventListener);
+    window.addEventListener(QUIZ_LEADERBOARD_IMPORT_EVENT, handleImport as EventListener);
+
+    return () => {
+      window.removeEventListener(QUIZ_LEADERBOARD_EXPORT_EVENT, handleExport as EventListener);
+      window.removeEventListener(QUIZ_LEADERBOARD_IMPORT_EVENT, handleImport as EventListener);
+    };
+  }, [exportLeaderboardData, importLeaderboardData]);
+
+  const saveLeaderboardEntry = useCallback(async (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; timerMinutes?: number }) => {
+    try {
+      const isFocusEntry = isFocusModeKey(entry.mode);
       const normalizedEntry = {
         ...entry,
         timerMinutes: normalizeLeaderboardTimerMinutes(entry.timerMinutes),
@@ -1876,6 +2084,11 @@ function KanaQuizView() {
         const perModeTop10 = limitLeaderboardPerMode([...sessionToday, normalizedEntry]);
         return perModeTop10.filter(item => formatDateKey(new Date(item.date)) === todayKey);
       });
+
+      // Focus mode participates only in Current Session leaderboard (no persisted all-time storage).
+      if (isFocusEntry) {
+        return null;
+      }
 
       const stored = await AsyncStorage.getItem(QUIZ_LEADERBOARD_STORAGE_KEY);
       const current = stored ? JSON.parse(stored) : [];
@@ -1905,6 +2118,126 @@ function KanaQuizView() {
       return null;
     }
   }, [compareLeaderboardEntries, limitLeaderboardPerMode]);
+
+  const persistLeaderboardSnapshots = useCallback(async (next: Array<{ id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }>) => {
+    setLeaderboardSnapshots(next);
+    await AsyncStorage.setItem(QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  const persistFocusSnapshots = useCallback(async (next: Array<{ id: string; name: string; createdAt: number; focusItems: any[] }>) => {
+    setFocusSnapshots(next);
+    await AsyncStorage.setItem(QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  const createLeaderboardSnapshot = useCallback(async () => {
+    const name = leaderboardSnapshotName.trim();
+    if (!name) {
+      Alert.alert('Name required', 'Enter a name for the leaderboard save.');
+      return;
+    }
+    const snapshot = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      createdAt: Date.now(),
+      leaderboard: [...leaderboard],
+      sessionLeaderboard: [...sessionLeaderboard],
+    };
+    const next = [snapshot, ...leaderboardSnapshots].slice(0, 50);
+    try {
+      await persistLeaderboardSnapshots(next);
+      setLeaderboardSnapshotName('');
+    } catch (err) {
+      console.error('Failed to save leaderboard snapshot:', err);
+      Alert.alert('Save failed', 'Could not save leaderboard snapshot.');
+    }
+  }, [leaderboard, leaderboardSnapshotName, leaderboardSnapshots, persistLeaderboardSnapshots, sessionLeaderboard]);
+
+  const loadLeaderboardSnapshot = useCallback(async (snapshot: { id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }) => {
+    try {
+      const normalizedLeaderboard = limitLeaderboardPerMode(Array.isArray(snapshot.leaderboard) ? snapshot.leaderboard : []);
+      const normalizedSession = limitLeaderboardPerMode(Array.isArray(snapshot.sessionLeaderboard) ? snapshot.sessionLeaderboard : []);
+      setLeaderboard(normalizedLeaderboard);
+      setSessionLeaderboard(normalizedSession);
+      await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, JSON.stringify(normalizedLeaderboard));
+      setIsSaveManagerOpen(false);
+    } catch (err) {
+      console.error('Failed to load leaderboard snapshot:', err);
+      Alert.alert('Load failed', 'Could not load leaderboard snapshot.');
+    }
+  }, [limitLeaderboardPerMode]);
+
+  const deleteLeaderboardSnapshot = useCallback(async (snapshotId: string) => {
+    try {
+      await persistLeaderboardSnapshots(leaderboardSnapshots.filter(item => item.id !== snapshotId));
+    } catch (err) {
+      console.error('Failed to delete leaderboard snapshot:', err);
+      Alert.alert('Delete failed', 'Could not delete leaderboard snapshot.');
+    }
+  }, [leaderboardSnapshots, persistLeaderboardSnapshots]);
+
+  const createFocusSnapshot = useCallback(async () => {
+    const name = focusSnapshotName.trim();
+    if (!name) {
+      Alert.alert('Name required', 'Enter a name for the Focus save.');
+      return;
+    }
+    const snapshot = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      createdAt: Date.now(),
+      focusItems: focusedItems.map(item => ({
+        key: item.key,
+        sourceMode: item.sourceMode,
+        item: item.item,
+      })),
+    };
+    const next = [snapshot, ...focusSnapshots].slice(0, 100);
+    try {
+      await persistFocusSnapshots(next);
+      setFocusSnapshotName('');
+    } catch (err) {
+      console.error('Failed to save focus snapshot:', err);
+      Alert.alert('Save failed', 'Could not save Focus snapshot.');
+    }
+  }, [focusSnapshotName, focusSnapshots, focusedItems, persistFocusSnapshots]);
+
+  const loadFocusSnapshot = useCallback(async (snapshot: { id: string; name: string; createdAt: number; focusItems: any[] }) => {
+    try {
+      const cleaned = (Array.isArray(snapshot.focusItems) ? snapshot.focusItems : [])
+        .filter(entry => entry && entry.item && entry.sourceMode)
+        .map(entry => ({
+          key: entry.key || `${entry.sourceMode}:${entry.item?.id || entry.item?.kana || ''}`,
+          sourceMode: entry.sourceMode,
+          item: {
+            id: entry.item.id,
+            kana: entry.item.kana,
+            answers: Array.isArray(entry.item.answers) ? entry.item.answers : [],
+          },
+        }));
+      await saveFocusedItems(cleaned);
+      setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
+      if (quizMode === 'focus') {
+        setQuizItems(shuffleQuiz(cleaned.map(entry => ({ ...entry.item, __focusSourceMode: entry.sourceMode }))));
+        setAnswers({});
+        setHasFinished(false);
+        setFinishReason(null);
+        setCompletionTimeMs(null);
+      }
+      setIsSaveManagerOpen(false);
+    } catch (err) {
+      console.error('Failed to load focus snapshot:', err);
+      Alert.alert('Load failed', 'Could not load Focus snapshot.');
+    }
+  }, [quizMode, saveFocusedItems]);
+
+  const deleteFocusSnapshot = useCallback(async (snapshotId: string) => {
+    try {
+      await persistFocusSnapshots(focusSnapshots.filter(item => item.id !== snapshotId));
+    } catch (err) {
+      console.error('Failed to delete focus snapshot:', err);
+      Alert.alert('Delete failed', 'Could not delete Focus snapshot.');
+    }
+  }, [focusSnapshots, persistFocusSnapshots]);
 
   const getEntryIdentity = useCallback(
     (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number; typemasterQueueMode?: string }) =>
@@ -2561,9 +2894,10 @@ function KanaQuizView() {
     (id: string, text: string) => {
       const nextText = isJlptJapaneseInputMode ? sanitizeJapaneseInput(text) : text;
       if (!isRunning && !hasFinished) {
-        const startSeconds = remainingSeconds > 0 ? remainingSeconds : timerMinutes * 60;
+        const startSecondsRefValue = remainingSecondsRef.current;
+        const startSeconds = startSecondsRefValue > 0 ? startSecondsRefValue : timerMinutes * 60;
         const now = Date.now();
-        if (remainingSeconds <= 0) {
+        if (startSecondsRefValue <= 0) {
           setRemainingSeconds(startSeconds);
           remainingSecondsRef.current = startSeconds;
         }
@@ -2584,7 +2918,7 @@ function KanaQuizView() {
         return next;
       });
     },
-    [finalizeQuiz, focusNextAnswer, hasFinished, isCorrectAnswer, isJlptJapaneseInputMode, isRunning, quizItems, remainingSeconds, timerMinutes],
+    [finalizeQuiz, focusNextAnswer, hasFinished, isCorrectAnswer, isJlptJapaneseInputMode, isRunning, quizItems, timerMinutes],
   );
 
   const columns = useMemo(() => {
@@ -2663,17 +2997,18 @@ function KanaQuizView() {
   );
 
   return (
-    <ScrollView
-      style={styles.quizScroll}
-      contentContainerStyle={styles.quizContent}
-      onTouchStart={() => {
-        if (isJlptModeDropdownOpen) {
-          setIsJlptModeDropdownOpen(false);
-        }
-      }}
-    >
-      {/* Primary Nav Tabs */}
-      <View style={styles.quizNavBar}>
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={styles.quizScroll}
+        contentContainerStyle={styles.quizContent}
+        onTouchStart={() => {
+          if (isJlptModeDropdownOpen) {
+            setIsJlptModeDropdownOpen(false);
+          }
+        }}
+      >
+        {/* Primary Nav Tabs */}
+        <View style={styles.quizNavBar}>
         <View style={styles.quizNavTabs}>
           {QUIZ_VIEW_OPTIONS.map(option => {
             const selected = option.value === quizView;
@@ -2710,9 +3045,13 @@ function KanaQuizView() {
                     const nextMode = familyModes[0]?.value || QUIZ_MODES[0].value;
                     setQuizMode(nextMode);
                     setAnswers({});
+                    setIsRunning(false);
                     setHasFinished(false);
                     setFinishReason(null);
+                    setCompletionTimeMs(null);
                     setLastRecordUpdate(null);
+                    setRemainingSeconds(timerMinutes * 60);
+                    remainingSecondsRef.current = timerMinutes * 60;
                     timerDeadlineMsRef.current = null;
                     setQuizItems(shuffleQuiz(getDatasetForMode(nextMode)));
                   }}
@@ -2738,9 +3077,13 @@ function KanaQuizView() {
                     setIsJlptModeDropdownOpen(false);
                     setQuizItems(shuffleQuiz(getDatasetForMode(value)));
                     setAnswers({});
+                    setIsRunning(false);
                     setHasFinished(false);
                     setFinishReason(null);
+                    setCompletionTimeMs(null);
                     setLastRecordUpdate(null);
+                    setRemainingSeconds(timerMinutes * 60);
+                    remainingSecondsRef.current = timerMinutes * 60;
                     timerDeadlineMsRef.current = null;
                   }}
                 >
@@ -2776,10 +3119,13 @@ function KanaQuizView() {
                           setIsJlptModeDropdownOpen(false);
                           setJlptReadingMode(option.value);
                           setAnswers({});
+                          setIsRunning(false);
                           setHasFinished(false);
                           setFinishReason(null);
                           setCompletionTimeMs(null);
                           setLastRecordUpdate(null);
+                          setRemainingSeconds(timerMinutes * 60);
+                          remainingSecondsRef.current = timerMinutes * 60;
                           timerDeadlineMsRef.current = null;
                         }}
                       >
@@ -3865,8 +4211,103 @@ function KanaQuizView() {
             </View>
           ))
         )}
-      </View>
-    </ScrollView>
+        </View>
+      </ScrollView>
+
+      {isSaveManagerOpen ? (
+        <View style={styles.editModalOverlay}>
+          <View style={[styles.editModalPanel, { width: '92%', maxWidth: 980, maxHeight: '88%' }]}>
+            <View style={styles.editModalHeader}>
+              <Text style={styles.editModalTitle}>Save Manager</Text>
+              <Pressable onPress={() => setIsSaveManagerOpen(false)}>
+                <Text style={styles.editModalClose}>×</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView style={{ width: '100%' }} contentContainerStyle={{ paddingBottom: 8 }}>
+              <View style={[styles.featureCard, { marginBottom: 12 }]}>
+                <Text style={[styles.featureHeadline, { marginBottom: 8 }]}>Leaderboard Saves</Text>
+                <TextInput
+                  style={styles.calendarInput}
+                  placeholder="Save name (e.g. JLPT practice set A)"
+                  placeholderTextColor="#94A3B8"
+                  value={leaderboardSnapshotName}
+                  onChangeText={setLeaderboardSnapshotName}
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <Pressable style={styles.stagePrimaryButton} onPress={() => void createLeaderboardSnapshot()}>
+                    <Text style={styles.stagePrimaryLabel}>Save Current Leaderboards</Text>
+                  </Pressable>
+                </View>
+
+                <View style={{ marginTop: 10 }}>
+                  {leaderboardSnapshots.length === 0 ? (
+                    <Text style={styles.calendarNoteEmpty}>No leaderboard saves yet.</Text>
+                  ) : (
+                    leaderboardSnapshots.map(snapshot => (
+                      <View key={snapshot.id} style={[styles.calendarNoteCard, { marginBottom: 8 }]}>
+                        <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
+                        <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
+                        <Text style={styles.calendarNoteSource}>
+                          All-time: {snapshot.leaderboard.length} entries | Session: {snapshot.sessionLeaderboard.length} entries
+                        </Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                          <Pressable style={styles.stageSecondaryButton} onPress={() => void loadLeaderboardSnapshot(snapshot)}>
+                            <Text style={styles.stageSecondaryLabel}>Load</Text>
+                          </Pressable>
+                          <Pressable style={styles.quizStopButton} onPress={() => void deleteLeaderboardSnapshot(snapshot.id)}>
+                            <Text style={styles.quizStopButtonLabel}>Delete</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.featureCard}>
+                <Text style={[styles.featureHeadline, { marginBottom: 8 }]}>Focus State Saves</Text>
+                <TextInput
+                  style={styles.calendarInput}
+                  placeholder="Save name (e.g. Week 2 kanji set)"
+                  placeholderTextColor="#94A3B8"
+                  value={focusSnapshotName}
+                  onChangeText={setFocusSnapshotName}
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                  <Text style={styles.calendarNoteSource}>Current Focus items: {focusedItems.length}</Text>
+                  <Pressable style={styles.stagePrimaryButton} onPress={() => void createFocusSnapshot()}>
+                    <Text style={styles.stagePrimaryLabel}>Save Current Focus Set</Text>
+                  </Pressable>
+                </View>
+
+                <View style={{ marginTop: 10 }}>
+                  {focusSnapshots.length === 0 ? (
+                    <Text style={styles.calendarNoteEmpty}>No focus saves yet.</Text>
+                  ) : (
+                    focusSnapshots.map(snapshot => (
+                      <View key={snapshot.id} style={[styles.calendarNoteCard, { marginBottom: 8 }]}>
+                        <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
+                        <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
+                        <Text style={styles.calendarNoteSource}>Focus items: {snapshot.focusItems.length}</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                          <Pressable style={styles.stageSecondaryButton} onPress={() => void loadFocusSnapshot(snapshot)}>
+                            <Text style={styles.stageSecondaryLabel}>Load</Text>
+                          </Pressable>
+                          <Pressable style={styles.quizStopButton} onPress={() => void deleteFocusSnapshot(snapshot.id)}>
+                            <Text style={styles.quizStopButtonLabel}>Delete</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      ) : null}
+    </View>
   );
 }
 

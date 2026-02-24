@@ -136,7 +136,7 @@ function getAcceptedAnswers(item) {
   }
   if (state.readingMode === 'en_on_kun') {
     const meanings = (item.meanings || []).map(normalizeRomaji).filter(Boolean);
-    return meanings.length ? meanings : all;
+    return meanings;
   }
   return all;
 }
@@ -263,7 +263,10 @@ function render() {
   kanjiCell.textContent = state.current.kana;
   input.disabled = !state.running;
   if (state.showHints) {
-    input.placeholder = state.readingMode === 'en_on_kun' ? 'Type meaning...' : 'Type reading...';
+    const hints = getAcceptedAnswers(state.current);
+    input.placeholder = hints.length
+      ? `Type: ${hints.join('/')}`
+      : (state.readingMode === 'en_on_kun' ? 'No meaning data for this item' : 'Type reading...');
   } else {
     input.placeholder = '';
   }
