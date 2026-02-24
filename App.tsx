@@ -715,8 +715,8 @@ export default function App() {
   const handleUpdatePress = useCallback(() => {
     setIsSettingsOpen(false);
     Alert.alert(
-      'Update Extension',
-      'This reloads the extension so Chrome picks up rebuilt files in dist. If Full App is already open in a tab, you may still need to refresh/reopen that tab after reload.',
+      'Update Extension (Rebuild + Reload)',
+      'Run BuildDist.cmd from the project root first to rebuild dist, then use Reload Extension below. The extension page cannot run local .cmd scripts directly.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Reload Extension', onPress: handleExtensionReload },
@@ -728,7 +728,7 @@ export default function App() {
     setIsSettingsOpen(false);
     Alert.alert(
       'Rebuild Required For App.tsx Changes',
-      'To apply source changes, rebuild dist first: 1) npm install (once) 2) npm run build:extension 3) Reload extension in chrome://extensions',
+      'To apply source changes, run BuildDist.cmd from the project root, then reload the unpacked extension in chrome://extensions and reopen any existing quiz tab.',
     );
   }, []);
 
@@ -749,7 +749,7 @@ export default function App() {
       <View style={styles.mainContent}>
         <View style={styles.appTitleBar}>
           <View style={styles.appTitleBarRow}>
-            <Text style={styles.appTitleText}>Tensai TypeMaster v1.056</Text>
+            <Text style={styles.appTitleText}>Tensai TypeMaster v1.057</Text>
             <Pressable
               style={styles.appSettingsButton}
               onPress={() => setIsSettingsOpen(prev => !prev)}
@@ -760,7 +760,7 @@ export default function App() {
           {isSettingsOpen ? (
             <View style={styles.appSettingsMenu}>
               <Pressable style={styles.appSettingsMenuItem} onPress={handleUpdatePress}>
-                <Text style={styles.appSettingsMenuItemLabel}>Update (Reload Extension)</Text>
+                <Text style={styles.appSettingsMenuItemLabel}>Update (BuildDist + Reload)</Text>
               </Pressable>
               <Pressable style={styles.appSettingsMenuItem} onPress={handleExportLeaderboardPress}>
                 <Text style={styles.appSettingsMenuItemLabel}>Export Leaderboard</Text>
