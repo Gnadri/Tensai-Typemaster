@@ -749,7 +749,7 @@ export default function App() {
       <View style={styles.mainContent}>
         <View style={styles.appTitleBar}>
           <View style={styles.appTitleBarRow}>
-            <Text style={styles.appTitleText}>Tensai TypeMaster v1.057</Text>
+            <Text style={styles.appTitleText}>Tensai TypeMaster v1.0575</Text>
             <Pressable
               style={styles.appSettingsButton}
               onPress={() => setIsSettingsOpen(prev => !prev)}
