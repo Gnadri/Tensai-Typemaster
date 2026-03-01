@@ -445,6 +445,41 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 6,
   },
+  quizSplitTabGroup: {
+    position: 'relative',
+    zIndex: 35,
+  },
+  quizSplitTabMain: {
+    paddingRight: 24,
+  },
+  quizSplitTabToggle: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    bottom: 4,
+    width: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 0,
+    borderRadius: 4,
+  },
+  quizSplitTabToggleActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  quizSplitTabMenu: {
+    position: 'absolute',
+    top: '100%',
+    right: 0,
+    minWidth: 92,
+    marginTop: 6,
+    borderRadius: 8,
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: '#334155',
+    overflow: 'hidden',
+    zIndex: 60,
+    elevation: 9,
+  },
   quizSubNavTabActive: {
     backgroundColor: '#3b82f6',
   },
@@ -452,6 +487,10 @@ export const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 13,
     fontWeight: '600',
+  },
+  quizSplitTabChevron: {
+    fontSize: 9,
+    lineHeight: 10,
   },
   quizSubNavTabTextActive: {
     color: '#ffffff',
@@ -719,7 +758,7 @@ export const styles = StyleSheet.create({
   },
   quizTableBody: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
   },
   quizTableBodyTopAligned: {
     justifyContent: 'flex-start',

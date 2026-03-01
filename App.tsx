@@ -474,6 +474,126 @@ const JLPT_N4_KANJI_QUIZ = JLPT_N4_KANJI_SOURCE.split(/\s+/)
 const JLPT_N4_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
   Object.entries(JLPT_N4_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
 );
+const JLPT_N4_2_KANJI_SOURCE =
+  '春 夏 秋 冬 昼 夕 夜 雪 森 林 池 島 風 色 音 牛 犬 猫 鳥 兄 弟 妹 親 夫 婦 民 客 童 族 達 館 区 市 都 所 門 部 寺 室 堂 帰 去 乗 進 走 歩 登 回 歌 答 伝 借 買 払 洗 選 遊 待 降 困 散 写 注 寒 暑 冷 暗 軽 黒 悪 弱 太 短 早 首 顔 頭 紙 薬 肉 茶 洋 服 線 字 漢 験 勉 査 説 留 図 婚 産 旅 便 両 礼 然 全 組 点 番 味 由 予';
+const JLPT_N4_2_KANJI_DETAILS: Record<string, { readings: string[]; meanings: string[] }> = {
+  春: { readings: [], meanings: ['spring'] },
+  夏: { readings: [], meanings: ['summer'] },
+  秋: { readings: [], meanings: ['autumn'] },
+  冬: { readings: [], meanings: ['winter'] },
+  昼: { readings: [], meanings: ['daytime', 'noon'] },
+  夕: { readings: [], meanings: ['evening'] },
+  夜: { readings: [], meanings: ['night'] },
+  雪: { readings: [], meanings: ['snow'] },
+  森: { readings: [], meanings: ['forest'] },
+  林: { readings: [], meanings: ['woods'] },
+  池: { readings: [], meanings: ['pond'] },
+  島: { readings: [], meanings: ['island'] },
+  風: { readings: [], meanings: ['wind'] },
+  色: { readings: [], meanings: ['color'] },
+  音: { readings: [], meanings: ['sound'] },
+  牛: { readings: [], meanings: ['cow'] },
+  犬: { readings: [], meanings: ['dog'] },
+  猫: { readings: [], meanings: ['cat'] },
+  鳥: { readings: [], meanings: ['bird'] },
+  兄: { readings: [], meanings: ['older brother'] },
+  弟: { readings: [], meanings: ['younger brother'] },
+  妹: { readings: [], meanings: ['younger sister'] },
+  親: { readings: [], meanings: ['parent'] },
+  夫: { readings: [], meanings: ['husband'] },
+  婦: { readings: [], meanings: ['wife'] },
+  民: { readings: [], meanings: ['people'] },
+  客: { readings: [], meanings: ['guest'] },
+  童: { readings: [], meanings: ['child'] },
+  族: { readings: [], meanings: ['family', 'tribe'] },
+  達: { readings: [], meanings: ['plural', 'reach'] },
+  館: { readings: [], meanings: ['building', 'hall'] },
+  区: { readings: [], meanings: ['ward', 'district'] },
+  市: { readings: [], meanings: ['city', 'market'] },
+  都: { readings: [], meanings: ['capital', 'metropolis'] },
+  所: { readings: [], meanings: ['place'] },
+  門: { readings: [], meanings: ['gate'] },
+  部: { readings: [], meanings: ['section', 'department'] },
+  寺: { readings: [], meanings: ['temple'] },
+  室: { readings: [], meanings: ['room'] },
+  堂: { readings: [], meanings: ['hall'] },
+  帰: { readings: [], meanings: ['return'] },
+  去: { readings: [], meanings: ['leave', 'past'] },
+  乗: { readings: [], meanings: ['ride'] },
+  進: { readings: [], meanings: ['advance'] },
+  走: { readings: [], meanings: ['run'] },
+  歩: { readings: [], meanings: ['walk'] },
+  登: { readings: [], meanings: ['climb'] },
+  回: { readings: [], meanings: ['turn', 'times'] },
+  歌: { readings: [], meanings: ['song'] },
+  答: { readings: [], meanings: ['answer'] },
+  伝: { readings: [], meanings: ['convey'] },
+  借: { readings: [], meanings: ['borrow'] },
+  買: { readings: [], meanings: ['buy'] },
+  払: { readings: [], meanings: ['pay'] },
+  洗: { readings: [], meanings: ['wash'] },
+  選: { readings: [], meanings: ['choose'] },
+  遊: { readings: [], meanings: ['play'] },
+  待: { readings: [], meanings: ['wait'] },
+  降: { readings: [], meanings: ['descend', 'fall'] },
+  困: { readings: [], meanings: ['troubled'] },
+  散: { readings: [], meanings: ['scatter'] },
+  写: { readings: [], meanings: ['copy'] },
+  注: { readings: [], meanings: ['pour', 'note'] },
+  寒: { readings: [], meanings: ['cold'] },
+  暑: { readings: [], meanings: ['hot'] },
+  冷: { readings: [], meanings: ['cool', 'cold'] },
+  暗: { readings: [], meanings: ['dark'] },
+  軽: { readings: [], meanings: ['light'] },
+  黒: { readings: [], meanings: ['black'] },
+  悪: { readings: [], meanings: ['bad'] },
+  弱: { readings: [], meanings: ['weak'] },
+  太: { readings: [], meanings: ['thick', 'fat'] },
+  短: { readings: [], meanings: ['short'] },
+  早: { readings: [], meanings: ['early'] },
+  首: { readings: [], meanings: ['neck'] },
+  顔: { readings: [], meanings: ['face'] },
+  頭: { readings: [], meanings: ['head'] },
+  紙: { readings: [], meanings: ['paper'] },
+  薬: { readings: [], meanings: ['medicine'] },
+  肉: { readings: [], meanings: ['meat'] },
+  茶: { readings: [], meanings: ['tea'] },
+  洋: { readings: [], meanings: ['western'] },
+  服: { readings: [], meanings: ['clothes'] },
+  線: { readings: [], meanings: ['line'] },
+  字: { readings: [], meanings: ['character', 'letter'] },
+  漢: { readings: [], meanings: ['china'] },
+  験: { readings: [], meanings: ['test'] },
+  勉: { readings: [], meanings: ['diligence'] },
+  査: { readings: [], meanings: ['inspect', 'investigate'] },
+  説: { readings: [], meanings: ['explain'] },
+  留: { readings: [], meanings: ['stay'] },
+  図: { readings: [], meanings: ['diagram'] },
+  婚: { readings: [], meanings: ['marriage'] },
+  産: { readings: [], meanings: ['produce', 'give birth'] },
+  旅: { readings: [], meanings: ['trip'] },
+  便: { readings: [], meanings: ['convenience', 'mail'] },
+  両: { readings: [], meanings: ['both'] },
+  礼: { readings: [], meanings: ['thanks', 'courtesy'] },
+  然: { readings: [], meanings: ['so', 'natural'] },
+  全: { readings: [], meanings: ['all'] },
+  組: { readings: [], meanings: ['group'] },
+  点: { readings: [], meanings: ['point'] },
+  番: { readings: [], meanings: ['number', 'turn'] },
+  味: { readings: [], meanings: ['taste'] },
+  由: { readings: [], meanings: ['reason'] },
+  予: { readings: [], meanings: ['beforehand'] },
+};
+const JLPT_N4_2_KANJI_QUIZ = JLPT_N4_2_KANJI_SOURCE.split(/\s+/)
+  .filter(Boolean)
+  .map((kana, index) => ({
+    id: `n4_2_${`${index + 1}`.padStart(3, '0')}`,
+    kana,
+    answers: JLPT_N4_2_KANJI_DETAILS[kana]?.readings || [],
+  }));
+const JLPT_N4_2_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
+  Object.entries(JLPT_N4_2_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
+);
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 
 const addMonths = (date: Date, amount: number) => {
@@ -574,6 +694,13 @@ const shuffleQuiz = (items: any[]) => {
     [next[i], next[j]] = [next[j], next[i]];
   }
   return next;
+};
+const buildColumnBuckets = <T,>(items: T[], count: number): T[][] => {
+  const safeCount = Math.max(1, count);
+  const rowsPerColumn = Math.ceil(items.length / safeCount);
+  return Array.from({ length: safeCount }, (_, columnIndex) =>
+    items.slice(columnIndex * rowsPerColumn, (columnIndex + 1) * rowsPerColumn),
+  );
 };
 
 // Smart character queue for endless mode
@@ -749,7 +876,7 @@ export default function App() {
       <View style={styles.mainContent}>
         <View style={styles.appTitleBar}>
           <View style={styles.appTitleBarRow}>
-            <Text style={styles.appTitleText}>Tensai TypeMaster v1.0575</Text>
+            <Text style={styles.appTitleText}>Tensai TypeMaster v1.1</Text>
             <Pressable
               style={styles.appSettingsButton}
               onPress={() => setIsSettingsOpen(prev => !prev)}
@@ -1394,6 +1521,7 @@ const QUIZ_MODES = [
   { value: 'katakana', label: 'Katakana', tabLabel: 'Katakana', family: 'kana', dataset: KATAKANA_QUIZ },
   { value: 'jlpt_n5', label: 'JLPT N5 (On/Kun)', tabLabel: 'N5', family: 'jlpt', dataset: JLPT_N5_KANJI_QUIZ },
   { value: 'jlpt_n4', label: 'JLPT N4', tabLabel: 'N4', family: 'jlpt', dataset: JLPT_N4_KANJI_QUIZ },
+  { value: 'jlpt_n4_2', label: 'JLPT N4-2', tabLabel: 'N4-2', family: 'jlpt', dataset: JLPT_N4_2_KANJI_QUIZ },
   { value: 'focus', label: 'Focus', tabLabel: 'Focus', family: 'focus', dataset: [] },
 ];
 const JLPT_READING_MODES = [
@@ -1429,6 +1557,7 @@ const LEADERBOARD_GAME_OPTIONS = [
   { value: 'quiz', label: 'Quiz' },
   { value: 'typemaster', label: 'TypeMaster' },
 ];
+const JLPT_N4_VARIANT_VALUES = ['jlpt_n4', 'jlpt_n4_2'];
 
 const isJlptQuizMode = (mode: string) => mode.startsWith('jlpt_');
 
@@ -1575,16 +1704,21 @@ const getJlptAcceptedReadings = (item: any, jlptReadingMode: string) => {
 
 const isJlptEnglishTranslateMode = (jlptReadingMode: string) =>
   JLPT_ENGLISH_TRANSLATE_MODES.includes(jlptReadingMode);
-const getJlptAcceptedAnswers = (item: any, jlptReadingMode: string) => {
-  const englishMeanings = ([...(JLPT_N5_ENGLISH_MEANINGS[item.id] || []), ...(JLPT_N4_ENGLISH_MEANINGS_BY_KANA[item.kana] || [])])
+const getJlptEnglishMeaningsForItem = (item: any) =>
+  ([...(JLPT_N5_ENGLISH_MEANINGS[item.id] || []), ...(JLPT_N4_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N4_2_ENGLISH_MEANINGS_BY_KANA[item.kana] || [])])
     .map((value: string) => normalizeRomaji(value))
     .filter(Boolean);
+const getJlptAcceptedAnswers = (item: any, jlptReadingMode: string) => {
+  const englishMeanings = getJlptEnglishMeaningsForItem(item);
 
   if (isJlptEnglishTranslateMode(jlptReadingMode)) {
     return englishMeanings;
   }
+  if (jlptReadingMode === 'jp_on_kun_kanji' && !(item.answers || []).length && item.kana) {
+    return [item.kana];
+  }
   const readings = getJlptAcceptedReadings(item, jlptReadingMode);
-  // N4 entries currently do not have reading arrays; fall back to English meanings
+  // If a JLPT set only ships meanings, keep the prompt answerable.
   // so hints/answers are never blank in JLPT modes.
   if (!readings.length && englishMeanings.length) {
     return englishMeanings;
@@ -1599,6 +1733,10 @@ const getJlptPromptText = (item: any, jlptReadingMode: string) => {
     return item.kana;
   }
   if (jlptReadingMode === 'jp_on_kun_kanji') {
+    if (!(item.answers || []).length) {
+      const englishMeanings = getJlptEnglishMeaningsForItem(item);
+      return englishMeanings.length ? englishMeanings.join(' / ') : item.kana;
+    }
     return (item.answers || []).join(' / ');
   }
   return item.kana;
@@ -1645,6 +1783,7 @@ function KanaQuizView() {
   const [quizMode, setQuizMode] = useState(defaultQuizMode);
   const [jlptReadingMode, setJlptReadingMode] = useState(DEFAULT_JLPT_READING_MODE);
   const [isJlptModeDropdownOpen, setIsJlptModeDropdownOpen] = useState(false);
+  const [isJlptSetDropdownOpen, setIsJlptSetDropdownOpen] = useState(false);
   const [quizFamily, setQuizFamily] = useState(getQuizModeFamily(defaultQuizMode));
   const [leaderboardScope, setLeaderboardScope] = useState(LEADERBOARD_SCOPE_OPTIONS[0].value);
   const [leaderboardGameType, setLeaderboardGameType] = useState(LEADERBOARD_GAME_OPTIONS[0].value);
@@ -1821,6 +1960,7 @@ function KanaQuizView() {
   useEffect(() => {
     if (!isJlptStyleMode) {
       setIsJlptModeDropdownOpen(false);
+      setIsJlptSetDropdownOpen(false);
     }
   }, [isJlptStyleMode]);
 
@@ -1836,11 +1976,10 @@ function KanaQuizView() {
 
 
   const focusColumnBuckets = useMemo(() => {
-    const buckets = Array.from({ length: columnCount }, () => [] as string[]);
-    quizItems.forEach((item, index) => {
-      buckets[index % columnCount].push(item.id);
-    });
-    return buckets;
+    return buildColumnBuckets(
+      quizItems.map(item => item.id),
+      columnCount,
+    );
   }, [columnCount, quizItems]);
 
   const focusOrder = useMemo(() => focusColumnBuckets.flat(), [focusColumnBuckets]);
@@ -3155,11 +3294,7 @@ function KanaQuizView() {
   );
 
   const columns = useMemo(() => {
-    const buckets = Array.from({ length: columnCount }, () => []);
-    quizItems.forEach((item, index) => {
-      buckets[index % columnCount].push(item);
-    });
-    return buckets;
+    return buildColumnBuckets(quizItems, columnCount);
   }, [columnCount, quizItems]);
   const todayKey = formatDateKey(new Date());
   const activeLeaderboardModeKey = leaderboardGameType === 'typemaster'
@@ -3262,6 +3397,29 @@ function KanaQuizView() {
         .slice(0, 10),
     [compareLeaderboardEntries, completedModeLeaderboardSource, leaderboardScope, timerMinutes, todayKey, typemasterModeKey],
   );
+  const activeJlptN4Variant = JLPT_N4_VARIANT_VALUES.includes(quizMode) ? quizMode : JLPT_N4_VARIANT_VALUES[0];
+  const displayedFamilyModes = quizFamily === 'jlpt'
+    ? activeFamilyModes.filter(option => option.value !== 'jlpt_n4_2')
+    : activeFamilyModes;
+  const closeQuizDropdownMenus = () => {
+    setIsJlptModeDropdownOpen(false);
+    setIsJlptSetDropdownOpen(false);
+  };
+  const selectQuizMode = (nextMode: string) => {
+    if (isRunning) return;
+    setQuizMode(nextMode);
+    closeQuizDropdownMenus();
+    setQuizItems(shuffleQuiz(getDatasetForMode(nextMode)));
+    setAnswers({});
+    setIsRunning(false);
+    setHasFinished(false);
+    setFinishReason(null);
+    setCompletionTimeMs(null);
+    setLastRecordUpdate(null);
+    setRemainingSeconds(timerMinutes * 60);
+    remainingSecondsRef.current = timerMinutes * 60;
+    timerDeadlineMsRef.current = null;
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -3269,8 +3427,8 @@ function KanaQuizView() {
         style={styles.quizScroll}
         contentContainerStyle={styles.quizContent}
         onTouchStart={() => {
-          if (isJlptModeDropdownOpen) {
-            setIsJlptModeDropdownOpen(false);
+          if (isJlptModeDropdownOpen || isJlptSetDropdownOpen) {
+            closeQuizDropdownMenus();
           }
         }}
       >
@@ -3307,20 +3465,9 @@ function KanaQuizView() {
                   onPress={() => {
                     if (isRunning) return;
                     setQuizFamily(option.value);
-                    setIsJlptModeDropdownOpen(false);
                     const familyModes = getQuizModesForFamily(option.value);
                     const nextMode = familyModes[0]?.value || QUIZ_MODES[0].value;
-                    setQuizMode(nextMode);
-                    setAnswers({});
-                    setIsRunning(false);
-                    setHasFinished(false);
-                    setFinishReason(null);
-                    setCompletionTimeMs(null);
-                    setLastRecordUpdate(null);
-                    setRemainingSeconds(timerMinutes * 60);
-                    remainingSecondsRef.current = timerMinutes * 60;
-                    timerDeadlineMsRef.current = null;
-                    setQuizItems(shuffleQuiz(getDatasetForMode(nextMode)));
+                    selectQuizMode(nextMode);
                   }}
                 >
                   <Text style={[styles.quizSubNavTabText, selected && styles.quizSubNavTabTextActive]}>
@@ -3332,27 +3479,78 @@ function KanaQuizView() {
           </View>
           <View style={styles.quizSubNavDivider} />
           <View style={styles.quizSubNavTabs}>
-            {activeFamilyModes.map(({ value, tabLabel }) => {
+            {displayedFamilyModes.map(({ value, tabLabel }) => {
               const selected = value === quizMode;
+              if (value === 'jlpt_n4') {
+                const isN4Selected = JLPT_N4_VARIANT_VALUES.includes(quizMode);
+                return (
+                  <View
+                    key="jlpt-n4-split"
+                    style={styles.quizSplitTabGroup}
+                    onTouchStart={event => event.stopPropagation()}
+                  >
+                    <Pressable
+                      style={[
+                        styles.quizSubNavTab,
+                        styles.quizSplitTabMain,
+                        isN4Selected && styles.quizSubNavTabActive,
+                      ]}
+                      onPress={() => selectQuizMode(activeJlptN4Variant)}
+                    >
+                      <Text style={[styles.quizSubNavTabText, isN4Selected && styles.quizSubNavTabTextActive]}>
+                        N4
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.quizSubNavTab,
+                        styles.quizSplitTabToggle,
+                        isN4Selected && styles.quizSplitTabToggleActive,
+                      ]}
+                      onPress={() => {
+                        if (isRunning) return;
+                        setIsJlptModeDropdownOpen(false);
+                        setIsJlptSetDropdownOpen(prev => !prev);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.quizSubNavTabText,
+                          styles.quizSplitTabChevron,
+                          isN4Selected && styles.quizSubNavTabTextActive,
+                        ]}
+                      >
+                        {isJlptSetDropdownOpen ? '▲' : '▼'}
+                      </Text>
+                    </Pressable>
+                    {isJlptSetDropdownOpen ? (
+                      <View style={styles.quizSplitTabMenu}>
+                        {JLPT_N4_VARIANT_VALUES.map(variantValue => {
+                          const variantOption = QUIZ_MODES.find(mode => mode.value === variantValue);
+                          if (!variantOption) return null;
+                          const variantSelected = quizMode === variantValue;
+                          return (
+                            <Pressable
+                              key={variantValue}
+                              style={[styles.quizDropdownMenuItem, variantSelected && styles.quizDropdownMenuItemActive]}
+                              onPress={() => selectQuizMode(variantValue)}
+                            >
+                              <Text style={[styles.quizDropdownMenuItemText, variantSelected && styles.quizDropdownMenuItemTextActive]}>
+                                {variantOption.tabLabel}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              }
               return (
                 <Pressable
                   key={value}
                   style={[styles.quizSubNavTab, selected && styles.quizSubNavTabActive]}
-                  onPress={() => {
-                    if (isRunning) return;
-                    setQuizMode(value);
-                    setIsJlptModeDropdownOpen(false);
-                    setQuizItems(shuffleQuiz(getDatasetForMode(value)));
-                    setAnswers({});
-                    setIsRunning(false);
-                    setHasFinished(false);
-                    setFinishReason(null);
-                    setCompletionTimeMs(null);
-                    setLastRecordUpdate(null);
-                    setRemainingSeconds(timerMinutes * 60);
-                    remainingSecondsRef.current = timerMinutes * 60;
-                    timerDeadlineMsRef.current = null;
-                  }}
+                  onPress={() => selectQuizMode(value)}
                 >
                   <Text style={[styles.quizSubNavTabText, selected && styles.quizSubNavTabTextActive]}>
                     {tabLabel}
@@ -3366,7 +3564,10 @@ function KanaQuizView() {
               <Text style={styles.quizDropdownLabel}>JLPT Mode</Text>
               <Pressable
                 style={styles.quizDropdownTrigger}
-                onPress={() => setIsJlptModeDropdownOpen(prev => !prev)}
+                onPress={() => {
+                  setIsJlptSetDropdownOpen(false);
+                  setIsJlptModeDropdownOpen(prev => !prev);
+                }}
               >
                 <Text style={styles.quizDropdownTriggerText}>
                   {(JLPT_READING_MODES.find(option => option.value === jlptReadingMode) || JLPT_READING_MODES[0]).label}
