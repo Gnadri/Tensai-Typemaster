@@ -876,7 +876,7 @@ export default function App() {
       <View style={styles.mainContent}>
         <View style={styles.appTitleBar}>
           <View style={styles.appTitleBarRow}>
-            <Text style={styles.appTitleText}>Tensai TypeMaster v1.1</Text>
+            <Text style={styles.appTitleText}>Tensai TypeMaster v1.11</Text>
             <Pressable
               style={styles.appSettingsButton}
               onPress={() => setIsSettingsOpen(prev => !prev)}
@@ -1795,6 +1795,7 @@ function KanaQuizView() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [remainingSeconds, setRemainingSeconds] = useState(() => timerMinutes * 60);
   const [isRunning, setIsRunning] = useState(false);
+  const [isQuizPaused, setIsQuizPaused] = useState(false);
   const [hasFinished, setHasFinished] = useState(false);
   const [finishReason, setFinishReason] = useState<'time' | 'complete' | 'stopped' | null>(null);
   const [completionTimeMs, setCompletionTimeMs] = useState<number | null>(null);
@@ -1811,6 +1812,7 @@ function KanaQuizView() {
   const [endlessCurrentInput, setEndlessCurrentInput] = useState('');
   const [endlessVisibleChars, setEndlessVisibleChars] = useState<Array<{ id: string; item: any; position: number }>>([]);
   const [endlessIsRunning, setEndlessIsRunning] = useState(false);
+  const [isEndlessPaused, setIsEndlessPaused] = useState(false);
   const [endlessHasFinished, setEndlessHasFinished] = useState(false);
   const [endlessShowHints, setEndlessShowHints] = useState(true);
   const endlessQueueRef = React.useRef<CharacterQueue | null>(null);
@@ -1824,11 +1826,13 @@ function KanaQuizView() {
   const [typemasterQueueMode, setTypemasterQueueMode] = useState(DEFAULT_TYPEMASTER_QUEUE_MODE);
   const [typemasterBurstCursor, setTypemasterBurstCursor] = useState(0);
   const [typemasterIsRunning, setTypemasterIsRunning] = useState(false);
+  const [isTypemasterPaused, setIsTypemasterPaused] = useState(false);
   const [typemasterHasFinished, setTypemasterHasFinished] = useState(false);
   const [typemasterFinishReason, setTypemasterFinishReason] = useState<'time' | 'stopped' | null>(null);
   const [typemasterShowHints, setTypemasterShowHints] = useState(true);
   const typemasterQueueRef = React.useRef<CharacterQueue | null>(null);
   const typemasterInputRef = React.useRef<TextInput | null>(null);
+  const typemasterTimerWasArmedRef = React.useRef(false);
   const [focusedItems, setFocusedItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
   const [isSaveManagerOpen, setIsSaveManagerOpen] = useState(false);
   const [leaderboardSnapshots, setLeaderboardSnapshots] = useState<Array<{ id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }>>([]);
@@ -2683,6 +2687,7 @@ function KanaQuizView() {
       remainingSecondsRef.current = remainingSecondsAtFinish;
       setHasFinished(true);
       setIsRunning(false);
+      setIsQuizPaused(false);
       setFinishReason(reason);
       timerDeadlineMsRef.current = null;
 
@@ -2759,6 +2764,7 @@ function KanaQuizView() {
     setHasFinished(false);
     setFinishReason(null);
     setCompletionTimeMs(null);
+    setIsQuizPaused(false);
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
@@ -2766,8 +2772,30 @@ function KanaQuizView() {
     timerDeadlineMsRef.current = null;
   };
 
+  const pauseQuiz = () => {
+    if (!isRunning || hasFinished) return;
+    const remainingMs = timerDeadlineMsRef.current
+      ? Math.max(0, timerDeadlineMsRef.current - Date.now())
+      : Math.max(0, remainingSecondsRef.current * 1000);
+    const nextSeconds = Math.ceil(remainingMs / 1000);
+    setRemainingSeconds(nextSeconds);
+    remainingSecondsRef.current = nextSeconds;
+    setIsRunning(false);
+    setIsQuizPaused(true);
+    timerDeadlineMsRef.current = null;
+  };
+
+  const resumeQuiz = () => {
+    if (!isQuizPaused || hasFinished) return;
+    const startSeconds = remainingSecondsRef.current > 0 ? remainingSecondsRef.current : timerMinutes * 60;
+    timerDeadlineMsRef.current = Date.now() + startSeconds * 1000;
+    setIsRunning(true);
+    setIsQuizPaused(false);
+  };
+
   const resetQuiz = () => {
     setIsRunning(false);
+    setIsQuizPaused(false);
     setQuizItems(shuffleQuiz(getDatasetForMode(quizMode)));
     setAnswers({});
     setHasFinished(false);
@@ -2810,6 +2838,7 @@ function KanaQuizView() {
     setEndlessScore(0);
     setEndlessCurrentInput('');
     setEndlessIsRunning(true);
+    setIsEndlessPaused(false);
     setEndlessHasFinished(false);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
@@ -2829,6 +2858,7 @@ function KanaQuizView() {
       endlessAnimationRef.current = null;
     }
     setEndlessIsRunning(false);
+    setIsEndlessPaused(false);
     setEndlessHasFinished(false);
     setEndlessScore(0);
     setEndlessCurrentInput('');
@@ -2838,18 +2868,51 @@ function KanaQuizView() {
     timerDeadlineMsRef.current = null;
   }, [timerMinutes]);
 
+  const pauseEndlessMode = useCallback(() => {
+    if (!endlessIsRunning || endlessHasFinished) return;
+    if (endlessAnimationRef.current) {
+      cancelAnimationFrame(endlessAnimationRef.current);
+      endlessAnimationRef.current = null;
+    }
+    const remainingMs = timerDeadlineMsRef.current
+      ? Math.max(0, timerDeadlineMsRef.current - Date.now())
+      : Math.max(0, remainingSecondsRef.current * 1000);
+    const nextSeconds = Math.ceil(remainingMs / 1000);
+    setRemainingSeconds(nextSeconds);
+    remainingSecondsRef.current = nextSeconds;
+    setEndlessIsRunning(false);
+    setIsEndlessPaused(true);
+    timerDeadlineMsRef.current = null;
+  }, [endlessHasFinished, endlessIsRunning]);
+
+  const resumeEndlessMode = useCallback(() => {
+    if (!isEndlessPaused || endlessHasFinished) return;
+    const startSeconds = remainingSecondsRef.current > 0 ? remainingSecondsRef.current : timerMinutes * 60;
+    timerDeadlineMsRef.current = Date.now() + startSeconds * 1000;
+    setEndlessIsRunning(true);
+    setIsEndlessPaused(false);
+    setTimeout(() => {
+      if (endlessInputRef.current && typeof endlessInputRef.current.focus === 'function') {
+        endlessInputRef.current.focus();
+      }
+    }, 0);
+  }, [endlessHasFinished, isEndlessPaused, timerMinutes]);
+
   const stopEndlessMode = useCallback((reason: 'time' | 'stopped' = 'stopped') => {
     if (endlessAnimationRef.current) {
       cancelAnimationFrame(endlessAnimationRef.current);
       endlessAnimationRef.current = null;
     }
     setEndlessIsRunning(false);
+    setIsEndlessPaused(false);
     setEndlessHasFinished(true);
 
     // Save to leaderboard with 'endless' prefix
     const endlessModeKey = `endless:${activeModeKey}`;
     const timerTotalMs = timerMinutes * 60 * 1000;
-    const remainingMs = timerDeadlineMsRef.current ? Math.max(0, timerDeadlineMsRef.current - Date.now()) : 0;
+    const remainingMs = timerDeadlineMsRef.current
+      ? Math.max(0, timerDeadlineMsRef.current - Date.now())
+      : Math.max(0, remainingSecondsRef.current * 1000);
     const completionTimeMs = reason === 'time'
       ? timerTotalMs
       : Math.max(0, Math.min(timerTotalMs, timerTotalMs - remainingMs));
@@ -3030,12 +3093,14 @@ function KanaQuizView() {
     setTypemasterCurrentInput('');
     setTypemasterBurstCursor(0);
     setTypemasterIsRunning(true);
+    setIsTypemasterPaused(false);
     setTypemasterHasFinished(false);
     setTypemasterFinishReason(null);
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
     timerDeadlineMsRef.current = null;
+    typemasterTimerWasArmedRef.current = false;
 
     // Focus input field
     setTimeout(() => {
@@ -3047,6 +3112,7 @@ function KanaQuizView() {
 
   const resetTypemasterToSetup = useCallback(() => {
     setTypemasterIsRunning(false);
+    setIsTypemasterPaused(false);
     setTypemasterHasFinished(false);
     setTypemasterFinishReason(null);
     setLastRecordUpdate(null);
@@ -3057,10 +3123,43 @@ function KanaQuizView() {
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
     timerDeadlineMsRef.current = null;
+    typemasterTimerWasArmedRef.current = false;
   }, [timerMinutes]);
+
+  const pauseTypemasterMode = useCallback(() => {
+    if (!typemasterIsRunning || typemasterHasFinished) return;
+    const remainingMs = timerDeadlineMsRef.current
+      ? Math.max(0, timerDeadlineMsRef.current - Date.now())
+      : Math.max(0, remainingSecondsRef.current * 1000);
+    const nextSeconds = Math.ceil(remainingMs / 1000);
+    typemasterTimerWasArmedRef.current = Boolean(timerDeadlineMsRef.current);
+    setRemainingSeconds(nextSeconds);
+    remainingSecondsRef.current = nextSeconds;
+    setTypemasterIsRunning(false);
+    setIsTypemasterPaused(true);
+    timerDeadlineMsRef.current = null;
+  }, [typemasterHasFinished, typemasterIsRunning]);
+
+  const resumeTypemasterMode = useCallback(() => {
+    if (!isTypemasterPaused || typemasterHasFinished) return;
+    if (typemasterTimerWasArmedRef.current) {
+      const startSeconds = remainingSecondsRef.current > 0 ? remainingSecondsRef.current : timerMinutes * 60;
+      timerDeadlineMsRef.current = Date.now() + startSeconds * 1000;
+    } else {
+      timerDeadlineMsRef.current = null;
+    }
+    setTypemasterIsRunning(true);
+    setIsTypemasterPaused(false);
+    setTimeout(() => {
+      if (typemasterInputRef.current && typeof typemasterInputRef.current.focus === 'function') {
+        typemasterInputRef.current.focus();
+      }
+    }, 0);
+  }, [isTypemasterPaused, timerMinutes, typemasterHasFinished]);
 
   const stopTypemasterMode = useCallback((reason: 'time' | 'stopped' = 'stopped') => {
     setTypemasterIsRunning(false);
+    setIsTypemasterPaused(false);
     setTypemasterHasFinished(true);
     setTypemasterFinishReason(reason);
 
@@ -3094,6 +3193,7 @@ function KanaQuizView() {
     if (!typemasterIsRunning || timerDeadlineMsRef.current) return;
     const startSeconds = remainingSecondsRef.current > 0 ? remainingSecondsRef.current : timerMinutes * 60;
     timerDeadlineMsRef.current = Date.now() + startSeconds * 1000;
+    typemasterTimerWasArmedRef.current = true;
     // Kick the visible countdown immediately so the timer appears to start on first input.
     const nextRemaining = Math.max(0, Math.ceil((timerDeadlineMsRef.current - Date.now()) / 1000));
     setRemainingSeconds(nextRemaining);
@@ -3264,6 +3364,7 @@ function KanaQuizView() {
 
   const handleAnswerChange = useCallback(
     (id: string, text: string) => {
+      if (isQuizPaused) return;
       const nextText = isJlptJapaneseInputMode ? sanitizeJapaneseInput(text) : text;
       if (!isRunning && !hasFinished) {
         const startSecondsRefValue = remainingSecondsRef.current;
@@ -3290,7 +3391,7 @@ function KanaQuizView() {
         return next;
       });
     },
-    [finalizeQuiz, focusNextAnswer, hasFinished, isCorrectAnswer, isJlptJapaneseInputMode, isRunning, quizItems, timerMinutes],
+    [finalizeQuiz, focusNextAnswer, hasFinished, isCorrectAnswer, isJlptJapaneseInputMode, isQuizPaused, isRunning, quizItems, timerMinutes],
   );
 
   const columns = useMemo(() => {
@@ -3352,6 +3453,10 @@ function KanaQuizView() {
       ? getJlptAcceptedAnswers(typemasterCurrentTarget.item, jlptReadingMode).join('/')
       : typemasterCurrentTarget.item.answers.join('/'))
     : 'Start to begin...';
+  const quizPromptHidden = quizView === 'quiz' && isQuizPaused && !hasFinished;
+  const quizPrimaryActionLabel = isRunning ? 'Pause Quiz' : isQuizPaused ? 'Resume Quiz' : 'Play Quiz';
+  const endlessPrimaryActionLabel = endlessIsRunning ? 'Pause Endless' : isEndlessPaused ? 'Resume Endless' : 'Play Endless';
+  const typemasterPrimaryActionLabel = typemasterIsRunning ? 'Pause TypeMaster' : isTypemasterPaused ? 'Resume TypeMaster' : 'Play TypeMaster';
   const activeFamilyModes = getQuizModesForFamily(quizFamily);
   const promptColumnLabel = isJlptJapaneseInputMode ? 'Romaji Reading' : isKanjiStudyMode ? 'Kanji' : 'Kana';
   const answerColumnLabel = isJlptJapaneseInputMode
@@ -3412,6 +3517,11 @@ function KanaQuizView() {
     setQuizItems(shuffleQuiz(getDatasetForMode(nextMode)));
     setAnswers({});
     setIsRunning(false);
+    setIsQuizPaused(false);
+    setEndlessIsRunning(false);
+    setIsEndlessPaused(false);
+    setTypemasterIsRunning(false);
+    setIsTypemasterPaused(false);
     setHasFinished(false);
     setFinishReason(null);
     setCompletionTimeMs(null);
@@ -3419,6 +3529,7 @@ function KanaQuizView() {
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
     timerDeadlineMsRef.current = null;
+    typemasterTimerWasArmedRef.current = false;
   };
 
   return (
@@ -3588,6 +3699,7 @@ function KanaQuizView() {
                           setJlptReadingMode(option.value);
                           setAnswers({});
                           setIsRunning(false);
+                          setIsQuizPaused(false);
                           setHasFinished(false);
                           setFinishReason(null);
                           setCompletionTimeMs(null);
@@ -3695,8 +3807,11 @@ function KanaQuizView() {
               <View style={styles.quizActionButtonsRow}>
                 {quizView === 'endless' ? (
                   <>
-                    <Pressable style={styles.quizPlayButton} onPress={startEndlessMode}>
-                      <Text style={styles.quizPlayButtonLabel}>Play Endless</Text>
+                    <Pressable
+                      style={styles.quizPlayButton}
+                      onPress={endlessIsRunning ? pauseEndlessMode : isEndlessPaused ? resumeEndlessMode : startEndlessMode}
+                    >
+                      <Text style={styles.quizPlayButtonLabel}>{endlessPrimaryActionLabel}</Text>
                     </Pressable>
                     <Pressable style={styles.quizStopButton} onPress={() => stopEndlessMode('stopped')}>
                       <Text style={styles.quizStopButtonLabel}>Stop</Text>
@@ -3704,8 +3819,11 @@ function KanaQuizView() {
                   </>
                 ) : quizView === 'typemaster' ? (
                   <>
-                    <Pressable style={styles.quizPlayButton} onPress={startTypemasterMode}>
-                      <Text style={styles.quizPlayButtonLabel}>Play TypeMaster</Text>
+                    <Pressable
+                      style={styles.quizPlayButton}
+                      onPress={typemasterIsRunning ? pauseTypemasterMode : isTypemasterPaused ? resumeTypemasterMode : startTypemasterMode}
+                    >
+                      <Text style={styles.quizPlayButtonLabel}>{typemasterPrimaryActionLabel}</Text>
                     </Pressable>
                     <Pressable style={styles.quizStopButton} onPress={() => stopTypemasterMode('stopped')}>
                       <Text style={styles.quizStopButtonLabel}>Stop</Text>
@@ -3713,8 +3831,11 @@ function KanaQuizView() {
                   </>
                 ) : (
                   <>
-                    <Pressable style={styles.quizPlayButton} onPress={startQuiz}>
-                      <Text style={styles.quizPlayButtonLabel}>Play Quiz</Text>
+                    <Pressable
+                      style={styles.quizPlayButton}
+                      onPress={isRunning ? pauseQuiz : isQuizPaused ? resumeQuiz : startQuiz}
+                    >
+                      <Text style={styles.quizPlayButtonLabel}>{quizPrimaryActionLabel}</Text>
                     </Pressable>
                     <Pressable style={styles.quizStopButton} onPress={stopQuiz}>
                       <Text style={styles.quizStopButtonLabel}>Stop</Text>
@@ -4642,7 +4763,7 @@ function KanaQuizView() {
                           isJlptJapaneseInputMode ? { alignItems: 'flex-start' } : null,
                         ]}
                       >
-                        {shouldShowJlptKanjiInfo ? (
+                        {shouldShowJlptKanjiInfo && !quizPromptHidden ? (
                           <Pressable
                             onPress={() => openJishoWord(item.kana)}
                             style={styles.quizKanjiInfoButton}
@@ -4653,7 +4774,7 @@ function KanaQuizView() {
                         ) : null}
                         <Pressable
                           onPress={() => {
-                            if (!isKanjiStudyMode) return;
+                            if (!isKanjiStudyMode || quizPromptHidden) return;
                             void toggleFocusedItem(item);
                           }}
                         >
@@ -4663,7 +4784,7 @@ function KanaQuizView() {
                               isJlptJapaneseInputMode && styles.quizKanaTextWide,
                             ]}
                           >
-                            {isJlptStyleMode ? getJlptPromptText(item, jlptReadingMode) : item.kana}
+                            {quizPromptHidden ? 'Paused' : isJlptStyleMode ? getJlptPromptText(item, jlptReadingMode) : item.kana}
                           </Text>
                         </Pressable>
                       </View>
@@ -4680,7 +4801,7 @@ function KanaQuizView() {
                           : null,
                       ]}
                       value={answers[item.id] || ''}
-                      editable={!hasFinished}
+                      editable={!hasFinished && !isQuizPaused}
                       autoCapitalize="none"
                       autoCorrect={false}
                       maxLength={isJlptJapaneseInputMode ? 2 : 40}
