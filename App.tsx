@@ -73,6 +73,7 @@ const DEFAULT_SOURCE = CALENDAR_SOURCE_OPTIONS[0].value;
 
 const CALENDAR_NOTES_STORAGE_KEY = 'tensai-note.calendar.local';
 const QUIZ_LEADERBOARD_STORAGE_KEY = 'tensai-note.quiz-leaderboard.v1';
+const QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY = 'tensai-note.quiz-leaderboard-scores-enabled.v1';
 const QUIZ_FOCUS_STORAGE_KEY = 'tensai-note.quiz-focus.v1';
 const QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-leaderboard-snapshots.v1';
 const QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-focus-snapshots.v1';
@@ -98,6 +99,17 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const QUIZ_TIMER_MIN_MINUTES = 1;
 const QUIZ_TIMER_MAX_MINUTES = 30;
+const QUIZ_SCORE_MAX = 10_000_000;
+const QUIZ_SCORE_CHARS_PER_WORD = 5;
+const QUIZ_SCORE_PEAK_MIN_WPM = 40;
+const QUIZ_SCORE_PEAK_MULT = 1.15;
+const QUIZ_SCORE_PEAK_MAX_WPM = 180;
+const QUIZ_SCORE_SHAPE_A = 7.5;
+const QUIZ_SCORE_WPM_PEAK = 180;
+const QUIZ_SCORE_SPEED_WEIGHT = 2.2;
+const QUIZ_SCORE_TIMER_WEIGHT = 1.2;
+const QUIZ_SCORE_TIMER_CURVE = 0.7;
+const QUIZ_SCORE_BACKSPACE_PENALTY = 0.045;
 
 const KATAKANA_QUIZ = [
   { id: 'ka', kana: 'カ', answers: ['ka'] },
@@ -193,6 +205,156 @@ const HIRAGANA_QUIZ = [
   { id: 'u', kana: 'う', answers: ['u'] },
   { id: 'e', kana: 'え', answers: ['e'] },
   { id: 'o', kana: 'お', answers: ['o'] },
+];
+
+const HIRAGANA_DAKUTEN_HANDAKUTEN_QUIZ = [
+  { id: 'ga', kana: 'ãŒ', answers: ['ga'] },
+  { id: 'gi', kana: 'ãŽ', answers: ['gi'] },
+  { id: 'gu', kana: 'ã', answers: ['gu'] },
+  { id: 'ge', kana: 'ã’', answers: ['ge'] },
+  { id: 'go', kana: 'ã”', answers: ['go'] },
+  { id: 'za', kana: 'ã–', answers: ['za'] },
+  { id: 'ji', kana: 'ã˜', answers: ['ji', 'zi'] },
+  { id: 'zu', kana: 'ãš', answers: ['zu'] },
+  { id: 'ze', kana: 'ãœ', answers: ['ze'] },
+  { id: 'zo', kana: 'ãž', answers: ['zo'] },
+  { id: 'da', kana: 'ã ', answers: ['da'] },
+  { id: 'di', kana: 'ã¢', answers: ['ji', 'di'] },
+  { id: 'du', kana: 'ã¥', answers: ['zu', 'du'] },
+  { id: 'de', kana: 'ã§', answers: ['de'] },
+  { id: 'do', kana: 'ã©', answers: ['do'] },
+  { id: 'ba', kana: 'ã°', answers: ['ba'] },
+  { id: 'bi', kana: 'ã³', answers: ['bi'] },
+  { id: 'bu', kana: 'ã¶', answers: ['bu'] },
+  { id: 'be', kana: 'ã¹', answers: ['be'] },
+  { id: 'bo', kana: 'ã¼', answers: ['bo'] },
+  { id: 'pa', kana: 'ã±', answers: ['pa'] },
+  { id: 'pi', kana: 'ã´', answers: ['pi'] },
+  { id: 'pu', kana: 'ã·', answers: ['pu'] },
+  { id: 'pe', kana: 'ãº', answers: ['pe'] },
+  { id: 'po', kana: 'ã½', answers: ['po'] },
+];
+
+const KATAKANA_DAKUTEN_HANDAKUTEN_QUIZ = [
+  { id: 'ga', kana: 'ã‚¬', answers: ['ga'] },
+  { id: 'gi', kana: 'ã‚®', answers: ['gi'] },
+  { id: 'gu', kana: 'ã‚°', answers: ['gu'] },
+  { id: 'ge', kana: 'ã‚²', answers: ['ge'] },
+  { id: 'go', kana: 'ã‚´', answers: ['go'] },
+  { id: 'za', kana: 'ã‚¶', answers: ['za'] },
+  { id: 'ji', kana: 'ã‚¸', answers: ['ji', 'zi'] },
+  { id: 'zu', kana: 'ã‚º', answers: ['zu'] },
+  { id: 'ze', kana: 'ã‚¼', answers: ['ze'] },
+  { id: 'zo', kana: 'ã‚¾', answers: ['zo'] },
+  { id: 'da', kana: 'ãƒ€', answers: ['da'] },
+  { id: 'di', kana: 'ãƒ‚', answers: ['ji', 'di'] },
+  { id: 'du', kana: 'ãƒ…', answers: ['zu', 'du'] },
+  { id: 'de', kana: 'ãƒ‡', answers: ['de'] },
+  { id: 'do', kana: 'ãƒ‰', answers: ['do'] },
+  { id: 'ba', kana: 'ãƒ', answers: ['ba'] },
+  { id: 'bi', kana: 'ãƒ“', answers: ['bi'] },
+  { id: 'bu', kana: 'ãƒ–', answers: ['bu'] },
+  { id: 'be', kana: 'ãƒ™', answers: ['be'] },
+  { id: 'bo', kana: 'ãƒœ', answers: ['bo'] },
+  { id: 'pa', kana: 'ãƒ‘', answers: ['pa'] },
+  { id: 'pi', kana: 'ãƒ”', answers: ['pi'] },
+  { id: 'pu', kana: 'ãƒ—', answers: ['pu'] },
+  { id: 'pe', kana: 'ãƒš', answers: ['pe'] },
+  { id: 'po', kana: 'ãƒ', answers: ['po'] },
+];
+
+const HIRAGANA_DAKUTEN_HANDAKUTEN_CLEAN_QUIZ = [
+  { id: 'ga', kana: 'が', answers: ['ga'] },
+  { id: 'gi', kana: 'ぎ', answers: ['gi'] },
+  { id: 'gu', kana: 'ぐ', answers: ['gu'] },
+  { id: 'ge', kana: 'げ', answers: ['ge'] },
+  { id: 'go', kana: 'ご', answers: ['go'] },
+  { id: 'za', kana: 'ざ', answers: ['za'] },
+  { id: 'ji', kana: 'じ', answers: ['ji', 'zi'] },
+  { id: 'zu', kana: 'ず', answers: ['zu'] },
+  { id: 'ze', kana: 'ぜ', answers: ['ze'] },
+  { id: 'zo', kana: 'ぞ', answers: ['zo'] },
+  { id: 'da', kana: 'だ', answers: ['da'] },
+  { id: 'di', kana: 'ぢ', answers: ['ji', 'di'] },
+  { id: 'du', kana: 'づ', answers: ['zu', 'du'] },
+  { id: 'de', kana: 'で', answers: ['de'] },
+  { id: 'do', kana: 'ど', answers: ['do'] },
+  { id: 'ba', kana: 'ば', answers: ['ba'] },
+  { id: 'bi', kana: 'び', answers: ['bi'] },
+  { id: 'bu', kana: 'ぶ', answers: ['bu'] },
+  { id: 'be', kana: 'べ', answers: ['be'] },
+  { id: 'bo', kana: 'ぼ', answers: ['bo'] },
+  { id: 'pa', kana: 'ぱ', answers: ['pa'] },
+  { id: 'pi', kana: 'ぴ', answers: ['pi'] },
+  { id: 'pu', kana: 'ぷ', answers: ['pu'] },
+  { id: 'pe', kana: 'ぺ', answers: ['pe'] },
+  { id: 'po', kana: 'ぽ', answers: ['po'] },
+  { id: 'ya', kana: 'や', answers: ['ya'] },
+  { id: 'yu', kana: 'ゆ', answers: ['yu'] },
+  { id: 'yo', kana: 'よ', answers: ['yo'] },
+  { id: 'small_ya', kana: 'ゃ', answers: ['xya', 'lya'] },
+  { id: 'small_yu', kana: 'ゅ', answers: ['xyu', 'lyu'] },
+  { id: 'small_yo', kana: 'ょ', answers: ['xyo', 'lyo'] },
+  { id: 'small_tsu', kana: 'っ', answers: ['xtsu', 'xtu', 'ltsu', 'ltu'] },
+  { id: 'sha', kana: 'しゃ', answers: ['sha', 'sya'] },
+  { id: 'shu', kana: 'しゅ', answers: ['shu', 'syu'] },
+  { id: 'sho', kana: 'しょ', answers: ['sho', 'syo'] },
+  { id: 'hya', kana: 'ひゃ', answers: ['hya'] },
+  { id: 'hyu', kana: 'ひゅ', answers: ['hyu'] },
+  { id: 'hyo', kana: 'ひょ', answers: ['hyo'] },
+  { id: 'bya', kana: 'びゃ', answers: ['bya'] },
+  { id: 'byu', kana: 'びゅ', answers: ['byu'] },
+  { id: 'byo', kana: 'びょ', answers: ['byo'] },
+  { id: 'pya', kana: 'ぴゃ', answers: ['pya'] },
+  { id: 'pyu', kana: 'ぴゅ', answers: ['pyu'] },
+  { id: 'pyo', kana: 'ぴょ', answers: ['pyo'] },
+];
+
+const KATAKANA_DAKUTEN_HANDAKUTEN_CLEAN_QUIZ = [
+  { id: 'ga', kana: 'ガ', answers: ['ga'] },
+  { id: 'gi', kana: 'ギ', answers: ['gi'] },
+  { id: 'gu', kana: 'グ', answers: ['gu'] },
+  { id: 'ge', kana: 'ゲ', answers: ['ge'] },
+  { id: 'go', kana: 'ゴ', answers: ['go'] },
+  { id: 'za', kana: 'ザ', answers: ['za'] },
+  { id: 'ji', kana: 'ジ', answers: ['ji', 'zi'] },
+  { id: 'zu', kana: 'ズ', answers: ['zu'] },
+  { id: 'ze', kana: 'ゼ', answers: ['ze'] },
+  { id: 'zo', kana: 'ゾ', answers: ['zo'] },
+  { id: 'da', kana: 'ダ', answers: ['da'] },
+  { id: 'di', kana: 'ヂ', answers: ['ji', 'di'] },
+  { id: 'du', kana: 'ヅ', answers: ['zu', 'du'] },
+  { id: 'de', kana: 'デ', answers: ['de'] },
+  { id: 'do', kana: 'ド', answers: ['do'] },
+  { id: 'ba', kana: 'バ', answers: ['ba'] },
+  { id: 'bi', kana: 'ビ', answers: ['bi'] },
+  { id: 'bu', kana: 'ブ', answers: ['bu'] },
+  { id: 'be', kana: 'ベ', answers: ['be'] },
+  { id: 'bo', kana: 'ボ', answers: ['bo'] },
+  { id: 'pa', kana: 'パ', answers: ['pa'] },
+  { id: 'pi', kana: 'ピ', answers: ['pi'] },
+  { id: 'pu', kana: 'プ', answers: ['pu'] },
+  { id: 'pe', kana: 'ペ', answers: ['pe'] },
+  { id: 'po', kana: 'ポ', answers: ['po'] },
+  { id: 'ya', kana: 'ヤ', answers: ['ya'] },
+  { id: 'yu', kana: 'ユ', answers: ['yu'] },
+  { id: 'yo', kana: 'ヨ', answers: ['yo'] },
+  { id: 'small_ya', kana: 'ャ', answers: ['xya', 'lya'] },
+  { id: 'small_yu', kana: 'ュ', answers: ['xyu', 'lyu'] },
+  { id: 'small_yo', kana: 'ョ', answers: ['xyo', 'lyo'] },
+  { id: 'small_tsu', kana: 'ッ', answers: ['xtsu', 'xtu', 'ltsu', 'ltu'] },
+  { id: 'sha', kana: 'シャ', answers: ['sha', 'sya'] },
+  { id: 'shu', kana: 'シュ', answers: ['shu', 'syu'] },
+  { id: 'sho', kana: 'ショ', answers: ['sho', 'syo'] },
+  { id: 'hya', kana: 'ヒャ', answers: ['hya'] },
+  { id: 'hyu', kana: 'ヒュ', answers: ['hyu'] },
+  { id: 'hyo', kana: 'ヒョ', answers: ['hyo'] },
+  { id: 'bya', kana: 'ビャ', answers: ['bya'] },
+  { id: 'byu', kana: 'ビュ', answers: ['byu'] },
+  { id: 'byo', kana: 'ビョ', answers: ['byo'] },
+  { id: 'pya', kana: 'ピャ', answers: ['pya'] },
+  { id: 'pyu', kana: 'ピュ', answers: ['pyu'] },
+  { id: 'pyo', kana: 'ピョ', answers: ['pyo'] },
 ];
 
 const JLPT_N5_KANJI_QUIZ = [
@@ -789,6 +951,7 @@ const initialCalendarForm = () => ({
 
 export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [leaderboardScoresEnabled, setLeaderboardScoresEnabled] = useState(false);
 
   const dispatchLeaderboardSettingsEvent = useCallback((eventName: string) => {
     setIsSettingsOpen(false);
@@ -851,12 +1014,28 @@ export default function App() {
     );
   }, [handleExtensionReload]);
 
-  const handleRebuildHelpPress = useCallback(() => {
-    setIsSettingsOpen(false);
-    Alert.alert(
-      'Rebuild Required For App.tsx Changes',
-      'To apply source changes, run BuildDist.cmd from the project root, then reload the unpacked extension in chrome://extensions and reopen any existing quiz tab.',
-    );
+  useEffect(() => {
+    const loadLeaderboardScoreSetting = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY);
+        if (stored != null) {
+          setLeaderboardScoresEnabled(stored === 'true');
+        }
+      } catch (err) {
+        console.error('Failed to load leaderboard score toggle:', err);
+      }
+    };
+    void loadLeaderboardScoreSetting();
+  }, []);
+
+  const handleToggleScoresPress = useCallback(() => {
+    setLeaderboardScoresEnabled(prev => {
+      const next = !prev;
+      void AsyncStorage.setItem(QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY, next ? 'true' : 'false').catch(err => {
+        console.error('Failed to persist leaderboard score toggle:', err);
+      });
+      return next;
+    });
   }, []);
 
   const handleExportLeaderboardPress = useCallback(() => {
@@ -876,7 +1055,7 @@ export default function App() {
       <View style={styles.mainContent}>
         <View style={styles.appTitleBar}>
           <View style={styles.appTitleBarRow}>
-            <Text style={styles.appTitleText}>Tensai TypeMaster v1.11</Text>
+            <Text style={styles.appTitleText}>Tensai TypeMaster</Text>
             <Pressable
               style={styles.appSettingsButton}
               onPress={() => setIsSettingsOpen(prev => !prev)}
@@ -898,14 +1077,16 @@ export default function App() {
               <Pressable style={styles.appSettingsMenuItem} onPress={handleOpenSaveManagerPress}>
                 <Text style={styles.appSettingsMenuItemLabel}>Save Manager</Text>
               </Pressable>
-              <Pressable style={styles.appSettingsMenuItem} onPress={handleRebuildHelpPress}>
-                <Text style={styles.appSettingsMenuItemLabel}>How To Rebuild dist</Text>
+              <Pressable style={styles.appSettingsMenuItem} onPress={handleToggleScoresPress}>
+                <Text style={styles.appSettingsMenuItemLabel}>
+                  Toggle Scores ({leaderboardScoresEnabled ? 'On' : 'Off'})
+                </Text>
               </Pressable>
             </View>
           ) : null}
         </View>
         <View style={styles.quizPageFrame}>
-          <KanaQuizView />
+          <KanaQuizView leaderboardScoresEnabled={leaderboardScoresEnabled} />
         </View>
       </View>
     </View>
@@ -1518,7 +1699,9 @@ function InsightsView({ notes, sourceSlices, onDelete, loading, onEdit }) {
 
 const QUIZ_MODES = [
   { value: 'hiragana', label: 'Hiragana', tabLabel: 'Hiragana', family: 'kana', dataset: HIRAGANA_QUIZ },
+  { value: 'hiragana_dakuten', label: 'Hiragana - Dakuten/Handakuten', tabLabel: 'Dakuten/Handakuten', family: 'kana', dataset: HIRAGANA_DAKUTEN_HANDAKUTEN_CLEAN_QUIZ },
   { value: 'katakana', label: 'Katakana', tabLabel: 'Katakana', family: 'kana', dataset: KATAKANA_QUIZ },
+  { value: 'katakana_dakuten', label: 'Katakana - Dakuten/Handakuten', tabLabel: 'Dakuten/Handakuten', family: 'kana', dataset: KATAKANA_DAKUTEN_HANDAKUTEN_CLEAN_QUIZ },
   { value: 'jlpt_n5', label: 'JLPT N5 (On/Kun)', tabLabel: 'N5', family: 'jlpt', dataset: JLPT_N5_KANJI_QUIZ },
   { value: 'jlpt_n4', label: 'JLPT N4', tabLabel: 'N4', family: 'jlpt', dataset: JLPT_N4_KANJI_QUIZ },
   { value: 'jlpt_n4_2', label: 'JLPT N4-2', tabLabel: 'N4-2', family: 'jlpt', dataset: JLPT_N4_2_KANJI_QUIZ },
@@ -1557,6 +1740,14 @@ const LEADERBOARD_GAME_OPTIONS = [
   { value: 'quiz', label: 'Quiz' },
   { value: 'typemaster', label: 'TypeMaster' },
 ];
+const LEADERBOARD_RANK_OPTIONS = [
+  { value: 'time', label: 'Time' },
+  { value: 'score', label: 'Score' },
+];
+const KANA_VARIANT_OPTIONS = {
+  hiragana: ['hiragana', 'hiragana_dakuten'],
+  katakana: ['katakana', 'katakana_dakuten'],
+};
 const JLPT_N4_VARIANT_VALUES = ['jlpt_n4', 'jlpt_n4_2'];
 
 const isJlptQuizMode = (mode: string) => mode.startsWith('jlpt_');
@@ -1749,6 +1940,10 @@ const getFinishReasonLabel = (reason: string) => {
   return 'Complete';
 };
 
+const clampNumber = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+const getQuizTotalChars = (items: Array<{ kana?: string }>) =>
+  items.reduce((sum, it) => sum + (it.kana ? it.kana.length : 0), 0);
+const isEndlessModeKey = (mode: string) => typeof mode === 'string' && mode.startsWith('endless:');
 const isTypeMasterModeKey = (mode: string) => typeof mode === 'string' && mode.startsWith('typemaster:');
 
 const getLeaderboardFinishReasonLabel = (entry: { mode: string; finishReason?: string }) => {
@@ -1770,13 +1965,46 @@ const getLeaderboardModeDisplayLabel = (entry: { mode: string; typemasterQueueMo
   return `${baseLabel} (${queueLabel})`;
 };
 
+const getLeaderboardRankScore = (entry: { score: number; gamepoints?: number; scoreType?: string }) => {
+  if (entry.scoreType === 'quiz_points') {
+    return Math.round(entry.gamepoints ?? entry.score ?? 0);
+  }
+  return Math.round(entry.score ?? 0);
+};
+
+const getLeaderboardTestscoreDisplay = (entry: { mode: string; score: number; total: number; scoreType?: string; correctCount?: number; gamepoints?: number; testscore?: number; totalTestscore?: number }) => {
+  if (entry.scoreType === 'quiz_points') {
+    if (typeof entry.testscore === 'number' && typeof entry.totalTestscore === 'number') {
+      return `${entry.testscore}/${entry.totalTestscore}`;
+    }
+    if (typeof entry.correctCount === 'number') {
+      return `${entry.correctCount}/${entry.total}`;
+    }
+    if (entry.score <= entry.total) {
+      return `${entry.score}/${entry.total}`;
+    }
+    return `${getLeaderboardRankScore(entry).toLocaleString()}`;
+  }
+  if (isEndlessModeKey(entry.mode) || isTypeMasterModeKey(entry.mode) || entry.score === entry.total) {
+    return `${Math.round(entry.score).toLocaleString()}`;
+  }
+  return `${entry.score}/${entry.total}`;
+};
+
+const getLeaderboardGamepointsDisplay = (entry: { scoreType?: string; gamepoints?: number }) => {
+  if (entry.scoreType !== 'quiz_points' || typeof entry.gamepoints !== 'number') {
+    return null;
+  }
+  return `Pts ${entry.gamepoints.toLocaleString()}`;
+};
+
 const normalizeLeaderboardTimerMinutes = (value: any) => {
   const parsed = Number.parseInt(`${value}`, 10);
   if (Number.isNaN(parsed)) return 5;
   return Math.max(QUIZ_TIMER_MIN_MINUTES, Math.min(QUIZ_TIMER_MAX_MINUTES, parsed));
 };
 
-function KanaQuizView() {
+function KanaQuizView({ leaderboardScoresEnabled = false }) {
   const defaultQuizMode = useMemo(() => getDefaultQuizModeForWeb(), []);
   const defaultQuizView = useMemo(() => getDefaultQuizViewForWeb(), []);
   const [quizView, setQuizView] = useState(defaultQuizView);
@@ -1784,9 +2012,11 @@ function KanaQuizView() {
   const [jlptReadingMode, setJlptReadingMode] = useState(DEFAULT_JLPT_READING_MODE);
   const [isJlptModeDropdownOpen, setIsJlptModeDropdownOpen] = useState(false);
   const [isJlptSetDropdownOpen, setIsJlptSetDropdownOpen] = useState(false);
+  const [openKanaDropdownBase, setOpenKanaDropdownBase] = useState<string | null>(null);
   const [quizFamily, setQuizFamily] = useState(getQuizModeFamily(defaultQuizMode));
   const [leaderboardScope, setLeaderboardScope] = useState(LEADERBOARD_SCOPE_OPTIONS[0].value);
   const [leaderboardGameType, setLeaderboardGameType] = useState(LEADERBOARD_GAME_OPTIONS[0].value);
+  const [leaderboardRankMode, setLeaderboardRankMode] = useState(LEADERBOARD_RANK_OPTIONS[0].value);
   const [timerMinutes, setTimerMinutes] = useState(1);
   const [customMinutes, setCustomMinutes] = useState('1');
   const [quizItems, setQuizItems] = useState(() =>
@@ -1803,6 +2033,7 @@ function KanaQuizView() {
   const [lastRecordUpdate, setLastRecordUpdate] = useState<{ mode: string; isNewRecord: boolean; rank: number | null } | null>(null);
   const [leaderboard, setLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped' }>>([]);
   const [sessionLeaderboard, setSessionLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped' }>>([]);
+  const [quizBackspaceCount, setQuizBackspaceCount] = useState(0);
   const inputRefs = React.useRef<Record<string, TextInput | null>>({});
   const timerDeadlineMsRef = React.useRef<number | null>(null);
   const remainingSecondsRef = React.useRef(remainingSeconds);
@@ -1835,6 +2066,7 @@ function KanaQuizView() {
   const typemasterTimerWasArmedRef = React.useRef(false);
   const [focusedItems, setFocusedItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
   const [isSaveManagerOpen, setIsSaveManagerOpen] = useState(false);
+  const [saveManagerTab, setSaveManagerTab] = useState<'focus' | 'leaderboard'>('focus');
   const [leaderboardSnapshots, setLeaderboardSnapshots] = useState<Array<{ id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }>>([]);
   const [focusSnapshots, setFocusSnapshots] = useState<Array<{ id: string; name: string; createdAt: number; focusItems: any[]; focusLeaderboard?: any[] }>>([]);
   const [activeFocusSnapshotId, setActiveFocusSnapshotId] = useState<string | null>(null);
@@ -1842,17 +2074,59 @@ function KanaQuizView() {
   const [focusSnapshotName, setFocusSnapshotName] = useState('');
 
   const focusDataset = useMemo(
-    () => focusedItems.map(entry => ({ ...entry.item, __focusSourceMode: entry.sourceMode })),
+    () =>
+      focusedItems.map(entry => ({
+        ...entry.item,
+        id: entry.key,
+        __focusSourceMode: entry.sourceMode,
+        __focusOriginalId: entry.item.id,
+      })),
     [focusedItems],
   );
   const focusLookup = useMemo(() => new Set(focusedItems.map(entry => entry.key)), [focusedItems]);
   const getFocusItemKey = useCallback((item: any, sourceMode: string) => {
-    const idPart = item?.id || item?.kana || '';
+    const idPart = item?.__focusOriginalId || item?.id || item?.kana || '';
     return `${sourceMode}:${idPart}`;
   }, []);
   const getItemSourceMode = useCallback(
     (item: any) => item?.__focusSourceMode || (quizMode === 'focus' ? 'jlpt_n4' : quizMode),
     [quizMode],
+  );
+  const isJlptStyleItem = useCallback(
+    (item: any, sourceMode?: string) => isJlptQuizMode(sourceMode || getItemSourceMode(item)),
+    [getItemSourceMode],
+  );
+  const usesJapaneseInputForItem = useCallback(
+    (item: any, sourceMode?: string) => isJlptStyleItem(item, sourceMode) && jlptReadingMode === 'jp_on_kun_kanji',
+    [isJlptStyleItem, jlptReadingMode],
+  );
+  const getAcceptedAnswersForItem = useCallback(
+    (item: any, sourceMode?: string) => {
+      const resolvedSourceMode = sourceMode || getItemSourceMode(item);
+      if (isJlptQuizMode(resolvedSourceMode)) {
+        if (usesJapaneseInputForItem(item, resolvedSourceMode)) {
+          return [item.kana];
+        }
+        const jlptAccepted = getJlptAcceptedAnswers(item, jlptReadingMode);
+        return jlptAccepted.length ? jlptAccepted : [item.kana];
+      }
+      return (item.answers || []).map((value: string) => normalizeRomaji(value));
+    },
+    [getItemSourceMode, jlptReadingMode, usesJapaneseInputForItem],
+  );
+  const getPromptTextForItem = useCallback(
+    (item: any, sourceMode?: string) => {
+      const resolvedSourceMode = sourceMode || getItemSourceMode(item);
+      return isJlptQuizMode(resolvedSourceMode) ? getJlptPromptText(item, jlptReadingMode) : item.kana;
+    },
+    [getItemSourceMode, jlptReadingMode],
+  );
+  const getHintTextForItem = useCallback(
+    (item: any, sourceMode?: string) => {
+      const accepted = getAcceptedAnswersForItem(item, sourceMode);
+      return accepted.length ? accepted.join('/') : '';
+    },
+    [getAcceptedAnswersForItem],
   );
   const isFocusedItem = useCallback(
     (item: any, sourceMode?: string) => {
@@ -1874,7 +2148,7 @@ function KanaQuizView() {
       const resolvedSourceMode = sourceMode || getItemSourceMode(item);
       const key = getFocusItemKey(item, resolvedSourceMode);
       const plainItem = {
-        id: item.id,
+        id: item.__focusOriginalId || item.id,
         kana: item.kana,
         answers: Array.isArray(item.answers) ? item.answers : [],
       };
@@ -1888,7 +2162,16 @@ function KanaQuizView() {
       setLastRecordUpdate(prev => (prev && isFocusModeKey(prev.mode) ? null : prev));
       void persistActiveFocusSnapshotId(null);
       if (quizMode === 'focus') {
-        setQuizItems(shuffleQuiz(next.map(entry => ({ ...entry.item, __focusSourceMode: entry.sourceMode }))));
+        setQuizItems(
+          shuffleQuiz(
+            next.map(entry => ({
+              ...entry.item,
+              id: entry.key,
+              __focusSourceMode: entry.sourceMode,
+              __focusOriginalId: entry.item.id,
+            })),
+          ),
+        );
       }
     },
     [focusedItems, getFocusItemKey, getItemSourceMode, persistActiveFocusSnapshotId, quizMode, saveFocusedItems],
@@ -1896,10 +2179,10 @@ function KanaQuizView() {
 
   const isJlptMode = isJlptQuizMode(quizMode);
   const isFocusMode = quizMode === 'focus';
-  const isJlptStyleMode = isJlptMode || isFocusMode;
-  const isJlptJapaneseInputMode = isJlptStyleMode && jlptReadingMode === 'jp_on_kun_kanji';
-  const isJlptEnglishMode = isJlptStyleMode && isJlptEnglishTranslateMode(jlptReadingMode);
-  const isKanjiStudyMode = isJlptStyleMode;
+  const shouldShowJlptModeControls = isJlptMode || isFocusMode;
+  const isJlptJapaneseInputMode = isJlptMode && jlptReadingMode === 'jp_on_kun_kanji';
+  const isJlptEnglishMode = isJlptMode && isJlptEnglishTranslateMode(jlptReadingMode);
+  const isKanjiStudyMode = isJlptMode || isFocusMode;
   const shouldShowJlptKanjiInfo = isKanjiStudyMode && !isJlptJapaneseInputMode;
   const activeModeKey = getQuizModeKey(quizMode, jlptReadingMode);
   const columnCount = isJlptJapaneseInputMode ? 4 : 5;
@@ -1955,6 +2238,7 @@ function KanaQuizView() {
     setHasFinished(false);
     setFinishReason(null);
     setCompletionTimeMs(null);
+    setQuizBackspaceCount(0);
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
@@ -1962,11 +2246,17 @@ function KanaQuizView() {
   }, [getDatasetForMode, quizMode, timerMinutes]);
 
   useEffect(() => {
-    if (!isJlptStyleMode) {
+    if (!shouldShowJlptModeControls) {
       setIsJlptModeDropdownOpen(false);
       setIsJlptSetDropdownOpen(false);
     }
-  }, [isJlptStyleMode]);
+  }, [shouldShowJlptModeControls]);
+
+  useEffect(() => {
+    if (quizFamily !== 'kana') {
+      setOpenKanaDropdownBase(null);
+    }
+  }, [quizFamily]);
 
   useEffect(() => {
     remainingSecondsRef.current = remainingSeconds;
@@ -1977,6 +2267,12 @@ function KanaQuizView() {
       setLeaderboardScope('session');
     }
   }, [leaderboardScope, quizMode]);
+
+  useEffect(() => {
+    if (!leaderboardScoresEnabled && leaderboardRankMode !== 'time') {
+      setLeaderboardRankMode('time');
+    }
+  }, [leaderboardRankMode, leaderboardScoresEnabled]);
 
 
   const focusColumnBuckets = useMemo(() => {
@@ -2008,19 +2304,10 @@ function KanaQuizView() {
 
   const acceptedLookup = useMemo(() => {
     return quizItems.reduce<Record<string, string[]>>((acc, item) => {
-      if (isJlptStyleMode) {
-        if (isJlptJapaneseInputMode) {
-          acc[item.id] = [item.kana];
-        } else {
-          const jlptAccepted = getJlptAcceptedAnswers(item, jlptReadingMode);
-          acc[item.id] = jlptAccepted.length ? jlptAccepted : [item.kana];
-        }
-      } else {
-        acc[item.id] = item.answers.map((value: string) => normalizeRomaji(value));
-      }
+      acc[item.id] = getAcceptedAnswersForItem(item);
       return acc;
     }, {});
-  }, [isJlptJapaneseInputMode, isJlptStyleMode, jlptReadingMode, quizItems]);
+  }, [getAcceptedAnswersForItem, quizItems]);
 
   const isCorrectAnswer = useCallback(
     (id: string, value: string) => {
@@ -2041,12 +2328,29 @@ function KanaQuizView() {
     [acceptedLookup, isJlptJapaneseInputMode],
   );
 
-  const compareLeaderboardEntries = useCallback(
+  const compareLeaderboardEntriesByTime = useCallback(
     (
       a: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped' },
       b: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped' },
     ) => {
+      const aComplete = (a.finishReason || 'complete') === 'complete' ? 1 : 0;
+      const bComplete = (b.finishReason || 'complete') === 'complete' ? 1 : 0;
+      if (bComplete !== aComplete) return bComplete - aComplete;
+      if (a.timeMs !== b.timeMs) return a.timeMs - b.timeMs;
       if (b.score !== a.score) return b.score - a.score;
+      return a.date - b.date;
+    },
+    [],
+  );
+
+  const compareLeaderboardEntriesByScore = useCallback(
+    (
+      a: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped' },
+      b: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped' },
+    ) => {
+      const aRankScore = getLeaderboardRankScore(a as any);
+      const bRankScore = getLeaderboardRankScore(b as any);
+      if (bRankScore !== aRankScore) return bRankScore - aRankScore;
       const aComplete = (a.finishReason || 'complete') === 'complete' ? 1 : 0;
       const bComplete = (b.finishReason || 'complete') === 'complete' ? 1 : 0;
       if (bComplete !== aComplete) return bComplete - aComplete;
@@ -2054,6 +2358,14 @@ function KanaQuizView() {
       return a.date - b.date;
     },
     [],
+  );
+
+  const activeLeaderboardComparator = useMemo(
+    () =>
+      leaderboardScoresEnabled && leaderboardRankMode === 'score'
+        ? compareLeaderboardEntriesByScore
+        : compareLeaderboardEntriesByTime,
+    [compareLeaderboardEntriesByScore, compareLeaderboardEntriesByTime, leaderboardRankMode, leaderboardScoresEnabled],
   );
 
   const limitLeaderboardPerMode = useCallback(
@@ -2071,13 +2383,31 @@ function KanaQuizView() {
         {},
       );
       return Object.values(byMode).flatMap(modeEntries =>
-        modeEntries
-          .map(entry => ({ ...entry, finishReason: entry.finishReason || 'complete' }))
-          .sort(compareLeaderboardEntries)
-          .slice(0, 10),
+        {
+          const normalizedEntries = modeEntries.map(entry => ({ ...entry, finishReason: entry.finishReason || 'complete' }));
+          const topTimeEntries = [...normalizedEntries].sort(compareLeaderboardEntriesByTime).slice(0, 10);
+          const topScoreEntries = [...normalizedEntries].sort(compareLeaderboardEntriesByScore).slice(0, 10);
+          const keptEntries = [...topTimeEntries];
+          topScoreEntries.forEach(entry => {
+            const alreadyIncluded = keptEntries.some(candidate =>
+              candidate.date === entry.date &&
+              candidate.timeMs === entry.timeMs &&
+              candidate.score === entry.score &&
+              candidate.total === entry.total &&
+              candidate.mode === entry.mode &&
+              normalizeLeaderboardTimerMinutes(candidate.timerMinutes) === normalizeLeaderboardTimerMinutes(entry.timerMinutes) &&
+              (candidate.finishReason || 'complete') === (entry.finishReason || 'complete') &&
+              (candidate.typemasterQueueMode || '') === (entry.typemasterQueueMode || '')
+            );
+            if (!alreadyIncluded) {
+              keptEntries.push(entry);
+            }
+          });
+          return keptEntries;
+        },
       );
     },
-    [compareLeaderboardEntries],
+    [compareLeaderboardEntriesByScore, compareLeaderboardEntriesByTime],
   );
 
   useEffect(() => {
@@ -2314,7 +2644,7 @@ function KanaQuizView() {
         .filter(item => normalizeStoredQuizModeKey(item?.mode) === normalizedEntry.mode)
         .filter(item => normalizeLeaderboardTimerMinutes(item?.timerMinutes) === normalizedEntry.timerMinutes)
         .map(item => ({ ...item, finishReason: item.finishReason || 'complete', timerMinutes: normalizeLeaderboardTimerMinutes(item?.timerMinutes) }))
-        .sort(compareLeaderboardEntries);
+        .sort(compareLeaderboardEntriesByTime);
       const previousTop = currentModeEntries.length ? currentModeEntries[0] : null;
       const updated = Array.isArray(current) ? [...current, normalizedEntry] : [normalizedEntry];
       const perModeTop10 = limitLeaderboardPerMode(updated);
@@ -2324,7 +2654,7 @@ function KanaQuizView() {
         .filter(item => item?.mode === normalizedEntry.mode)
         .filter(item => normalizeLeaderboardTimerMinutes(item?.timerMinutes) === normalizedEntry.timerMinutes)
         .map(item => ({ ...item, finishReason: item.finishReason || 'complete', timerMinutes: normalizeLeaderboardTimerMinutes(item?.timerMinutes) }))
-        .sort(compareLeaderboardEntries);
+        .sort(compareLeaderboardEntriesByTime);
       const rankIndex = updatedModeEntries.findIndex(item => item?.date === normalizedEntry.date);
       return {
         isNewRecord: rankIndex === 0 && (!previousTop || previousTop.date !== normalizedEntry.date),
@@ -2334,7 +2664,7 @@ function KanaQuizView() {
       console.error('Failed to save leaderboard entry:', err);
       return null;
     }
-  }, [compareLeaderboardEntries, limitLeaderboardPerMode, persistActiveFocusSnapshotLeaderboard, sessionLeaderboard]);
+  }, [compareLeaderboardEntriesByTime, limitLeaderboardPerMode, persistActiveFocusSnapshotLeaderboard, sessionLeaderboard]);
 
   const persistLeaderboardSnapshots = useCallback(async (next: Array<{ id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }>) => {
     setLeaderboardSnapshots(next);
@@ -2513,6 +2843,26 @@ function KanaQuizView() {
     }
   }, [leaderboardSnapshots, persistLeaderboardSnapshots]);
 
+  const confirmAction = useCallback(
+    (title: string, message: string) =>
+      new Promise<boolean>(resolve => {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          resolve(window.confirm(message));
+          return;
+        }
+        Alert.alert(
+          title,
+          message,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Yes', onPress: () => resolve(true) },
+          ],
+          { cancelable: true, onDismiss: () => resolve(false) },
+        );
+      }),
+    [],
+  );
+
   const createFocusSnapshot = useCallback(async () => {
     const name = focusSnapshotName.trim();
     if (!name) {
@@ -2541,6 +2891,43 @@ function KanaQuizView() {
     }
   }, [focusSnapshotName, focusSnapshots, focusedItems, persistActiveFocusSnapshotId, persistFocusSnapshots, sessionLeaderboard]);
 
+  const overwriteFocusSnapshot = useCallback(async (snapshotId: string) => {
+    const targetSnapshot = focusSnapshots.find(item => item.id === snapshotId);
+    if (!targetSnapshot) {
+      Alert.alert('Overwrite failed', 'That Focus save no longer exists.');
+      return;
+    }
+
+    const confirmed = await confirmAction(
+      'Overwrite Focus Save',
+      `Overwrite "${targetSnapshot.name}" with the currently loaded Focus items? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    const nextSnapshots = focusSnapshots.map(snapshot =>
+      snapshot.id === snapshotId
+        ? {
+            ...snapshot,
+            createdAt: Date.now(),
+            focusItems: focusedItems.map(item => ({
+              key: item.key,
+              sourceMode: item.sourceMode,
+              item: item.item,
+            })),
+            focusLeaderboard: sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)),
+          }
+        : snapshot,
+    );
+
+    try {
+      await persistFocusSnapshots(nextSnapshots);
+      await persistActiveFocusSnapshotId(snapshotId);
+    } catch (err) {
+      console.error('Failed to overwrite focus snapshot:', err);
+      Alert.alert('Overwrite failed', 'Could not overwrite Focus snapshot.');
+    }
+  }, [confirmAction, focusSnapshots, focusedItems, persistActiveFocusSnapshotId, persistFocusSnapshots, sessionLeaderboard]);
+
   const loadFocusSnapshot = useCallback(async (snapshot: { id: string; name: string; createdAt: number; focusItems: any[]; focusLeaderboard?: any[] }) => {
     try {
       const cleaned = (Array.isArray(snapshot.focusItems) ? snapshot.focusItems : [])
@@ -2565,7 +2952,16 @@ function KanaQuizView() {
       ]);
       await persistActiveFocusSnapshotId(snapshot.id);
       if (quizMode === 'focus') {
-        setQuizItems(shuffleQuiz(cleaned.map(entry => ({ ...entry.item, __focusSourceMode: entry.sourceMode }))));
+        setQuizItems(
+          shuffleQuiz(
+            cleaned.map(entry => ({
+              ...entry.item,
+              id: entry.key,
+              __focusSourceMode: entry.sourceMode,
+              __focusOriginalId: entry.item.id,
+            })),
+          ),
+        );
         setAnswers({});
         setHasFinished(false);
         setFinishReason(null);
@@ -2625,7 +3021,8 @@ function KanaQuizView() {
 
   const requestDeleteLeaderboardEntry = useCallback(
     (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped' }) => {
-      const message = `Remove ${formatMilliseconds(entry.timeMs)} (${entry.score}/${entry.total}) from leaderboard?`;
+      const scoreDetails = leaderboardScoresEnabled ? ` (${getLeaderboardTestscoreDisplay(entry)})` : '';
+      const message = `Remove ${formatMilliseconds(entry.timeMs)}${scoreDetails} from leaderboard?`;
       if (Platform.OS === 'web') {
         const confirmed = typeof window !== 'undefined' ? window.confirm(message) : false;
         if (confirmed) {
@@ -2642,33 +3039,98 @@ function KanaQuizView() {
         ],
       );
     },
-    [deleteLeaderboardEntry],
+    [deleteLeaderboardEntry, leaderboardScoresEnabled],
   );
 
-  const calculateScoreFromAnswers = useCallback(
+  const calculateCorrectAnswers = useCallback(
     (answerMap: Record<string, string>) =>
       quizItems.reduce((sum, item) => {
         const response = answerMap[item.id];
         if (!response) return sum;
-        const accepted = acceptedLookup[item.id] || [];
-        if (isJlptJapaneseInputMode) {
-          const sanitized = sanitizeJapaneseInput(response).trim();
-          if (!sanitized || !JAPANESE_INPUT_CHAR_REGEX.test(sanitized)) return sum;
-          return accepted.includes(sanitized) ? sum + 1 : sum;
-        }
-        const normalized = normalizeRomaji(response);
-        return accepted.includes(normalized) ? sum + 1 : sum;
+        return isCorrectAnswer(item.id, response) ? sum + 1 : sum;
       }, 0),
-    [acceptedLookup, isJlptJapaneseInputMode, quizItems],
+    [isCorrectAnswer, quizItems],
+  );
+
+  const calculateCorrectCharacterCount = useCallback(
+    (answerMap: Record<string, string>) =>
+      quizItems.reduce((sum, item) => {
+        const response = answerMap[item.id];
+        if (!response) return sum;
+        if (!isCorrectAnswer(item.id, response)) return sum;
+        return sum + (item.kana ? item.kana.length : 0);
+      }, 0),
+    [isCorrectAnswer, quizItems],
+  );
+
+  const calculateQuizGamepoints = useCallback(
+    (correctCharCount: number, elapsedMs: number, backspaces: number) => {
+      if (correctCharCount <= 0 || elapsedMs <= 0) return 0;
+
+      const elapsedMinutes = elapsedMs / 60000;
+      if (elapsedMinutes <= 0) return 0;
+
+      // A) Dynamic peak WPM based on quiz size and selected timer
+      const timerSeconds = timerMinutes * 60;
+      const quizTotalChars = getQuizTotalChars(quizItems);
+      if (quizTotalChars <= 0) return 0;
+      const estimatedWordsTotal = quizTotalChars / QUIZ_SCORE_CHARS_PER_WORD;
+      const requiredWpmToFinish = timerSeconds > 0 ? estimatedWordsTotal / (timerSeconds / 60) : 0;
+      const dynamicPeakWpm = clampNumber(
+        requiredWpmToFinish * QUIZ_SCORE_PEAK_MULT,
+        QUIZ_SCORE_PEAK_MIN_WPM,
+        QUIZ_SCORE_PEAK_MAX_WPM,
+      );
+
+      // B) Measured WPM
+      const measuredWpm = (correctCharCount / QUIZ_SCORE_CHARS_PER_WORD) / elapsedMinutes;
+      const cappedWpm = Math.min(measuredWpm, dynamicPeakWpm);
+      const speedFactor = Math.log(1 + cappedWpm) / Math.log(1 + dynamicPeakWpm);
+      const completionFactor = clampNumber(correctCharCount / quizTotalChars, 0, 1);
+
+      // C) Timer factor as a bonus band
+      const minTimerSeconds = QUIZ_TIMER_MIN_MINUTES * 60;
+      const maxTimerSeconds = QUIZ_TIMER_MAX_MINUTES * 60;
+      const clampedTimerSeconds = clampNumber(timerSeconds, minTimerSeconds, maxTimerSeconds);
+      const timerRangeRatio = maxTimerSeconds / minTimerSeconds;
+      const rawTimerReward = Math.pow(maxTimerSeconds / clampedTimerSeconds, QUIZ_SCORE_TIMER_CURVE);
+      const timerRewardRange = Math.pow(timerRangeRatio, QUIZ_SCORE_TIMER_CURVE) - 1;
+      const baseTimerFactor =
+        timerRewardRange > 0
+          ? clampNumber((rawTimerReward - 1) / timerRewardRange, 0, 1)
+          : 0;
+      const timerBonus = 1.0 + 0.25 * baseTimerFactor;
+
+      // D) Backspace penalty
+      const backspacePenalty = Math.exp(-QUIZ_SCORE_BACKSPACE_PENALTY * Math.max(0, backspaces));
+
+      // E) Top-heavy continuous score shaping
+      const quality =
+        Math.pow(speedFactor, QUIZ_SCORE_SPEED_WEIGHT) *
+        backspacePenalty;
+      const scoreFrac =
+        (Math.exp(QUIZ_SCORE_SHAPE_A * clampNumber(quality, 0, 1)) - 1) /
+        (Math.exp(QUIZ_SCORE_SHAPE_A) - 1);
+      const rawScore =
+        QUIZ_SCORE_MAX *
+        scoreFrac *
+        completionFactor *
+        Math.pow(timerBonus, QUIZ_SCORE_TIMER_WEIGHT);
+
+      return Math.round(clampNumber(rawScore, 0, QUIZ_SCORE_MAX));
+    },
+    [quizItems, timerMinutes],
   );
 
   const finalizeQuiz = useCallback(
     (reason: 'complete' | 'time' | 'stopped', answerMap?: Record<string, string>, remainingMsSnapshot?: number) => {
       if (hasFinished) return;
       const finalAnswers = answerMap || answers;
-      const finalScore = calculateScoreFromAnswers(finalAnswers);
+      const finalCorrectCount = calculateCorrectAnswers(finalAnswers);
+      const finalCorrectCharCount = calculateCorrectCharacterCount(finalAnswers);
       const now = Date.now();
       const timerTotalMs = timerMinutes * 60 * 1000;
+      const totalCharCount = getQuizTotalChars(quizItems);
       const remainingMs =
         typeof remainingMsSnapshot === 'number'
           ? Math.max(0, remainingMsSnapshot)
@@ -2682,6 +3144,10 @@ function KanaQuizView() {
       }
       elapsedMs = Math.max(0, Math.min(elapsedMs, timerTotalMs));
 
+      const finalGamepoints = leaderboardScoresEnabled
+        ? calculateQuizGamepoints(finalCorrectCharCount, elapsedMs, quizBackspaceCount)
+        : finalCorrectCharCount;
+
       setCompletionTimeMs(elapsedMs);
       setRemainingSeconds(remainingSecondsAtFinish);
       remainingSecondsRef.current = remainingSecondsAtFinish;
@@ -2694,11 +3160,16 @@ function KanaQuizView() {
       const entry = {
         mode: activeModeKey,
         timeMs: elapsedMs,
-        score: finalScore,
-        total: quizItems.length,
+        score: finalCorrectCharCount,
+        total: totalCharCount,
         date: now,
         finishReason: reason,
         timerMinutes,
+        scoreType: leaderboardScoresEnabled ? 'quiz_points' : undefined,
+        correctCount: finalCorrectCount,
+        testscore: finalCorrectCharCount,
+        totalTestscore: totalCharCount,
+        gamepoints: leaderboardScoresEnabled ? finalGamepoints : undefined,
       };
       saveLeaderboardEntry(entry).then(result => {
         if (result) {
@@ -2706,7 +3177,7 @@ function KanaQuizView() {
         }
       });
     },
-    [activeModeKey, answers, calculateScoreFromAnswers, hasFinished, quizItems.length, saveLeaderboardEntry, timerMinutes],
+    [activeModeKey, answers, calculateCorrectAnswers, calculateCorrectCharacterCount, calculateQuizGamepoints, hasFinished, leaderboardScoresEnabled, quizBackspaceCount, quizItems, saveLeaderboardEntry, timerMinutes],
   );
 
   useEffect(() => {
@@ -2756,7 +3227,7 @@ function KanaQuizView() {
   const startQuiz = () => {
     const dataset = getDatasetForMode(quizMode);
     if (!dataset.length) {
-      Alert.alert('Focus list is empty', 'Add kanji to Focus by clicking a kanji in Quiz or TypeMaster.');
+      Alert.alert('Focus list is empty', 'Add items to Focus by clicking a prompt in Quiz or TypeMaster.');
       return;
     }
     setQuizItems(shuffleQuiz(dataset));
@@ -2764,6 +3235,7 @@ function KanaQuizView() {
     setHasFinished(false);
     setFinishReason(null);
     setCompletionTimeMs(null);
+    setQuizBackspaceCount(0);
     setIsQuizPaused(false);
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
@@ -2801,6 +3273,7 @@ function KanaQuizView() {
     setHasFinished(false);
     setFinishReason(null);
     setCompletionTimeMs(null);
+    setQuizBackspaceCount(0);
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
@@ -2820,7 +3293,7 @@ function KanaQuizView() {
   const startEndlessMode = useCallback(() => {
     const dataset = getDatasetForMode(quizMode);
     if (!dataset.length) {
-      Alert.alert('Focus list is empty', 'Add kanji to Focus by clicking a kanji in Quiz or TypeMaster.');
+      Alert.alert('Focus list is empty', 'Add items to Focus by clicking a prompt in Quiz or TypeMaster.');
       return;
     }
     endlessQueueRef.current = new CharacterQueue(dataset);
@@ -2942,19 +3415,14 @@ function KanaQuizView() {
         const targetItem = targetChar.item;
 
         // Check if answer is correct
+        const accepted = getAcceptedAnswersForItem(targetItem);
+        const usesJapaneseInput = usesJapaneseInputForItem(targetItem);
         let isCorrect = false;
-        if (isJlptStyleMode) {
-          if (isJlptJapaneseInputMode) {
-            const sanitized = sanitizeJapaneseInput(text).trim();
-            isCorrect = sanitized === targetItem.kana;
-          } else {
-            const normalized = normalizeRomaji(text);
-            const accepted = getJlptAcceptedAnswers(targetItem, jlptReadingMode);
-            isCorrect = normalized.length > 0 && accepted.includes(normalized);
-          }
+        if (usesJapaneseInput) {
+          const sanitized = sanitizeJapaneseInput(text).trim();
+          isCorrect = sanitized.length > 0 && accepted.includes(sanitized);
         } else {
           const normalized = normalizeRomaji(text);
-          const accepted = (targetItem.answers || []).map((ans: string) => normalizeRomaji(ans));
           isCorrect = normalized.length > 0 && accepted.includes(normalized);
         }
 
@@ -2996,9 +3464,8 @@ function KanaQuizView() {
     },
     [
       endlessIsRunning,
-      isJlptStyleMode,
-      isJlptJapaneseInputMode,
-      jlptReadingMode,
+      getAcceptedAnswersForItem,
+      usesJapaneseInputForItem,
     ]
   );
 
@@ -3075,7 +3542,7 @@ function KanaQuizView() {
   const startTypemasterMode = useCallback(() => {
     const dataset = getDatasetForMode(quizMode);
     if (!dataset.length) {
-      Alert.alert('Focus list is empty', 'Add kanji to Focus by clicking a kanji in Quiz or TypeMaster.');
+      Alert.alert('Focus list is empty', 'Add items to Focus by clicking a prompt in Quiz or TypeMaster.');
       return;
     }
     typemasterQueueRef.current = new CharacterQueue(dataset);
@@ -3222,19 +3689,14 @@ function KanaQuizView() {
         const targetItem = targetChar.item;
 
         // Check if answer is correct
+        const accepted = getAcceptedAnswersForItem(targetItem);
+        const usesJapaneseInput = usesJapaneseInputForItem(targetItem);
         let isCorrect = false;
-        if (isJlptStyleMode) {
-          if (isJlptJapaneseInputMode) {
-            const sanitized = sanitizeJapaneseInput(text).trim();
-            isCorrect = sanitized === targetItem.kana;
-          } else {
-            const normalized = normalizeRomaji(text);
-            const accepted = getJlptAcceptedAnswers(targetItem, jlptReadingMode);
-            isCorrect = normalized.length > 0 && accepted.includes(normalized);
-          }
+        if (usesJapaneseInput) {
+          const sanitized = sanitizeJapaneseInput(text).trim();
+          isCorrect = sanitized.length > 0 && accepted.includes(sanitized);
         } else {
           const normalized = normalizeRomaji(text);
-          const accepted = (targetItem.answers || []).map((ans: string) => normalizeRomaji(ans));
           isCorrect = normalized.length > 0 && accepted.includes(normalized);
         }
 
@@ -3281,9 +3743,8 @@ function KanaQuizView() {
       typemasterIsRunning,
       typemasterQueueMode,
       typemasterBurstCursor,
-      isJlptStyleMode,
-      isJlptJapaneseInputMode,
-      jlptReadingMode,
+      getAcceptedAnswersForItem,
+      usesJapaneseInputForItem,
       armTypemasterTimer,
     ]
   );
@@ -3308,7 +3769,26 @@ function KanaQuizView() {
     return () => clearInterval(interval);
   }, [typemasterIsRunning, stopTypemasterMode]);
 
-  const score = useMemo(() => calculateScoreFromAnswers(answers), [answers, calculateScoreFromAnswers]);
+  const correctAnswerCount = useMemo(() => calculateCorrectAnswers(answers), [answers, calculateCorrectAnswers]);
+  const correctCharacterCount = useMemo(() => calculateCorrectCharacterCount(answers), [answers, calculateCorrectCharacterCount]);
+  const totalCharacterCount = useMemo(() => getQuizTotalChars(quizItems), [quizItems]);
+  const quizElapsedMs = useMemo(() => {
+    if (completionTimeMs != null) {
+      return completionTimeMs;
+    }
+
+    const timerTotalMs = timerMinutes * 60 * 1000;
+    const remainingMs =
+      isRunning && timerDeadlineMsRef.current
+        ? Math.max(0, timerDeadlineMsRef.current - Date.now())
+        : Math.max(0, remainingSeconds * 1000);
+
+    return Math.max(0, Math.min(timerTotalMs, timerTotalMs - remainingMs));
+  }, [completionTimeMs, isRunning, remainingSeconds, timerMinutes]);
+  const quizGamepoints = useMemo(
+    () => calculateQuizGamepoints(correctCharacterCount, quizElapsedMs, quizBackspaceCount),
+    [calculateQuizGamepoints, correctCharacterCount, quizBackspaceCount, quizElapsedMs],
+  );
 
   const focusNextAnswer = useCallback(
     (currentId: string, nextAnswers: Record<string, string>) => {
@@ -3319,14 +3799,6 @@ function KanaQuizView() {
         const nextRef = inputRefs.current[nextId];
         if (nextRef && typeof nextRef.focus === 'function') {
           requestAnimationFrame(() => {
-            if (Platform.OS === 'web') {
-              try {
-                nextRef.focus({ preventScroll: true });
-                return;
-              } catch {
-                // Fallback for environments that do not support focus options.
-              }
-            }
             nextRef.focus();
           });
         }
@@ -3344,14 +3816,6 @@ function KanaQuizView() {
           const nextRef = inputRefs.current[nextId];
           if (nextRef && typeof nextRef.focus === 'function') {
             requestAnimationFrame(() => {
-              if (Platform.OS === 'web') {
-                try {
-                  nextRef.focus({ preventScroll: true });
-                  return;
-                } catch {
-                  // Fallback for environments that do not support focus options.
-                }
-              }
               nextRef.focus();
             });
           }
@@ -3427,9 +3891,9 @@ function KanaQuizView() {
         })
         .filter(entry => entry.mode === activeLeaderboardModeKey)
         .filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === timerMinutes)
-        .sort(compareLeaderboardEntries)
+        .sort(activeLeaderboardComparator)
         .slice(0, 10),
-    [activeLeaderboardModeKey, activeLeaderboardSource, compareLeaderboardEntries, leaderboardScope, timerMinutes, todayKey],
+    [activeLeaderboardComparator, activeLeaderboardModeKey, activeLeaderboardSource, leaderboardScope, timerMinutes, todayKey],
   );
   const completedModeLabel = getQuizModeLabel(activeModeKey);
   const typemasterModeKey = getTypeMasterModeKey(activeModeKey);
@@ -3449,24 +3913,32 @@ function KanaQuizView() {
     : 0;
   const typemasterCurrentTarget = typemasterQueue.length > 0 ? typemasterQueue[typemasterCurrentTargetIndex] : null;
   const typemasterHintText = typemasterCurrentTarget
-    ? (isKanjiStudyMode
-      ? getJlptAcceptedAnswers(typemasterCurrentTarget.item, jlptReadingMode).join('/')
-      : typemasterCurrentTarget.item.answers.join('/'))
+    ? getHintTextForItem(typemasterCurrentTarget.item)
     : 'Start to begin...';
   const quizPromptHidden = quizView === 'quiz' && isQuizPaused && !hasFinished;
   const quizPrimaryActionLabel = isRunning ? 'Pause Quiz' : isQuizPaused ? 'Resume Quiz' : 'Play Quiz';
   const endlessPrimaryActionLabel = endlessIsRunning ? 'Pause Endless' : isEndlessPaused ? 'Resume Endless' : 'Play Endless';
   const typemasterPrimaryActionLabel = typemasterIsRunning ? 'Pause TypeMaster' : isTypemasterPaused ? 'Resume TypeMaster' : 'Play TypeMaster';
   const activeFamilyModes = getQuizModesForFamily(quizFamily);
-  const promptColumnLabel = isJlptJapaneseInputMode ? 'Romaji Reading' : isKanjiStudyMode ? 'Kanji' : 'Kana';
-  const answerColumnLabel = isJlptJapaneseInputMode
+  const displayedFamilyModes = quizFamily === 'jlpt'
+    ? activeFamilyModes.filter(option => option.value !== 'jlpt_n4_2')
+    : quizFamily === 'kana'
+      ? activeFamilyModes.filter(option => option.value !== 'hiragana_dakuten' && option.value !== 'katakana_dakuten')
+      : activeFamilyModes;
+  const activeKanaVariant = quizMode.startsWith('katakana') ? (KANA_VARIANT_OPTIONS.katakana.includes(quizMode) ? quizMode : 'katakana') : (KANA_VARIANT_OPTIONS.hiragana.includes(quizMode) ? quizMode : 'hiragana');
+  const promptColumnLabel = isFocusMode ? 'Prompt' : isJlptJapaneseInputMode ? 'Romaji Reading' : isKanjiStudyMode ? 'Kanji' : 'Kana';
+  const answerColumnLabel = isFocusMode
+    ? 'Answer'
+    : isJlptJapaneseInputMode
     ? 'Kanji (Japanese input)'
     : isJlptEnglishMode
       ? 'English Translation'
       : isKanjiStudyMode
         ? 'Reading'
         : 'English Syllable';
-  const answerPlaceholder = isJlptJapaneseInputMode
+  const answerPlaceholder = isFocusMode
+    ? 'Type answer...'
+    : isJlptJapaneseInputMode
     ? 'Type kanji ...'
     : isJlptEnglishMode
       ? 'Type meaning...'
@@ -3484,9 +3956,9 @@ function KanaQuizView() {
         })
         .filter(entry => entry.mode === activeModeKey)
         .filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === timerMinutes)
-        .sort(compareLeaderboardEntries)
+        .sort(activeLeaderboardComparator)
         .slice(0, 10),
-    [activeModeKey, compareLeaderboardEntries, completedModeLeaderboardSource, leaderboardScope, timerMinutes, todayKey],
+    [activeLeaderboardComparator, activeModeKey, completedModeLeaderboardSource, leaderboardScope, timerMinutes, todayKey],
   );
   const typemasterCompletedModeLeaderboard = useMemo(
     () =>
@@ -3498,17 +3970,33 @@ function KanaQuizView() {
         })
         .filter(entry => entry.mode === typemasterModeKey)
         .filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === timerMinutes)
-        .sort(compareLeaderboardEntries)
+        .sort(activeLeaderboardComparator)
         .slice(0, 10),
-    [compareLeaderboardEntries, completedModeLeaderboardSource, leaderboardScope, timerMinutes, todayKey, typemasterModeKey],
+    [activeLeaderboardComparator, completedModeLeaderboardSource, leaderboardScope, timerMinutes, todayKey, typemasterModeKey],
   );
   const activeJlptN4Variant = JLPT_N4_VARIANT_VALUES.includes(quizMode) ? quizMode : JLPT_N4_VARIANT_VALUES[0];
-  const displayedFamilyModes = quizFamily === 'jlpt'
-    ? activeFamilyModes.filter(option => option.value !== 'jlpt_n4_2')
-    : activeFamilyModes;
+  const renderLeaderboardRankPills = (prefix: string) =>
+    leaderboardScoresEnabled
+      ? LEADERBOARD_RANK_OPTIONS.map(option => {
+          const selected = option.value === leaderboardRankMode;
+          return (
+            <Pressable
+              key={`${prefix}-rank-${option.value}`}
+              style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
+              onPress={() => setLeaderboardRankMode(option.value)}
+            >
+              <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })
+      : null;
+  const shouldShowLeaderboardGamepoints = leaderboardScoresEnabled && leaderboardRankMode === 'score';
   const closeQuizDropdownMenus = () => {
     setIsJlptModeDropdownOpen(false);
     setIsJlptSetDropdownOpen(false);
+    setOpenKanaDropdownBase(null);
   };
   const selectQuizMode = (nextMode: string) => {
     if (isRunning) return;
@@ -3538,30 +4026,31 @@ function KanaQuizView() {
         style={styles.quizScroll}
         contentContainerStyle={styles.quizContent}
         onTouchStart={() => {
-          if (isJlptModeDropdownOpen || isJlptSetDropdownOpen) {
+          if (isJlptModeDropdownOpen || isJlptSetDropdownOpen || openKanaDropdownBase) {
             closeQuizDropdownMenus();
           }
         }}
       >
         {/* Primary Nav Tabs */}
         <View style={styles.quizNavBar}>
-        <View style={styles.quizNavTabs}>
-          {QUIZ_VIEW_OPTIONS.map(option => {
-            const selected = option.value === quizView;
-            return (
-              <Pressable
-                key={option.value}
-                style={[styles.quizNavTab, selected && styles.quizNavTabActive]}
-                onPress={() => setQuizView(option.value)}
-              >
-                <Text style={[styles.quizNavTabText, selected && styles.quizNavTabTextActive]}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+          <View style={styles.quizNavTabs}>
+            {QUIZ_VIEW_OPTIONS.map(option => {
+              const selected = option.value === quizView;
+              return (
+                <Pressable
+                  key={option.value}
+                  style={[styles.quizNavTab, selected && styles.quizNavTabActive]}
+                  onPress={() => setQuizView(option.value)}
+                >
+                  <Text style={[styles.quizNavTabText, selected && styles.quizNavTabTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.quizNavVersion}>v1.121</Text>
         </View>
-      </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
       <View style={styles.quizSubNavBar}>
@@ -3592,6 +4081,76 @@ function KanaQuizView() {
           <View style={styles.quizSubNavTabs}>
             {displayedFamilyModes.map(({ value, tabLabel }) => {
               const selected = value === quizMode;
+              if (value === 'hiragana' || value === 'katakana') {
+                const kanaVariants = value === 'hiragana' ? KANA_VARIANT_OPTIONS.hiragana : KANA_VARIANT_OPTIONS.katakana;
+                const isKanaSelected = kanaVariants.includes(quizMode);
+                const activeVariant = value === 'hiragana'
+                  ? (KANA_VARIANT_OPTIONS.hiragana.includes(activeKanaVariant) ? activeKanaVariant : 'hiragana')
+                  : (KANA_VARIANT_OPTIONS.katakana.includes(activeKanaVariant) ? activeKanaVariant : 'katakana');
+                return (
+                  <View
+                    key={`${value}-split`}
+                    style={styles.quizSplitTabGroup}
+                    onTouchStart={event => event.stopPropagation()}
+                  >
+                    <Pressable
+                      style={[
+                        styles.quizSubNavTab,
+                        styles.quizSplitTabMain,
+                        isKanaSelected && styles.quizSubNavTabActive,
+                      ]}
+                      onPress={() => selectQuizMode(activeVariant)}
+                    >
+                      <Text style={[styles.quizSubNavTabText, isKanaSelected && styles.quizSubNavTabTextActive]}>
+                        {tabLabel}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.quizSubNavTab,
+                        styles.quizSplitTabToggle,
+                        isKanaSelected && styles.quizSplitTabToggleActive,
+                      ]}
+                      onPress={() => {
+                        if (isRunning) return;
+                        setIsJlptModeDropdownOpen(false);
+                        setIsJlptSetDropdownOpen(false);
+                        setOpenKanaDropdownBase(prev => (prev === value ? null : value));
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.quizSubNavTabText,
+                          styles.quizSplitTabChevron,
+                          isKanaSelected && styles.quizSubNavTabTextActive,
+                        ]}
+                      >
+                        {openKanaDropdownBase === value ? '^' : 'v'}
+                      </Text>
+                    </Pressable>
+                    {openKanaDropdownBase === value ? (
+                      <View style={styles.quizSplitTabMenu}>
+                        {kanaVariants.map(variantValue => {
+                          const variantOption = QUIZ_MODES.find(mode => mode.value === variantValue);
+                          if (!variantOption) return null;
+                          const variantSelected = quizMode === variantValue;
+                          return (
+                            <Pressable
+                              key={variantValue}
+                              style={[styles.quizDropdownMenuItem, variantSelected && styles.quizDropdownMenuItemActive]}
+                              onPress={() => selectQuizMode(variantValue)}
+                            >
+                              <Text style={[styles.quizDropdownMenuItemText, variantSelected && styles.quizDropdownMenuItemTextActive]}>
+                                {variantValue === value ? 'Default' : variantOption.tabLabel}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              }
               if (value === 'jlpt_n4') {
                 const isN4Selected = JLPT_N4_VARIANT_VALUES.includes(quizMode);
                 return (
@@ -3670,7 +4229,7 @@ function KanaQuizView() {
               );
             })}
           </View>
-          {isJlptStyleMode ? (
+          {shouldShowJlptModeControls ? (
             <View style={styles.quizDropdownWrap} onTouchStart={(event) => event.stopPropagation()}>
               <Text style={styles.quizDropdownLabel}>JLPT Mode</Text>
               <Pressable
@@ -3795,7 +4354,9 @@ function KanaQuizView() {
                     ? endlessScore
                     : quizView === 'typemaster'
                       ? typemasterScore
-                      : `${score}/${quizItems.length}`}
+                      : leaderboardScoresEnabled
+                        ? quizGamepoints.toLocaleString()
+                        : `${correctCharacterCount}/${totalCharacterCount}`}
                 </Text>
               </View>
               <View style={styles.quizStatBlock}>
@@ -3906,6 +4467,7 @@ function KanaQuizView() {
                         <View style={styles.quizLeaderboardHeaderRow}>
                           <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Top 10 ({timerMinutes} min, {typemasterCompletedScopeLabel})</Text>
                           <View style={styles.quizLeaderboardScopeTabs}>
+                            {renderLeaderboardRankPills('typemaster-completed-main')}
                             <Pressable
                               style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
                               onPress={() => setIsLeaderboardEditMode(prev => !prev)}
@@ -3944,9 +4506,14 @@ function KanaQuizView() {
                                 {getLeaderboardTimeDisplay(entry)}
                               </Text>
                               <Text style={styles.quizLeaderboardDate}>{formatLeaderboardDateTime(entry.date)}</Text>
-                              <Text style={styles.quizLeaderboardScore}>
-                                {entry.score}/{entry.total}
-                              </Text>
+                              {leaderboardScoresEnabled ? (
+                                <>
+                                  <Text style={styles.quizLeaderboardScore}>{getLeaderboardTestscoreDisplay(entry)}</Text>
+                                  {shouldShowLeaderboardGamepoints && getLeaderboardGamepointsDisplay(entry) ? (
+                                    <Text style={styles.quizLeaderboardScore}>{getLeaderboardGamepointsDisplay(entry)}</Text>
+                                  ) : null}
+                                </>
+                              ) : null}
                               {isLeaderboardEditMode ? (
                                 <Pressable
                                   style={styles.quizLeaderboardDeleteButton}
@@ -3964,6 +4531,7 @@ function KanaQuizView() {
                         <View style={styles.quizLeaderboardHeaderRow}>
                           <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Top 10 ({timerMinutes} min, {typemasterCompletedScopeLabel})</Text>
                           <View style={styles.quizLeaderboardScopeTabs}>
+                            {renderLeaderboardRankPills('typemaster-completed-empty')}
                             <Pressable
                               style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
                               onPress={() => setIsLeaderboardEditMode(prev => !prev)}
@@ -4130,7 +4698,7 @@ function KanaQuizView() {
                             position: 'relative',
                           }}
                         >
-                          {shouldShowJlptKanjiInfo ? (
+                          {shouldShowJlptKanjiInfo && isJlptStyleItem(char.item) && !usesJapaneseInputForItem(char.item) ? (
                             <Pressable
                               onPress={() => openJishoWord(char.item.kana)}
                               style={styles.quizKanjiInfoButton}
@@ -4141,7 +4709,6 @@ function KanaQuizView() {
                           ) : null}
                           <Pressable
                             onPress={() => {
-                              if (!isKanjiStudyMode) return;
                               void toggleFocusedItem(char.item);
                             }}
                           >
@@ -4153,7 +4720,7 @@ function KanaQuizView() {
                                 marginBottom: 4,
                               }}
                             >
-                            {isJlptStyleMode ? getJlptPromptText(char.item, jlptReadingMode) : char.item.kana}
+                            {getPromptTextForItem(char.item)}
                             </Text>
                           </Pressable>
                         </View>
@@ -4377,14 +4944,14 @@ function KanaQuizView() {
                       <Text
                         style={{
                           color: '#e2e8f0',
-                          fontSize: isJlptJapaneseInputMode ? 48 : 64,
+                          fontSize: usesJapaneseInputForItem(char.item) ? 48 : 64,
                           fontWeight: '700',
                           textShadowColor: 'rgba(0, 0, 0, 0.5)',
                           textShadowOffset: { width: 2, height: 2 },
                           textShadowRadius: 4,
                         }}
                       >
-                        {isJlptStyleMode ? getJlptPromptText(char.item, jlptReadingMode) : char.item.kana}
+                        {getPromptTextForItem(char.item)}
                       </Text>
                     </View>
                   ))}
@@ -4440,9 +5007,7 @@ function KanaQuizView() {
                     placeholder={
                       endlessShowHints
                         ? (endlessVisibleChars.length > 0
-                          ? `Type: ${isJlptStyleMode
-                              ? getJlptAcceptedAnswers(endlessVisibleChars[0].item, jlptReadingMode).join('/')
-                              : endlessVisibleChars[0].item.answers.join('/')}`
+                          ? `Type: ${getHintTextForItem(endlessVisibleChars[0].item)}`
                           : 'Start to begin...')
                         : ''
                     }
@@ -4457,7 +5022,9 @@ function KanaQuizView() {
             <View style={styles.quizFinishHeader}>
               <View>
                 <Text style={styles.quizFinishTitle}>Leaderboard</Text>
-                <Text style={styles.quizFinishSubtitle}>Browse best times by gamemode.</Text>
+                <Text style={styles.quizFinishSubtitle}>
+                  {leaderboardScoresEnabled ? 'Browse best times or switch to score ranking.' : 'Browse best times by gamemode.'}
+                </Text>
               </View>
             </View>
 
@@ -4481,6 +5048,7 @@ function KanaQuizView() {
                           </Pressable>
                         );
                       })}
+                      {renderLeaderboardRankPills('leaderboard-main')}
                       <Pressable
                         style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
                         onPress={() => setIsLeaderboardEditMode(prev => !prev)}
@@ -4519,9 +5087,14 @@ function KanaQuizView() {
                           {getLeaderboardTimeDisplay(entry)}
                         </Text>
                         <Text style={styles.quizLeaderboardDate}>{formatLeaderboardDateTime(entry.date)}</Text>
-                        <Text style={styles.quizLeaderboardScore}>
-                          {entry.score}/{entry.total}
-                        </Text>
+                        {leaderboardScoresEnabled ? (
+                          <>
+                            <Text style={styles.quizLeaderboardScore}>{getLeaderboardTestscoreDisplay(entry)}</Text>
+                            {shouldShowLeaderboardGamepoints && getLeaderboardGamepointsDisplay(entry) ? (
+                              <Text style={styles.quizLeaderboardScore}>{getLeaderboardGamepointsDisplay(entry)}</Text>
+                            ) : null}
+                          </>
+                        ) : null}
                         {isLeaderboardEditMode ? (
                           <Pressable
                             style={styles.quizLeaderboardDeleteButton}
@@ -4553,6 +5126,7 @@ function KanaQuizView() {
                           </Pressable>
                         );
                       })}
+                      {renderLeaderboardRankPills('leaderboard-empty')}
                       <Pressable
                         style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
                         onPress={() => setIsLeaderboardEditMode(prev => !prev)}
@@ -4618,7 +5192,7 @@ function KanaQuizView() {
                   <View style={[styles.quizFinishStat, styles.quizFinishStatCompact]}>
                     <Text style={styles.quizFinishStatLabel}>Score</Text>
                     <Text style={styles.quizFinishStatValue}>
-                      {score}/{quizItems.length}
+                      {leaderboardScoresEnabled ? quizGamepoints.toLocaleString() : `${correctCharacterCount}/${totalCharacterCount}`}
                     </Text>
                   </View>
                   <View style={[styles.quizFinishStat, styles.quizFinishStatCompact]}>
@@ -4649,6 +5223,7 @@ function KanaQuizView() {
                     <View style={styles.quizLeaderboardHeaderRow}>
                       <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Top 10 ({timerMinutes} min, {completedScopeLabel})</Text>
                       <View style={styles.quizLeaderboardScopeTabs}>
+                        {renderLeaderboardRankPills('completed-main')}
                         <Pressable
                           style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
                           onPress={() => setIsLeaderboardEditMode(prev => !prev)}
@@ -4687,9 +5262,14 @@ function KanaQuizView() {
                             {getLeaderboardTimeDisplay(entry)}
                           </Text>
                           <Text style={styles.quizLeaderboardDate}>{formatLeaderboardDateTime(entry.date)}</Text>
-                          <Text style={styles.quizLeaderboardScore}>
-                            {entry.score}/{entry.total}
-                          </Text>
+                          {leaderboardScoresEnabled ? (
+                            <>
+                              <Text style={styles.quizLeaderboardScore}>{getLeaderboardTestscoreDisplay(entry)}</Text>
+                              {shouldShowLeaderboardGamepoints && getLeaderboardGamepointsDisplay(entry) ? (
+                                <Text style={styles.quizLeaderboardScore}>{getLeaderboardGamepointsDisplay(entry)}</Text>
+                              ) : null}
+                            </>
+                          ) : null}
                           {isLeaderboardEditMode ? (
                             <Pressable
                               style={styles.quizLeaderboardDeleteButton}
@@ -4707,6 +5287,7 @@ function KanaQuizView() {
                     <View style={styles.quizLeaderboardHeaderRow}>
                       <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Top 10 ({timerMinutes} min, {completedScopeLabel})</Text>
                       <View style={styles.quizLeaderboardScopeTabs}>
+                        {renderLeaderboardRankPills('completed-empty')}
                         <Pressable
                           style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
                           onPress={() => setIsLeaderboardEditMode(prev => !prev)}
@@ -4763,7 +5344,7 @@ function KanaQuizView() {
                           isJlptJapaneseInputMode ? { alignItems: 'flex-start' } : null,
                         ]}
                       >
-                        {shouldShowJlptKanjiInfo && !quizPromptHidden ? (
+                        {shouldShowJlptKanjiInfo && !quizPromptHidden && isJlptStyleItem(item) && !usesJapaneseInputForItem(item) ? (
                           <Pressable
                             onPress={() => openJishoWord(item.kana)}
                             style={styles.quizKanjiInfoButton}
@@ -4774,7 +5355,7 @@ function KanaQuizView() {
                         ) : null}
                         <Pressable
                           onPress={() => {
-                            if (!isKanjiStudyMode || quizPromptHidden) return;
+                            if (quizPromptHidden) return;
                             void toggleFocusedItem(item);
                           }}
                         >
@@ -4784,7 +5365,7 @@ function KanaQuizView() {
                               isJlptJapaneseInputMode && styles.quizKanaTextWide,
                             ]}
                           >
-                            {quizPromptHidden ? 'Paused' : isJlptStyleMode ? getJlptPromptText(item, jlptReadingMode) : item.kana}
+                            {quizPromptHidden ? 'Paused' : getPromptTextForItem(item)}
                           </Text>
                         </Pressable>
                       </View>
@@ -4804,18 +5385,32 @@ function KanaQuizView() {
                       editable={!hasFinished && !isQuizPaused}
                       autoCapitalize="none"
                       autoCorrect={false}
-                      maxLength={isJlptJapaneseInputMode ? 2 : 40}
+                      maxLength={usesJapaneseInputForItem(item) ? 2 : 40}
                       returnKeyType="next"
                       blurOnSubmit={false}
                       onSubmitEditing={() => focusNextAnswer(item.id, answers)}
+                      onKeyPress={event => {
+                        if (event.nativeEvent.key === 'Backspace' && !hasFinished && !isQuizPaused) {
+                          setQuizBackspaceCount(prev => prev + 1);
+                        }
+                      }}
                       onFocus={event => {
                         if (Platform.OS !== 'web') return;
                         const target = (event as any)?.target as HTMLInputElement | undefined;
                         if (target && typeof target.scrollLeft === 'number') {
                           target.scrollLeft = 0;
                         }
+                        if (target && typeof target.scrollIntoView === 'function') {
+                          requestAnimationFrame(() => {
+                            target.scrollIntoView({
+                              behavior: 'smooth',
+                              block: 'center',
+                              inline: 'nearest',
+                            });
+                          });
+                        }
                       }}
-                      onChangeText={text => handleAnswerChange(item.id, text)}
+                      onChangeText={text => handleAnswerChange(item.id, usesJapaneseInputForItem(item) ? sanitizeJapaneseInput(text) : text)}
                       placeholder={answerPlaceholder}
                       placeholderTextColor="#64748b"
                     />
@@ -4830,7 +5425,7 @@ function KanaQuizView() {
 
       {isSaveManagerOpen ? (
         <View style={styles.editModalOverlay}>
-          <View style={[styles.editModalPanel, { width: '92%', maxWidth: 980, maxHeight: '88%' }]}>
+          <View style={[styles.editModalPanel, { width: '92%', maxWidth: 980, maxHeight: '88%', overflow: 'hidden' }]}>
             <View style={styles.editModalHeader}>
               <Text style={styles.editModalTitle}>Save Manager</Text>
               <Pressable onPress={() => setIsSaveManagerOpen(false)}>
@@ -4838,97 +5433,147 @@ function KanaQuizView() {
               </Pressable>
             </View>
 
-            <ScrollView style={{ width: '100%' }} contentContainerStyle={{ paddingBottom: 8 }}>
-              <View style={[styles.featureCard, { marginBottom: 12 }]}>
-                <Text style={[styles.featureHeadline, { marginBottom: 8 }]}>Leaderboard Saves</Text>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-                  <Text style={styles.calendarNoteSource}>{`Export/import Save Manager data as *${SAVE_STATES_FILE_EXTENSION}`}</Text>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <Pressable style={styles.stageSecondaryButton} onPress={exportSaveStatesData}>
-                      <Text style={styles.stageSecondaryLabel}>Export Save States</Text>
-                    </Pressable>
-                    <Pressable style={styles.stageSecondaryButton} onPress={() => void importSaveStatesData()}>
-                      <Text style={styles.stageSecondaryLabel}>Import Save States</Text>
-                    </Pressable>
-                  </View>
+            <View style={styles.saveManagerToolbar}>
+              <View style={styles.saveManagerSummaryGrid}>
+                <View style={styles.saveManagerSummaryCard}>
+                  <Text style={styles.saveManagerSummaryValue}>{focusSnapshots.length}</Text>
+                  <Text style={styles.saveManagerSummaryLabel}>Focus saves</Text>
                 </View>
-                <TextInput
-                  style={styles.calendarInput}
-                  placeholder="Save name (e.g. JLPT practice set A)"
-                  placeholderTextColor="#94A3B8"
-                  value={leaderboardSnapshotName}
-                  onChangeText={setLeaderboardSnapshotName}
-                />
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
-                  <Pressable style={styles.stagePrimaryButton} onPress={() => void createLeaderboardSnapshot()}>
-                    <Text style={styles.stagePrimaryLabel}>Save Current Leaderboards</Text>
-                  </Pressable>
+                <View style={styles.saveManagerSummaryCard}>
+                  <Text style={styles.saveManagerSummaryValue}>{leaderboardSnapshots.length}</Text>
+                  <Text style={styles.saveManagerSummaryLabel}>Leaderboard saves</Text>
                 </View>
-
-                <View style={{ marginTop: 10 }}>
-                  {leaderboardSnapshots.length === 0 ? (
-                    <Text style={styles.calendarNoteEmpty}>No leaderboard saves yet.</Text>
-                  ) : (
-                    leaderboardSnapshots.map(snapshot => (
-                      <View key={snapshot.id} style={[styles.calendarNoteCard, { marginBottom: 8 }]}>
-                        <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
-                        <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
-                        <Text style={styles.calendarNoteSource}>
-                          All-time: {snapshot.leaderboard.length} entries | Session: {snapshot.sessionLeaderboard.length} entries
-                        </Text>
-                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-                          <Pressable style={styles.stageSecondaryButton} onPress={() => void loadLeaderboardSnapshot(snapshot)}>
-                            <Text style={styles.stageSecondaryLabel}>Load</Text>
-                          </Pressable>
-                          <Pressable style={styles.quizStopButton} onPress={() => void deleteLeaderboardSnapshot(snapshot.id)}>
-                            <Text style={styles.quizStopButtonLabel}>Delete</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ))
-                  )}
+                <View style={styles.saveManagerSummaryCard}>
+                  <Text style={styles.saveManagerSummaryValue}>{focusedItems.length}</Text>
+                  <Text style={styles.saveManagerSummaryLabel}>Current Focus items</Text>
                 </View>
               </View>
-
-              <View style={styles.featureCard}>
-                <Text style={[styles.featureHeadline, { marginBottom: 8 }]}>Focus State Saves</Text>
-                <TextInput
-                  style={styles.calendarInput}
-                  placeholder="Save name (e.g. Week 2 kanji set)"
-                  placeholderTextColor="#94A3B8"
-                  value={focusSnapshotName}
-                  onChangeText={setFocusSnapshotName}
-                />
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                  <Text style={styles.calendarNoteSource}>Current Focus items: {focusedItems.length}</Text>
-                  <Pressable style={styles.stagePrimaryButton} onPress={() => void createFocusSnapshot()}>
-                    <Text style={styles.stagePrimaryLabel}>Save Current Focus Set</Text>
+              <View style={styles.saveManagerActionRow}>
+                <Text style={styles.calendarNoteSource}>{`Export/import Save Manager data as *${SAVE_STATES_FILE_EXTENSION}`}</Text>
+                <View style={styles.saveManagerButtonRow}>
+                  <Pressable style={styles.stageSecondaryButton} onPress={exportSaveStatesData}>
+                    <Text style={styles.stageSecondaryLabel}>Export Save States</Text>
+                  </Pressable>
+                  <Pressable style={styles.stageSecondaryButton} onPress={() => void importSaveStatesData()}>
+                    <Text style={styles.stageSecondaryLabel}>Import Save States</Text>
                   </Pressable>
                 </View>
+              </View>
+              <View style={styles.saveManagerTabRow}>
+                <Pressable
+                  style={[styles.saveManagerTab, saveManagerTab === 'focus' && styles.saveManagerTabActive]}
+                  onPress={() => setSaveManagerTab('focus')}
+                >
+                  <Text style={[styles.saveManagerTabLabel, saveManagerTab === 'focus' && styles.saveManagerTabLabelActive]}>
+                    Focus Saves
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.saveManagerTab, saveManagerTab === 'leaderboard' && styles.saveManagerTabActive]}
+                  onPress={() => setSaveManagerTab('leaderboard')}
+                >
+                  <Text style={[styles.saveManagerTabLabel, saveManagerTab === 'leaderboard' && styles.saveManagerTabLabelActive]}>
+                    Leaderboards
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
 
-                <View style={{ marginTop: 10 }}>
-                  {focusSnapshots.length === 0 ? (
+            <View style={styles.saveManagerBody}>
+              <View style={styles.saveManagerComposePane}>
+                {saveManagerTab === 'leaderboard' ? (
+                  <View style={styles.saveManagerPaneCard}>
+                    <Text style={styles.saveManagerPaneTitle}>Create leaderboard save</Text>
+                    <Text style={styles.saveManagerPaneSubtitle}>Store the current all-time and session leaderboards as a named snapshot.</Text>
+                    <TextInput
+                      style={styles.calendarInput}
+                      placeholder="Save name (e.g. JLPT practice set A)"
+                      placeholderTextColor="#94A3B8"
+                      value={leaderboardSnapshotName}
+                      onChangeText={setLeaderboardSnapshotName}
+                    />
+                    <Pressable style={[styles.stagePrimaryButton, styles.saveManagerPrimaryButton]} onPress={() => void createLeaderboardSnapshot()}>
+                      <Text style={styles.stagePrimaryLabel}>Save Current Leaderboards</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View style={styles.saveManagerPaneCard}>
+                    <Text style={styles.saveManagerPaneTitle}>Create focus save</Text>
+                    <Text style={styles.saveManagerPaneSubtitle}>Save the current Focus set so it can be reloaded or overwritten later.</Text>
+                    <TextInput
+                      style={styles.calendarInput}
+                      placeholder="Save name (e.g. Week 2 kanji set)"
+                      placeholderTextColor="#94A3B8"
+                      value={focusSnapshotName}
+                      onChangeText={setFocusSnapshotName}
+                    />
+                    <Text style={styles.saveManagerMetaText}>Current Focus items: {focusedItems.length}</Text>
+                    <Pressable style={[styles.stagePrimaryButton, styles.saveManagerPrimaryButton]} onPress={() => void createFocusSnapshot()}>
+                      <Text style={styles.stagePrimaryLabel}>Save Current Focus Set</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.saveManagerListPane}>
+                <View style={styles.saveManagerListHeader}>
+                  <Text style={styles.saveManagerPaneTitle}>
+                    {saveManagerTab === 'leaderboard' ? 'Leaderboard saves' : 'Focus saves'}
+                  </Text>
+                  <Text style={styles.saveManagerMetaText}>
+                    {saveManagerTab === 'leaderboard'
+                      ? `${leaderboardSnapshots.length} saved`
+                      : `${focusSnapshots.length} saved`}
+                  </Text>
+                </View>
+                <ScrollView style={styles.saveManagerListScroll} contentContainerStyle={styles.saveManagerListContent}>
+                  {saveManagerTab === 'leaderboard' ? (
+                    leaderboardSnapshots.length === 0 ? (
+                      <Text style={styles.calendarNoteEmpty}>No leaderboard saves yet.</Text>
+                    ) : (
+                      leaderboardSnapshots.map(snapshot => (
+                        <View key={snapshot.id} style={styles.saveManagerEntryCard}>
+                          <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
+                          <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
+                          <Text style={styles.calendarNoteSource}>
+                            All-time: {snapshot.leaderboard.length} entries | Session: {snapshot.sessionLeaderboard.length} entries
+                          </Text>
+                          <View style={styles.saveManagerEntryActions}>
+                            <Pressable style={styles.saveManagerEntryButton} onPress={() => void loadLeaderboardSnapshot(snapshot)}>
+                              <Text style={styles.saveManagerEntryButtonLabel}>Load</Text>
+                            </Pressable>
+                            <Pressable style={styles.saveManagerEntryDeleteButton} onPress={() => void deleteLeaderboardSnapshot(snapshot.id)}>
+                              <Text style={styles.saveManagerEntryDeleteButtonLabel}>Delete</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ))
+                    )
+                  ) : focusSnapshots.length === 0 ? (
                     <Text style={styles.calendarNoteEmpty}>No focus saves yet.</Text>
                   ) : (
                     focusSnapshots.map(snapshot => (
-                      <View key={snapshot.id} style={[styles.calendarNoteCard, { marginBottom: 8 }]}>
+                      <View key={snapshot.id} style={styles.saveManagerEntryCard}>
                         <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
                         <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
                         <Text style={styles.calendarNoteSource}>Focus items: {snapshot.focusItems.length}</Text>
-                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-                          <Pressable style={styles.stageSecondaryButton} onPress={() => void loadFocusSnapshot(snapshot)}>
-                            <Text style={styles.stageSecondaryLabel}>Load</Text>
+                        <View style={styles.saveManagerEntryActions}>
+                          <Pressable style={styles.saveManagerEntryButton} onPress={() => void overwriteFocusSnapshot(snapshot.id)}>
+                            <Text style={styles.saveManagerEntryButtonLabel}>Overwrite</Text>
                           </Pressable>
-                          <Pressable style={styles.quizStopButton} onPress={() => void deleteFocusSnapshot(snapshot.id)}>
-                            <Text style={styles.quizStopButtonLabel}>Delete</Text>
+                          <Pressable style={styles.saveManagerEntryButton} onPress={() => void loadFocusSnapshot(snapshot)}>
+                            <Text style={styles.saveManagerEntryButtonLabel}>Load</Text>
+                          </Pressable>
+                          <Pressable style={styles.saveManagerEntryDeleteButton} onPress={() => void deleteFocusSnapshot(snapshot.id)}>
+                            <Text style={styles.saveManagerEntryDeleteButtonLabel}>Delete</Text>
                           </Pressable>
                         </View>
                       </View>
                     ))
                   )}
-                </View>
+                </ScrollView>
               </View>
-            </ScrollView>
+            </View>
           </View>
         </View>
       ) : null}
