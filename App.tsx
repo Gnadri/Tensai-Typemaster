@@ -82,6 +82,7 @@ const QUIZ_LEADERBOARD_EXPORT_EVENT = 'tensai:leaderboard-export';
 const QUIZ_LEADERBOARD_IMPORT_EVENT = 'tensai:leaderboard-import';
 const QUIZ_SAVE_MANAGER_OPEN_EVENT = 'tensai:save-manager-open';
 const SAVE_STATES_FILE_EXTENSION = '.tensai-saves.json';
+const FOCUS_SAVE_STATES_FILE_EXTENSION = '.tensai-focus-saves.json';
 
 const SOURCE_COLORS = {
   study: '#2563eb',
@@ -109,7 +110,7 @@ const QUIZ_SCORE_WPM_PEAK = 180;
 const QUIZ_SCORE_SPEED_WEIGHT = 2.2;
 const QUIZ_SCORE_TIMER_WEIGHT = 1.2;
 const QUIZ_SCORE_TIMER_CURVE = 0.7;
-const QUIZ_SCORE_BACKSPACE_PENALTY = 0.045;
+const QUIZ_SCORE_BACKSPACE_PENALTY_POINTS = 1000;
 
 const KATAKANA_QUIZ = [
   { id: 'ka', kana: 'カ', answers: ['ka'] },
@@ -2757,7 +2758,20 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
               id: item.id ? `${item.id}` : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
               name: item.name ? `${item.name}` : 'Imported focus save',
               createdAt: Number(item.createdAt) || Date.now(),
-              focusItems: Array.isArray(item.focusItems) ? item.focusItems : [],
+              focusItems: (Array.isArray(item.focusItems) ? item.focusItems : [])
+                .filter(entry => entry && typeof entry === 'object' && entry.item && entry.sourceMode)
+                .map(entry => {
+                  const sourceMode = `${entry.sourceMode}`;
+                  const rawItem = entry.item && typeof entry.item === 'object' ? entry.item : {};
+                  return {
+                    key: entry.key ? `${entry.key}` : `${sourceMode}:${rawItem.id || rawItem.kana || Math.random().toString(36).slice(2, 8)}`,
+                    sourceMode,
+                    item: {
+                      ...rawItem,
+                      answers: Array.isArray(rawItem.answers) ? rawItem.answers : [],
+                    },
+                  };
+                }),
               focusLeaderboard: limitLeaderboardPerMode(
                 (Array.isArray(item.focusLeaderboard) ? item.focusLeaderboard : [])
                   .filter(entry => isFocusModeKey(entry?.mode || '')),
@@ -2796,6 +2810,117 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
       Alert.alert('Import failed', 'Could not open file picker.');
     }
   }, [limitLeaderboardPerMode, persistActiveFocusSnapshotId, persistFocusSnapshots, persistLeaderboardSnapshots]);
+
+  const exportFocusSaveStatesData = useCallback(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+      Alert.alert('Unavailable', 'Focus save export is only available in the web/extension view.');
+      return;
+    }
+    try {
+      const payload = {
+        version: 1,
+        type: 'tensai-focus-save-states',
+        exportedAt: new Date().toISOString(),
+        focusSnapshots,
+        activeFocusSnapshotId,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const stamp = formatDateKey(new Date()).replace(/-/g, '');
+      anchor.href = url;
+      anchor.download = `tensai-focus-save-states-${stamp}${FOCUS_SAVE_STATES_FILE_EXTENSION}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export focus save states:', err);
+      Alert.alert('Export failed', 'Could not export Focus save states.');
+    }
+  }, [activeFocusSnapshotId, focusSnapshots]);
+
+  const importFocusSaveStatesData = useCallback(async () => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+      Alert.alert('Unavailable', 'Focus save import is only available in the web/extension view.');
+      return;
+    }
+    try {
+      const shouldReplace = window.confirm('Importing Focus save states will replace all Focus saves. Continue?');
+      if (!shouldReplace) return;
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = `application/json,.json,${FOCUS_SAVE_STATES_FILE_EXTENSION},${SAVE_STATES_FILE_EXTENSION}`;
+      input.style.display = 'none';
+
+      input.onchange = async () => {
+        try {
+          const file = input.files?.[0];
+          if (!file) return;
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+
+          const rawFocusSnapshots = Array.isArray(parsed?.focusSnapshots)
+            ? parsed.focusSnapshots
+            : Array.isArray(parsed)
+              ? parsed
+              : [];
+
+          const normalizedFocusSnapshots = rawFocusSnapshots
+            .filter(item => item && typeof item === 'object')
+            .map(item => ({
+              id: item.id ? `${item.id}` : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              name: item.name ? `${item.name}` : 'Imported focus save',
+              createdAt: Number(item.createdAt) || Date.now(),
+              focusItems: (Array.isArray(item.focusItems) ? item.focusItems : [])
+                .filter(entry => entry && typeof entry === 'object' && entry.item && entry.sourceMode)
+                .map(entry => {
+                  const sourceMode = `${entry.sourceMode}`;
+                  const rawItem = entry.item && typeof entry.item === 'object' ? entry.item : {};
+                  return {
+                    key: entry.key ? `${entry.key}` : `${sourceMode}:${rawItem.id || rawItem.kana || Math.random().toString(36).slice(2, 8)}`,
+                    sourceMode,
+                    item: {
+                      ...rawItem,
+                      answers: Array.isArray(rawItem.answers) ? rawItem.answers : [],
+                    },
+                  };
+                }),
+              focusLeaderboard: limitLeaderboardPerMode(
+                (Array.isArray(item.focusLeaderboard) ? item.focusLeaderboard : [])
+                  .filter(entry => isFocusModeKey(entry?.mode || '')),
+              ),
+            }))
+            .slice(0, 100);
+
+          const requestedActiveFocusSnapshotId = parsed?.activeFocusSnapshotId ? `${parsed.activeFocusSnapshotId}` : null;
+          const normalizedActiveFocusSnapshotId = requestedActiveFocusSnapshotId &&
+            normalizedFocusSnapshots.some(snapshot => snapshot.id === requestedActiveFocusSnapshotId)
+            ? requestedActiveFocusSnapshotId
+            : null;
+
+          await persistFocusSnapshots(normalizedFocusSnapshots);
+          await persistActiveFocusSnapshotId(normalizedActiveFocusSnapshotId);
+
+          Alert.alert('Import complete', `Loaded ${normalizedFocusSnapshots.length} Focus saves.`);
+        } catch (err) {
+          console.error('Failed to import focus save states:', err);
+          Alert.alert('Import failed', 'The selected file is not a valid Focus save export.');
+        } finally {
+          if (input.parentNode) {
+            input.parentNode.removeChild(input);
+          }
+        }
+      };
+
+      document.body.appendChild(input);
+      input.click();
+    } catch (err) {
+      console.error('Failed to open focus save state import picker:', err);
+      Alert.alert('Import failed', 'Could not open file picker.');
+    }
+  }, [limitLeaderboardPerMode, persistActiveFocusSnapshotId, persistFocusSnapshots]);
 
   const createLeaderboardSnapshot = useCallback(async () => {
     const name = leaderboardSnapshotName.trim();
@@ -2933,11 +3058,10 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
       const cleaned = (Array.isArray(snapshot.focusItems) ? snapshot.focusItems : [])
         .filter(entry => entry && entry.item && entry.sourceMode)
         .map(entry => ({
-          key: entry.key || `${entry.sourceMode}:${entry.item?.id || entry.item?.kana || ''}`,
+          key: entry.key || `${entry.sourceMode}:${entry.item?.id || entry.item?.kana || Math.random().toString(36).slice(2, 8)}`,
           sourceMode: entry.sourceMode,
           item: {
-            id: entry.item.id,
-            kana: entry.item.kana,
+            ...entry.item,
             answers: Array.isArray(entry.item.answers) ? entry.item.answers : [],
           },
         }));
@@ -3101,13 +3225,9 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
           : 0;
       const timerBonus = 1.0 + 0.25 * baseTimerFactor;
 
-      // D) Backspace penalty
-      const backspacePenalty = Math.exp(-QUIZ_SCORE_BACKSPACE_PENALTY * Math.max(0, backspaces));
-
-      // E) Top-heavy continuous score shaping
+      // D) Top-heavy continuous score shaping
       const quality =
-        Math.pow(speedFactor, QUIZ_SCORE_SPEED_WEIGHT) *
-        backspacePenalty;
+        Math.pow(speedFactor, QUIZ_SCORE_SPEED_WEIGHT);
       const scoreFrac =
         (Math.exp(QUIZ_SCORE_SHAPE_A * clampNumber(quality, 0, 1)) - 1) /
         (Math.exp(QUIZ_SCORE_SHAPE_A) - 1);
@@ -3116,8 +3236,10 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
         scoreFrac *
         completionFactor *
         Math.pow(timerBonus, QUIZ_SCORE_TIMER_WEIGHT);
+      const backspacePenaltyPoints = Math.max(0, backspaces) * QUIZ_SCORE_BACKSPACE_PENALTY_POINTS;
+      const adjustedScore = rawScore - backspacePenaltyPoints;
 
-      return Math.round(clampNumber(rawScore, 0, QUIZ_SCORE_MAX));
+      return Math.round(clampNumber(adjustedScore, 0, QUIZ_SCORE_MAX));
     },
     [quizItems, timerMinutes],
   );
@@ -4049,7 +4171,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.121</Text>
+          <Text style={styles.quizNavVersion}>v1.122</Text>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
@@ -5500,6 +5622,17 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
                   <View style={styles.saveManagerPaneCard}>
                     <Text style={styles.saveManagerPaneTitle}>Create focus save</Text>
                     <Text style={styles.saveManagerPaneSubtitle}>Save the current Focus set so it can be reloaded or overwritten later.</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 8, gap: 8 }}>
+                      <Text style={styles.calendarNoteSource}>{`Export/import Focus saves as *${FOCUS_SAVE_STATES_FILE_EXTENSION}`}</Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <Pressable style={styles.stageSecondaryButton} onPress={exportFocusSaveStatesData}>
+                          <Text style={styles.stageSecondaryLabel}>Export Focus Saves</Text>
+                        </Pressable>
+                        <Pressable style={styles.stageSecondaryButton} onPress={() => void importFocusSaveStatesData()}>
+                          <Text style={styles.stageSecondaryLabel}>Import Focus Saves</Text>
+                        </Pressable>
+                      </View>
+                    </View>
                     <TextInput
                       style={styles.calendarInput}
                       placeholder="Save name (e.g. Week 2 kanji set)"
