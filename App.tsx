@@ -2063,6 +2063,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
   const [leaderboard, setLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped' }>>([]);
   const [sessionLeaderboard, setSessionLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped' }>>([]);
   const [quizBackspaceCount, setQuizBackspaceCount] = useState(0);
+  const quizBackspacePenaltyWordIdsRef = React.useRef<Set<string>>(new Set());
   const inputRefs = React.useRef<Record<string, TextInput | null>>({});
   const timerDeadlineMsRef = React.useRef<number | null>(null);
   const remainingSecondsRef = React.useRef(remainingSeconds);
@@ -2322,6 +2323,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
     setFinishReason(null);
     setCompletionTimeMs(null);
     setQuizBackspaceCount(0);
+    quizBackspacePenaltyWordIdsRef.current.clear();
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
@@ -3172,6 +3174,8 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
         setHasFinished(false);
         setFinishReason(null);
         setCompletionTimeMs(null);
+        setQuizBackspaceCount(0);
+        quizBackspacePenaltyWordIdsRef.current.clear();
       }
       setIsSaveManagerOpen(false);
     } catch (err) {
@@ -3440,6 +3444,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
     setFinishReason(null);
     setCompletionTimeMs(null);
     setQuizBackspaceCount(0);
+    quizBackspacePenaltyWordIdsRef.current.clear();
     setIsQuizPaused(false);
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
@@ -3478,6 +3483,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
     setFinishReason(null);
     setCompletionTimeMs(null);
     setQuizBackspaceCount(0);
+    quizBackspacePenaltyWordIdsRef.current.clear();
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
@@ -4233,6 +4239,8 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
     setHasFinished(false);
     setFinishReason(null);
     setCompletionTimeMs(null);
+    setQuizBackspaceCount(0);
+    quizBackspacePenaltyWordIdsRef.current.clear();
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
@@ -5621,7 +5629,14 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
                       blurOnSubmit={false}
                       onSubmitEditing={() => focusNextAnswer(item.id, answers)}
                       onKeyPress={event => {
-                        if (event.nativeEvent.key === 'Backspace' && !hasFinished && !isQuizPaused) {
+                        if (
+                          event.nativeEvent.key === 'Backspace' &&
+                          !hasFinished &&
+                          !isQuizPaused &&
+                          (answers[item.id] || '').length > 0 &&
+                          !quizBackspacePenaltyWordIdsRef.current.has(item.id)
+                        ) {
+                          quizBackspacePenaltyWordIdsRef.current.add(item.id);
                           setQuizBackspaceCount(prev => prev + 1);
                         }
                       }}
