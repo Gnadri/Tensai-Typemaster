@@ -1855,24 +1855,25 @@ const parseTypeMasterModeKey = (mode: string) => {
   };
 };
 
-const normalizeStoredQuizModeKey = (mode: string) => {
-  if (mode.startsWith('endless:')) {
-    const withoutEndless = mode.replace('endless:', '');
+const normalizeStoredQuizModeKey = (mode: any) => {
+  const safeMode = typeof mode === 'string' ? mode : QUIZ_MODES[0].value;
+  if (safeMode.startsWith('endless:')) {
+    const withoutEndless = safeMode.replace('endless:', '');
     const [baseMode, jlptReadingMode] = withoutEndless.split(':');
     if (isJlptQuizMode(baseMode)) {
       return `endless:${getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE)}`;
     }
-    return mode;
+    return safeMode;
   }
-  if (mode.startsWith('typemaster:')) {
-    const parsed = parseTypeMasterModeKey(mode);
-    if (!parsed) return mode;
+  if (safeMode.startsWith('typemaster:')) {
+    const parsed = parseTypeMasterModeKey(safeMode);
+    if (!parsed) return safeMode;
     return getTypeMasterModeKey(parsed.quizModeKey);
   }
-  const [baseMode, jlptReadingMode] = mode.split(':');
+  const [baseMode, jlptReadingMode] = safeMode.split(':');
   return isJlptQuizMode(baseMode)
     ? getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE)
-    : mode;
+    : safeMode;
 };
 
 const getQuizModeLabel = (mode: string) => {
@@ -2119,8 +2120,18 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
     return `${sourceMode}:${idPart}`;
   }, []);
   const getItemSourceMode = useCallback(
-    (item: any) => item?.__focusSourceMode || (quizMode === 'focus' ? 'jlpt_n4' : quizMode),
-    [quizMode],
+    (item: any) => {
+      if (item?.__focusSourceMode) return item.__focusSourceMode;
+      if (quizMode !== 'focus') return quizMode;
+      if (typeof item?.id === 'string') {
+        const separatorIndex = item.id.indexOf(':');
+        if (separatorIndex > 0) {
+          return item.id.slice(0, separatorIndex);
+        }
+      }
+      return focusedItems[0]?.sourceMode || 'hiragana';
+    },
+    [focusedItems, quizMode],
   );
   const isJlptStyleItem = useCallback(
     (item: any, sourceMode?: string) => isJlptQuizMode(sourceMode || getItemSourceMode(item)),
@@ -2205,36 +2216,28 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
   }, []);
   const toggleFocusedItem = useCallback(
     async (item: any, sourceMode?: string) => {
-      const resolvedSourceMode = sourceMode || getItemSourceMode(item);
-      const key = getFocusItemKey(item, resolvedSourceMode);
-      const plainItem = {
-        id: item.__focusOriginalId || item.id,
-        kana: item.kana,
-        answers: Array.isArray(item.answers) ? item.answers : [],
-      };
-      const existing = focusedItems.some(entry => entry.key === key);
-      const next = existing
-        ? focusedItems.filter(entry => entry.key !== key)
-        : [...focusedItems, { key, sourceMode: resolvedSourceMode, item: plainItem }];
-      await saveFocusedItems(next);
-      // Focus leaderboard session is tied to the current focus set; reset it whenever the set changes.
-      setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
-      setLastRecordUpdate(prev => (prev && isFocusModeKey(prev.mode) ? null : prev));
-      void persistActiveFocusSnapshotId(null);
-      if (quizMode === 'focus') {
-        setQuizItems(
-          shuffleQuiz(
-            next.map(entry => ({
-              ...entry.item,
-              id: entry.key,
-              __focusSourceMode: entry.sourceMode,
-              __focusOriginalId: entry.item.id,
-            })),
-          ),
-        );
+      try {
+        const resolvedSourceMode = sourceMode || getItemSourceMode(item);
+        const key = getFocusItemKey(item, resolvedSourceMode);
+        const plainItem = {
+          id: item.__focusOriginalId || item.id,
+          kana: item.kana,
+          answers: Array.isArray(item.answers) ? item.answers : [],
+        };
+        const existing = focusedItems.some(entry => entry.key === key);
+        const next = existing
+          ? focusedItems.filter(entry => entry.key !== key)
+          : [...focusedItems, { key, sourceMode: resolvedSourceMode, item: plainItem }];
+        await saveFocusedItems(next);
+        // Focus leaderboard session is tied to the current focus set; reset it whenever the set changes.
+        setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
+        setLastRecordUpdate(prev => (prev && isFocusModeKey(prev.mode) ? null : prev));
+        void persistActiveFocusSnapshotId(null);
+      } catch (err) {
+        console.error('Failed to toggle Focus item:', err);
       }
     },
-    [focusedItems, getFocusItemKey, getItemSourceMode, persistActiveFocusSnapshotId, quizMode, saveFocusedItems],
+    [focusedItems, getFocusItemKey, getItemSourceMode, persistActiveFocusSnapshotId, saveFocusedItems],
   );
 
   const isJlptMode = isJlptQuizMode(quizMode);
@@ -2258,18 +2261,21 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
   }, [engModeEnabled, isRunning, quizFamily, quizMode]);
 
   useEffect(() => {
-    if (isRunning || quizMode === 'focus') return;
+    if (quizMode === 'focus') return;
     const isKanaMode =
       KANA_VARIANT_OPTIONS.hiragana.includes(quizMode as any) ||
       KANA_VARIANT_OPTIONS.katakana.includes(quizMode as any);
     const isJlptLikeMode = isJlptQuizMode(quizMode);
     if (!isKanaMode && !isJlptLikeMode) return;
-    setQuizItems(shuffleQuiz(getDatasetForMode(quizMode)));
+    const nextDataset = engModeEnabled && isKanaMode
+      ? ENGLISH_ALPHABET_QUIZ
+      : getQuizDataset(quizMode);
+    setQuizItems(shuffleQuiz(nextDataset));
     setAnswers({});
     setHasFinished(false);
     setFinishReason(null);
     setCompletionTimeMs(null);
-  }, [engModeEnabled, getDatasetForMode, isRunning, quizMode]);
+  }, [engModeEnabled, quizMode]);
 
   const openJishoWord = useCallback(async (kanji: string) => {
     if (!kanji) return;
@@ -2316,7 +2322,11 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
 
   useEffect(() => {
     if (quizMode !== 'focus') return;
-    setQuizItems(shuffleQuiz(getDatasetForMode('focus')));
+    setQuizItems(
+      focusDataset.map(entry => ({
+        ...entry,
+      })),
+    );
     setAnswers({});
     setIsRunning(false);
     setHasFinished(false);
@@ -2328,7 +2338,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
     timerDeadlineMsRef.current = null;
-  }, [getDatasetForMode, quizMode, timerMinutes]);
+  }, [quizMode]);
 
   useEffect(() => {
     if (!shouldShowJlptModeControls) {
@@ -4277,7 +4287,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.123</Text>
+          <Text style={styles.quizNavVersion}>v1.124</Text>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
