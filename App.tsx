@@ -74,6 +74,7 @@ const DEFAULT_SOURCE = CALENDAR_SOURCE_OPTIONS[0].value;
 const CALENDAR_NOTES_STORAGE_KEY = 'tensai-note.calendar.local';
 const QUIZ_LEADERBOARD_STORAGE_KEY = 'tensai-note.quiz-leaderboard.v1';
 const QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY = 'tensai-note.quiz-leaderboard-scores-enabled.v1';
+const QUIZ_ENG_MODE_ENABLED_STORAGE_KEY = 'tensai-note.quiz-eng-mode-enabled.v1';
 const QUIZ_FOCUS_STORAGE_KEY = 'tensai-note.quiz-focus.v1';
 const QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-leaderboard-snapshots.v1';
 const QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-focus-snapshots.v1';
@@ -357,6 +358,11 @@ const KATAKANA_DAKUTEN_HANDAKUTEN_CLEAN_QUIZ = [
   { id: 'pyu', kana: 'ピュ', answers: ['pyu'] },
   { id: 'pyo', kana: 'ピョ', answers: ['pyo'] },
 ];
+const ENGLISH_ALPHABET_QUIZ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => ({
+  id: `alpha_${letter.toLowerCase()}`,
+  kana: letter,
+  answers: [letter.toLowerCase()],
+}));
 
 const JLPT_N5_KANJI_QUIZ = [
   { id: 'n5_001', kana: '日', answers: ['nichi', 'jitsu', 'hi', 'bi', 'ka'] },
@@ -953,6 +959,7 @@ const initialCalendarForm = () => ({
 export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [leaderboardScoresEnabled, setLeaderboardScoresEnabled] = useState(false);
+  const [engModeEnabled, setEngModeEnabled] = useState(false);
 
   const dispatchLeaderboardSettingsEvent = useCallback((eventName: string) => {
     setIsSettingsOpen(false);
@@ -1016,17 +1023,23 @@ export default function App() {
   }, [handleExtensionReload]);
 
   useEffect(() => {
-    const loadLeaderboardScoreSetting = async () => {
+    const loadSettings = async () => {
       try {
-        const stored = await AsyncStorage.getItem(QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY);
-        if (stored != null) {
-          setLeaderboardScoresEnabled(stored === 'true');
+        const [scoreStored, engModeStored] = await Promise.all([
+          AsyncStorage.getItem(QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY),
+          AsyncStorage.getItem(QUIZ_ENG_MODE_ENABLED_STORAGE_KEY),
+        ]);
+        if (scoreStored != null) {
+          setLeaderboardScoresEnabled(scoreStored === 'true');
+        }
+        if (engModeStored != null) {
+          setEngModeEnabled(engModeStored === 'true');
         }
       } catch (err) {
-        console.error('Failed to load leaderboard score toggle:', err);
+        console.error('Failed to load quiz settings:', err);
       }
     };
-    void loadLeaderboardScoreSetting();
+    void loadSettings();
   }, []);
 
   const handleToggleScoresPress = useCallback(() => {
@@ -1034,6 +1047,16 @@ export default function App() {
       const next = !prev;
       void AsyncStorage.setItem(QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY, next ? 'true' : 'false').catch(err => {
         console.error('Failed to persist leaderboard score toggle:', err);
+      });
+      return next;
+    });
+  }, []);
+
+  const handleToggleEngModePress = useCallback(() => {
+    setEngModeEnabled(prev => {
+      const next = !prev;
+      void AsyncStorage.setItem(QUIZ_ENG_MODE_ENABLED_STORAGE_KEY, next ? 'true' : 'false').catch(err => {
+        console.error('Failed to persist ENG mode toggle:', err);
       });
       return next;
     });
@@ -1083,11 +1106,16 @@ export default function App() {
                   Toggle Scores ({leaderboardScoresEnabled ? 'On' : 'Off'})
                 </Text>
               </Pressable>
+              <Pressable style={styles.appSettingsMenuItem} onPress={handleToggleEngModePress}>
+                <Text style={styles.appSettingsMenuItemLabel}>
+                  ENG Mode ({engModeEnabled ? 'On' : 'Off'})
+                </Text>
+              </Pressable>
             </View>
           ) : null}
         </View>
         <View style={styles.quizPageFrame}>
-          <KanaQuizView leaderboardScoresEnabled={leaderboardScoresEnabled} />
+          <KanaQuizView leaderboardScoresEnabled={leaderboardScoresEnabled} engModeEnabled={engModeEnabled} />
         </View>
       </View>
     </View>
@@ -2005,7 +2033,7 @@ const normalizeLeaderboardTimerMinutes = (value: any) => {
   return Math.max(QUIZ_TIMER_MIN_MINUTES, Math.min(QUIZ_TIMER_MAX_MINUTES, parsed));
 };
 
-function KanaQuizView({ leaderboardScoresEnabled = false }) {
+function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false }) {
   const defaultQuizMode = useMemo(() => getDefaultQuizModeForWeb(), []);
   const defaultQuizView = useMemo(() => getDefaultQuizViewForWeb(), []);
   const [quizView, setQuizView] = useState(defaultQuizView);
@@ -2105,6 +2133,12 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
     (item: any, sourceMode?: string) => {
       const resolvedSourceMode = sourceMode || getItemSourceMode(item);
       if (isJlptQuizMode(resolvedSourceMode)) {
+        if (engModeEnabled) {
+          const englishMeanings = getJlptEnglishMeaningsForItem(item);
+          if (englishMeanings.length) return englishMeanings;
+          const fallbackReadings = (item.answers || []).map((value: string) => normalizeRomaji(value)).filter(Boolean);
+          return fallbackReadings.length ? fallbackReadings : [normalizeRomaji(item.kana || '')].filter(Boolean);
+        }
         if (usesJapaneseInputForItem(item, resolvedSourceMode)) {
           return [item.kana];
         }
@@ -2113,14 +2147,29 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
       }
       return (item.answers || []).map((value: string) => normalizeRomaji(value));
     },
-    [getItemSourceMode, jlptReadingMode, usesJapaneseInputForItem],
+    [engModeEnabled, getItemSourceMode, jlptReadingMode, usesJapaneseInputForItem],
   );
   const getPromptTextForItem = useCallback(
     (item: any, sourceMode?: string) => {
       const resolvedSourceMode = sourceMode || getItemSourceMode(item);
-      return isJlptQuizMode(resolvedSourceMode) ? getJlptPromptText(item, jlptReadingMode) : item.kana;
+      if (isJlptQuizMode(resolvedSourceMode)) {
+        if (engModeEnabled) {
+          const englishMeanings = getJlptEnglishMeaningsForItem(item);
+          if (englishMeanings.length) {
+            return englishMeanings[0];
+          }
+          const fallbackReadings = (item.answers || []).map((value: string) => normalizeRomaji(value)).filter(Boolean);
+          return fallbackReadings.length ? fallbackReadings[0] : item.kana;
+        }
+        return getJlptPromptText(item, jlptReadingMode);
+      }
+      if (engModeEnabled) {
+        const primary = normalizeRomaji((item.answers || [item.kana])[0] || item.kana);
+        return primary ? primary.toUpperCase() : item.kana;
+      }
+      return item.kana;
     },
-    [getItemSourceMode, jlptReadingMode],
+    [engModeEnabled, getItemSourceMode, jlptReadingMode],
   );
   const getHintTextForItem = useCallback(
     (item: any, sourceMode?: string) => {
@@ -2137,8 +2186,17 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
     [focusLookup, getFocusItemKey, getItemSourceMode],
   );
   const getDatasetForMode = useCallback(
-    (mode: string) => (mode === 'focus' ? focusDataset : getQuizDataset(mode)),
-    [focusDataset],
+    (mode: string) => {
+      if (mode === 'focus') return focusDataset;
+      const isKanaMode =
+        KANA_VARIANT_OPTIONS.hiragana.includes(mode as any) ||
+        KANA_VARIANT_OPTIONS.katakana.includes(mode as any);
+      if (engModeEnabled && isKanaMode) {
+        return ENGLISH_ALPHABET_QUIZ;
+      }
+      return getQuizDataset(mode);
+    },
+    [engModeEnabled, focusDataset],
   );
   const saveFocusedItems = useCallback(async (items: Array<{ key: string; sourceMode: string; item: any }>) => {
     setFocusedItems(items);
@@ -2180,13 +2238,37 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
 
   const isJlptMode = isJlptQuizMode(quizMode);
   const isFocusMode = quizMode === 'focus';
-  const shouldShowJlptModeControls = isJlptMode || isFocusMode;
-  const isJlptJapaneseInputMode = isJlptMode && jlptReadingMode === 'jp_on_kun_kanji';
-  const isJlptEnglishMode = isJlptMode && isJlptEnglishTranslateMode(jlptReadingMode);
+  const shouldShowJlptModeControls = (isJlptMode || isFocusMode) && !engModeEnabled;
+  const isJlptJapaneseInputMode = !engModeEnabled && isJlptMode && jlptReadingMode === 'jp_on_kun_kanji';
+  const isJlptEnglishMode = isJlptMode && (engModeEnabled || isJlptEnglishTranslateMode(jlptReadingMode));
   const isKanjiStudyMode = isJlptMode || isFocusMode;
+  const isEnglishVocabularyMode = engModeEnabled && isKanjiStudyMode;
+  const isEnglishAlphabetMode = engModeEnabled && !isKanjiStudyMode;
   const shouldShowJlptKanjiInfo = isKanjiStudyMode && !isJlptJapaneseInputMode;
   const activeModeKey = getQuizModeKey(quizMode, jlptReadingMode);
   const columnCount = isJlptJapaneseInputMode ? 4 : 5;
+
+  useEffect(() => {
+    if (!engModeEnabled) return;
+    if (quizFamily !== 'kana') return;
+    if (quizMode === 'hiragana' || quizMode === 'hiragana_dakuten') return;
+    if (isRunning) return;
+    selectQuizMode('hiragana');
+  }, [engModeEnabled, isRunning, quizFamily, quizMode]);
+
+  useEffect(() => {
+    if (isRunning || quizMode === 'focus') return;
+    const isKanaMode =
+      KANA_VARIANT_OPTIONS.hiragana.includes(quizMode as any) ||
+      KANA_VARIANT_OPTIONS.katakana.includes(quizMode as any);
+    const isJlptLikeMode = isJlptQuizMode(quizMode);
+    if (!isKanaMode && !isJlptLikeMode) return;
+    setQuizItems(shuffleQuiz(getDatasetForMode(quizMode)));
+    setAnswers({});
+    setHasFinished(false);
+    setFinishReason(null);
+    setCompletionTimeMs(null);
+  }, [engModeEnabled, getDatasetForMode, isRunning, quizMode]);
 
   const openJishoWord = useCallback(async (kanji: string) => {
     if (!kanji) return;
@@ -4045,28 +4127,44 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
   const displayedFamilyModes = quizFamily === 'jlpt'
     ? activeFamilyModes.filter(option => option.value !== 'jlpt_n4_2')
     : quizFamily === 'kana'
-      ? activeFamilyModes.filter(option => option.value !== 'hiragana_dakuten' && option.value !== 'katakana_dakuten')
+      ? engModeEnabled
+        ? activeFamilyModes.filter(option => option.value === 'hiragana')
+        : activeFamilyModes.filter(option => option.value !== 'hiragana_dakuten' && option.value !== 'katakana_dakuten')
       : activeFamilyModes;
   const activeKanaVariant = quizMode.startsWith('katakana') ? (KANA_VARIANT_OPTIONS.katakana.includes(quizMode) ? quizMode : 'katakana') : (KANA_VARIANT_OPTIONS.hiragana.includes(quizMode) ? quizMode : 'hiragana');
-  const promptColumnLabel = isFocusMode ? 'Prompt' : isJlptJapaneseInputMode ? 'Romaji Reading' : isKanjiStudyMode ? 'Kanji' : 'Kana';
+  const promptColumnLabel = isFocusMode
+    ? 'Prompt'
+    : isJlptJapaneseInputMode
+      ? 'Romaji Reading'
+      : isKanjiStudyMode
+        ? (engModeEnabled ? 'Vocabulary' : 'Kanji')
+        : (engModeEnabled ? 'Alphabet' : 'Kana');
   const answerColumnLabel = isFocusMode
     ? 'Answer'
     : isJlptJapaneseInputMode
     ? 'Kanji (Japanese input)'
-    : isJlptEnglishMode
+    : isEnglishVocabularyMode
+      ? 'Definition'
+      : isJlptEnglishMode
       ? 'English Translation'
       : isKanjiStudyMode
         ? 'Reading'
-        : 'English Syllable';
+        : isEnglishAlphabetMode
+          ? 'Letter'
+          : 'English Syllable';
   const answerPlaceholder = isFocusMode
     ? 'Type answer...'
     : isJlptJapaneseInputMode
     ? 'Type kanji ...'
-    : isJlptEnglishMode
+    : isEnglishVocabularyMode
+      ? 'Type definition...'
+      : isJlptEnglishMode
       ? 'Type meaning...'
       : isKanjiStudyMode
         ? 'Type reading...'
-        : 'Type...';
+        : isEnglishAlphabetMode
+          ? 'Type letter...'
+          : 'Type...';
   const completedModeLeaderboardSource = leaderboardScope === 'session' ? sessionLeaderboard : leaderboard;
   const completedModeLeaderboard = useMemo(
     () =>
@@ -4171,7 +4269,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.122</Text>
+          <Text style={styles.quizNavVersion}>v1.123</Text>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
@@ -4180,6 +4278,12 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
           <View style={styles.quizSubNavTabs}>
             {QUIZ_FAMILY_OPTIONS.map(option => {
               const selected = option.value === quizFamily;
+              const familyLabel =
+                option.value === 'kana' && engModeEnabled
+                  ? 'Alphabet'
+                  : option.value === 'jlpt' && engModeEnabled
+                    ? 'Vocabulary'
+                    : option.label;
               return (
                 <Pressable
                   key={option.value}
@@ -4193,7 +4297,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
                   }}
                 >
                   <Text style={[styles.quizSubNavTabText, selected && styles.quizSubNavTabTextActive]}>
-                    {option.label}
+                    {familyLabel}
                   </Text>
                 </Pressable>
               );
@@ -4203,6 +4307,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
           <View style={styles.quizSubNavTabs}>
             {displayedFamilyModes.map(({ value, tabLabel }) => {
               const selected = value === quizMode;
+              const modeTabLabel = engModeEnabled && (value === 'hiragana' || value === 'katakana') ? 'Alphabet' : tabLabel;
               if (value === 'hiragana' || value === 'katakana') {
                 const kanaVariants = value === 'hiragana' ? KANA_VARIANT_OPTIONS.hiragana : KANA_VARIANT_OPTIONS.katakana;
                 const isKanaSelected = kanaVariants.includes(quizMode);
@@ -4224,7 +4329,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
                       onPress={() => selectQuizMode(activeVariant)}
                     >
                       <Text style={[styles.quizSubNavTabText, isKanaSelected && styles.quizSubNavTabTextActive]}>
-                        {tabLabel}
+                        {modeTabLabel}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -5457,6 +5562,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
                       style={[
                         styles.quizKanaCell,
                         isJlptJapaneseInputMode && styles.quizKanaCellWide,
+                        engModeEnabled && styles.quizKanaCellEnglish,
                         isFocusedItem(item) && styles.quizKanaCellFocused,
                       ]}
                     >
@@ -5464,6 +5570,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
                         style={[
                           styles.quizKanaCellContent,
                           isJlptJapaneseInputMode ? { alignItems: 'flex-start' } : null,
+                          engModeEnabled && styles.quizKanaCellContentEnglish,
                         ]}
                       >
                         {shouldShowJlptKanjiInfo && !quizPromptHidden && isJlptStyleItem(item) && !usesJapaneseInputForItem(item) ? (
@@ -5485,6 +5592,8 @@ function KanaQuizView({ leaderboardScoresEnabled = false }) {
                             style={[
                               styles.quizKanaText,
                               isJlptJapaneseInputMode && styles.quizKanaTextWide,
+                              engModeEnabled && styles.quizKanaTextEnglish,
+                              engModeEnabled && isEnglishAlphabetMode && styles.quizKanaTextEnglishAlphabet,
                             ]}
                           >
                             {quizPromptHidden ? 'Paused' : getPromptTextForItem(item)}

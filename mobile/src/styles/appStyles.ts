@@ -976,6 +976,12 @@ export const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
     paddingVertical: 10,
   },
+  quizKanaCellEnglish: {
+    width: 126,
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 8,
+  },
   quizKanaCellFocused: {
     backgroundColor: '#223558',
   },
@@ -985,7 +991,23 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
+  quizKanaCellContentEnglish: {
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+  },
   quizKanaText: { color: '#ffffff', fontWeight: '700', fontSize: 18 },
+  quizKanaTextEnglish: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '700',
+    flexWrap: 'wrap',
+  },
+  quizKanaTextEnglishAlphabet: {
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: 0.5,
+    fontWeight: '800',
+  },
   quizKanjiInfoButton: {
     position: 'absolute',
     top: -2,
