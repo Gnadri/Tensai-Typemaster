@@ -102,13 +102,9 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const QUIZ_TIMER_MIN_MINUTES = 1;
 const QUIZ_TIMER_MAX_MINUTES = 30;
 const QUIZ_SCORE_MAX = 10_000_000;
-const QUIZ_SCORE_CHARS_PER_WORD = 5;
-const QUIZ_SCORE_PEAK_MIN_WPM = 40;
-const QUIZ_SCORE_PEAK_MULT = 1.15;
-const QUIZ_SCORE_PEAK_MAX_WPM = 180;
-const QUIZ_SCORE_SHAPE_A = 7.5;
-const QUIZ_SCORE_WPM_PEAK = 180;
-const QUIZ_SCORE_SPEED_WEIGHT = 2.2;
+const QUIZ_SCORE_INPUT_CHARS_PER_WORD = 5;
+const QUIZ_SCORE_SPEED_ANCHOR_WPM = 180;
+const QUIZ_SCORE_SPEED_SHAPE_K = 8.25;
 const QUIZ_SCORE_TIMER_WEIGHT = 1.2;
 const QUIZ_SCORE_TIMER_CURVE = 0.7;
 const QUIZ_SCORE_BACKSPACE_PENALTY_POINTS = 1000;
@@ -2190,6 +2186,31 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
     },
     [getAcceptedAnswersForItem],
   );
+  const getScoreInputLengthForItem = useCallback(
+    (item: any, sourceMode?: string) => {
+      const resolvedSourceMode = sourceMode || getItemSourceMode(item);
+      const accepted = getAcceptedAnswersForItem(item, resolvedSourceMode)
+        .map((value: string) => String(value || '').trim())
+        .filter(Boolean);
+
+      if (accepted.length > 0) {
+        return accepted.reduce((min, value) => Math.min(min, value.length), accepted[0].length);
+      }
+
+      if (usesJapaneseInputForItem(item, resolvedSourceMode)) {
+        const fallbackRomanized = (item.answers || [])
+          .map((value: string) => normalizeRomaji(value))
+          .filter(Boolean);
+        if (fallbackRomanized.length > 0) {
+          return fallbackRomanized.reduce((min, value) => Math.min(min, value.length), fallbackRomanized[0].length);
+        }
+      }
+
+      const fallback = String(item.kana || '').trim();
+      return fallback.length;
+    },
+    [getAcceptedAnswersForItem, getItemSourceMode, usesJapaneseInputForItem],
+  );
   const isFocusedItem = useCallback(
     (item: any, sourceMode?: string) => {
       const resolvedSourceMode = sourceMode || getItemSourceMode(item);
@@ -3290,25 +3311,24 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
       const elapsedMinutes = elapsedMs / 60000;
       if (elapsedMinutes <= 0) return 0;
 
-      // A) Dynamic peak WPM based on quiz size and selected timer
       const timerSeconds = timerMinutes * 60;
       const quizTotalChars = getQuizTotalChars(quizItems);
       if (quizTotalChars <= 0) return 0;
-      const estimatedWordsTotal = quizTotalChars / QUIZ_SCORE_CHARS_PER_WORD;
-      const requiredWpmToFinish = timerSeconds > 0 ? estimatedWordsTotal / (timerSeconds / 60) : 0;
-      const dynamicPeakWpm = clampNumber(
-        requiredWpmToFinish * QUIZ_SCORE_PEAK_MULT,
-        QUIZ_SCORE_PEAK_MIN_WPM,
-        QUIZ_SCORE_PEAK_MAX_WPM,
+      const estimatedInputCharsTotal = quizItems.reduce(
+        (sum, item) => sum + getScoreInputLengthForItem(item),
+        0,
       );
+      if (estimatedInputCharsTotal <= 0) return 0;
 
-      // B) Measured WPM
-      const measuredWpm = (correctCharCount / QUIZ_SCORE_CHARS_PER_WORD) / elapsedMinutes;
-      const cappedWpm = Math.min(measuredWpm, dynamicPeakWpm);
-      const speedFactor = Math.log(1 + cappedWpm) / Math.log(1 + dynamicPeakWpm);
+      // Use accepted-answer input length rather than kana prompt length as the speed workload.
+      const measuredWpm = (estimatedInputCharsTotal * (correctCharCount / quizTotalChars) / QUIZ_SCORE_INPUT_CHARS_PER_WORD) / elapsedMinutes;
+      const speedNorm = clampNumber(
+        Math.log(1 + measuredWpm) / Math.log(1 + QUIZ_SCORE_SPEED_ANCHOR_WPM),
+        0,
+        1,
+      );
       const completionFactor = clampNumber(correctCharCount / quizTotalChars, 0, 1);
 
-      // C) Timer factor as a bonus band
       const minTimerSeconds = QUIZ_TIMER_MIN_MINUTES * 60;
       const maxTimerSeconds = QUIZ_TIMER_MAX_MINUTES * 60;
       const clampedTimerSeconds = clampNumber(timerSeconds, minTimerSeconds, maxTimerSeconds);
@@ -3321,12 +3341,9 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
           : 0;
       const timerBonus = 1.0 + 0.25 * baseTimerFactor;
 
-      // D) Top-heavy continuous score shaping
-      const quality =
-        Math.pow(speedFactor, QUIZ_SCORE_SPEED_WEIGHT);
       const scoreFrac =
-        (Math.exp(QUIZ_SCORE_SHAPE_A * clampNumber(quality, 0, 1)) - 1) /
-        (Math.exp(QUIZ_SCORE_SHAPE_A) - 1);
+        (Math.exp(QUIZ_SCORE_SPEED_SHAPE_K * speedNorm) - 1) /
+        (Math.exp(QUIZ_SCORE_SPEED_SHAPE_K) - 1);
       const rawScore =
         QUIZ_SCORE_MAX *
         scoreFrac *
@@ -3337,7 +3354,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
 
       return Math.round(clampNumber(adjustedScore, 0, QUIZ_SCORE_MAX));
     },
-    [quizItems, timerMinutes],
+    [getScoreInputLengthForItem, quizItems, timerMinutes],
   );
 
   const finalizeQuiz = useCallback(
@@ -4287,7 +4304,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.124</Text>
+          <Text style={styles.quizNavVersion}>v1.125</Text>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
@@ -5681,7 +5698,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
 
       {isSaveManagerOpen ? (
         <View style={styles.editModalOverlay}>
-          <View style={[styles.editModalPanel, { width: '92%', maxWidth: 980, maxHeight: '88%', overflow: 'hidden' }]}>
+          <View style={[styles.editModalPanel, styles.saveManagerModalPanel]}>
             <View style={styles.editModalHeader}>
               <Text style={styles.editModalTitle}>Save Manager</Text>
               <Pressable onPress={() => setIsSaveManagerOpen(false)}>
@@ -5756,13 +5773,21 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
                   <View style={styles.saveManagerPaneCard}>
                     <Text style={styles.saveManagerPaneTitle}>Create focus save</Text>
                     <Text style={styles.saveManagerPaneSubtitle}>Save the current Focus set so it can be reloaded or overwritten later.</Text>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 8, gap: 8 }}>
-                      <Text style={styles.calendarNoteSource}>{`Export/import Focus saves as *${FOCUS_SAVE_STATES_FILE_EXTENSION}`}</Text>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <Pressable style={styles.stageSecondaryButton} onPress={exportFocusSaveStatesData}>
+                    <View style={styles.saveManagerPaneUtilityRow}>
+                      <Text style={[styles.calendarNoteSource, styles.saveManagerPaneUtilityNote]}>
+                        {`Export/import Focus saves as *${FOCUS_SAVE_STATES_FILE_EXTENSION}`}
+                      </Text>
+                      <View style={styles.saveManagerPaneUtilityButtons}>
+                        <Pressable
+                          style={[styles.stageSecondaryButton, styles.saveManagerPaneUtilityButton]}
+                          onPress={exportFocusSaveStatesData}
+                        >
                           <Text style={styles.stageSecondaryLabel}>Export Focus Saves</Text>
                         </Pressable>
-                        <Pressable style={styles.stageSecondaryButton} onPress={() => void importFocusSaveStatesData()}>
+                        <Pressable
+                          style={[styles.stageSecondaryButton, styles.saveManagerPaneUtilityButton]}
+                          onPress={() => void importFocusSaveStatesData()}
+                        >
                           <Text style={styles.stageSecondaryLabel}>Import Focus Saves</Text>
                         </Pressable>
                       </View>

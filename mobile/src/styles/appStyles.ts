@@ -302,6 +302,12 @@ export const styles = StyleSheet.create({
     flexDirection: 'column',
     overflow: 'hidden',
   },
+  saveManagerModalPanel: {
+    width: '94%',
+    maxWidth: 1120,
+    minHeight: Platform.OS === 'web' ? 720 : undefined,
+    maxHeight: Platform.OS === 'web' ? '94%' : '92%',
+  },
   editModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   editModalTitle: { color: '#f8fafc', fontSize: 18, fontWeight: '700' },
   editModalClose: { color: '#94a3b8', fontSize: 22, fontWeight: '700', paddingHorizontal: 6 },
@@ -380,15 +386,17 @@ export const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     alignItems: 'stretch',
+    flexWrap: Platform.OS === 'web' ? 'nowrap' : 'wrap',
   },
   saveManagerComposePane: {
-    width: Platform.OS === 'web' ? 260 : '100%',
+    width: Platform.OS === 'web' ? 360 : '100%',
     flexShrink: 0,
-    maxWidth: Platform.OS === 'web' ? 300 : undefined,
+    minWidth: Platform.OS === 'web' ? 340 : undefined,
+    maxWidth: Platform.OS === 'web' ? 400 : undefined,
   },
   saveManagerListPane: {
     flex: 1,
-    minWidth: 200,
+    minWidth: 280,
     minHeight: 0,
     backgroundColor: '#162338',
     borderRadius: 12,
@@ -417,6 +425,29 @@ export const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 10,
   },
+  saveManagerPaneUtilityRow: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    marginTop: 8,
+    marginBottom: 8,
+    gap: 8,
+  },
+  saveManagerPaneUtilityNote: {
+    minWidth: 0,
+  },
+  saveManagerPaneUtilityButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+    width: '100%',
+  },
+  saveManagerPaneUtilityButton: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 150,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
   saveManagerMetaText: {
     color: '#94a3b8',
     fontSize: 12,
@@ -440,7 +471,7 @@ export const styles = StyleSheet.create({
     minHeight: 0,
   },
   saveManagerListContent: {
-    paddingBottom: 8,
+    paddingBottom: 12,
   },
   saveManagerEntryCard: {
     backgroundColor: '#0f172a',
