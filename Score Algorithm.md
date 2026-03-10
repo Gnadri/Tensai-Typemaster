@@ -2,6 +2,13 @@
 
 This document explains the scoring logic implemented in [App.tsx](./App.tsx), focused on the `calculateQuizGamepoints(...)` algorithm and the values that feed into leaderboard ranking.
 
+The app now supports two score modes for quiz leaderboard scoring:
+
+- `Speedrun Score`
+- `Study Score`
+
+`Speedrun Score` and `Study Score` now have separate tuning constants. `Study Score` is the completion-first algorithm path and is intentionally much more time-lenient than `Speedrun Score`.
+
 ## Source Location
 
 - `calculateQuizGamepoints(...)`: `App.tsx`
@@ -320,7 +327,7 @@ const entry = {
   date: now,
   finishReason: reason,
   timerMinutes,
-  scoreType: leaderboardScoresEnabled ? 'quiz_points' : undefined,
+  scoreType: leaderboardScoresEnabled ? 'speedrun_points' : undefined,
   correctCount: finalCorrectCount,
   testscore: finalCorrectCharCount,
   totalTestscore: totalCharCount,
@@ -334,7 +341,7 @@ const entry = {
   - Always stores the raw correct-character result.
 - `gamepoints`
   - Stores the ranked quiz score only when score mode is enabled.
-- `scoreType: 'quiz_points'`
+- `scoreType: 'speedrun_points'`
   - Marks leaderboard entries that should rank by `gamepoints` instead of raw `score`.
 
 ## Leaderboard Ranking Variables
@@ -343,7 +350,7 @@ const entry = {
 
 ```ts
 const getLeaderboardRankScore = (entry: { score: number; gamepoints?: number; scoreType?: string }) => {
-  if (entry.scoreType === 'quiz_points') {
+  if (entry.scoreType === 'speedrun_points') {
     return Math.round(entry.gamepoints ?? entry.score ?? 0);
   }
   return Math.round(entry.score ?? 0);

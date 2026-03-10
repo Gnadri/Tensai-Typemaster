@@ -74,6 +74,7 @@ const DEFAULT_SOURCE = CALENDAR_SOURCE_OPTIONS[0].value;
 const CALENDAR_NOTES_STORAGE_KEY = 'tensai-note.calendar.local';
 const QUIZ_LEADERBOARD_STORAGE_KEY = 'tensai-note.quiz-leaderboard.v1';
 const QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY = 'tensai-note.quiz-leaderboard-scores-enabled.v1';
+const QUIZ_SCORE_MODE_STORAGE_KEY = 'tensai-note.quiz-score-mode.v1';
 const QUIZ_ENG_MODE_ENABLED_STORAGE_KEY = 'tensai-note.quiz-eng-mode-enabled.v1';
 const QUIZ_FOCUS_STORAGE_KEY = 'tensai-note.quiz-focus.v1';
 const QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-leaderboard-snapshots.v1';
@@ -98,16 +99,25 @@ const SOURCE_COLORS = {
 const TAU = Math.PI * 2;
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+type QuizScoreMode = 'off' | 'speedrun_points' | 'study_points';
 
 const QUIZ_TIMER_MIN_MINUTES = 1;
 const QUIZ_TIMER_MAX_MINUTES = 30;
-const QUIZ_SCORE_MAX = 1_000_000_000;
-const QUIZ_SCORE_INPUT_CHARS_PER_WORD = 5;
-const QUIZ_SCORE_SPEED_ANCHOR_WPM = 140;
-const QUIZ_SCORE_SPEED_SHAPE_K = 16;
-const QUIZ_SCORE_TIMER_WEIGHT = 1.2;
-const QUIZ_SCORE_TIMER_CURVE = 0.7;
-const QUIZ_SCORE_BACKSPACE_PENALTY_POINTS = 1000;
+const SPEEDRUN_SCORE_MAX = 1_000_000_000;
+const SPEEDRUN_SCORE_INPUT_CHARS_PER_WORD = 5;
+const SPEEDRUN_SCORE_SPEED_ANCHOR_WPM = 80;
+const SPEEDRUN_SCORE_SPEED_SHAPE_K = 15;
+const SPEEDRUN_SCORE_TIMER_WEIGHT = 1.2;
+const SPEEDRUN_SCORE_TIMER_CURVE = 0.7;
+const SPEEDRUN_SCORE_BACKSPACE_PENALTY_POINTS = 1000;
+const STUDY_SCORE_MAX = 10_000_000;
+const STUDY_SCORE_INPUT_CHARS_PER_WORD = 5;
+const STUDY_SCORE_BACKSPACE_PENALTY_POINTS = 250;
+const STUDY_SCORE_COMPLETION_LINEAR_WEIGHT = 0.35;
+const STUDY_SCORE_COMPLETION_FINISH_WEIGHT = 0.55;
+const STUDY_SCORE_COMPLETION_FINISH_POWER = 4.0;
+const STUDY_SCORE_SPEED_ANCHOR_WPM = 30;
+const STUDY_SCORE_SPEED_BONUS_MAX = 0.1;
 
 const KATAKANA_QUIZ = [
   { id: 'ka', kana: 'カ', answers: ['ka'] },
@@ -954,8 +964,9 @@ const initialCalendarForm = () => ({
 
 export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [leaderboardScoresEnabled, setLeaderboardScoresEnabled] = useState(false);
+  const [quizScoreMode, setQuizScoreMode] = useState<QuizScoreMode>('off');
   const [engModeEnabled, setEngModeEnabled] = useState(false);
+  const leaderboardScoresEnabled = quizScoreMode !== 'off';
 
   const dispatchLeaderboardSettingsEvent = useCallback((eventName: string) => {
     setIsSettingsOpen(false);
@@ -1021,12 +1032,17 @@ export default function App() {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const [scoreStored, engModeStored] = await Promise.all([
+        const [scoreModeStored, scoreStored, engModeStored] = await Promise.all([
+          AsyncStorage.getItem(QUIZ_SCORE_MODE_STORAGE_KEY),
           AsyncStorage.getItem(QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY),
           AsyncStorage.getItem(QUIZ_ENG_MODE_ENABLED_STORAGE_KEY),
         ]);
-        if (scoreStored != null) {
-          setLeaderboardScoresEnabled(scoreStored === 'true');
+        if (scoreModeStored === 'speedrun_points' || scoreModeStored === 'study_points' || scoreModeStored === 'off') {
+          setQuizScoreMode(scoreModeStored);
+        } else if (scoreModeStored === 'quiz_points') {
+          setQuizScoreMode('speedrun_points');
+        } else if (scoreStored != null) {
+          setQuizScoreMode(scoreStored === 'true' ? 'speedrun_points' : 'off');
         }
         if (engModeStored != null) {
           setEngModeEnabled(engModeStored === 'true');
@@ -1038,15 +1054,30 @@ export default function App() {
     void loadSettings();
   }, []);
 
-  const handleToggleScoresPress = useCallback(() => {
-    setLeaderboardScoresEnabled(prev => {
-      const next = !prev;
-      void AsyncStorage.setItem(QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY, next ? 'true' : 'false').catch(err => {
-        console.error('Failed to persist leaderboard score toggle:', err);
-      });
-      return next;
+  const persistQuizScoreMode = useCallback((next: QuizScoreMode) => {
+    void Promise.all([
+      AsyncStorage.setItem(QUIZ_SCORE_MODE_STORAGE_KEY, next),
+      AsyncStorage.setItem(QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY, next === 'off' ? 'false' : 'true'),
+    ]).catch(err => {
+      console.error('Failed to persist leaderboard score mode:', err);
     });
   }, []);
+
+  const handleToggleQuizScorePress = useCallback(() => {
+    setQuizScoreMode(prev => {
+      const next: QuizScoreMode = prev === 'speedrun_points' ? 'off' : 'speedrun_points';
+      persistQuizScoreMode(next);
+      return next;
+    });
+  }, [persistQuizScoreMode]);
+
+  const handleToggleStudyScorePress = useCallback(() => {
+    setQuizScoreMode(prev => {
+      const next: QuizScoreMode = prev === 'study_points' ? 'off' : 'study_points';
+      persistQuizScoreMode(next);
+      return next;
+    });
+  }, [persistQuizScoreMode]);
 
   const handleToggleEngModePress = useCallback(() => {
     setEngModeEnabled(prev => {
@@ -1097,9 +1128,14 @@ export default function App() {
               <Pressable style={styles.appSettingsMenuItem} onPress={handleOpenSaveManagerPress}>
                 <Text style={styles.appSettingsMenuItemLabel}>Save Manager</Text>
               </Pressable>
-              <Pressable style={styles.appSettingsMenuItem} onPress={handleToggleScoresPress}>
+              <Pressable style={styles.appSettingsMenuItem} onPress={handleToggleQuizScorePress}>
                 <Text style={styles.appSettingsMenuItemLabel}>
-                  Toggle Scores ({leaderboardScoresEnabled ? 'On' : 'Off'})
+                  Speedrun Score ({quizScoreMode === 'speedrun_points' ? 'On' : 'Off'})
+                </Text>
+              </Pressable>
+              <Pressable style={styles.appSettingsMenuItem} onPress={handleToggleStudyScorePress}>
+                <Text style={styles.appSettingsMenuItemLabel}>
+                  Study Score ({quizScoreMode === 'study_points' ? 'On' : 'Off'})
                 </Text>
               </Pressable>
               <Pressable style={styles.appSettingsMenuItem} onPress={handleToggleEngModePress}>
@@ -1111,7 +1147,7 @@ export default function App() {
           ) : null}
         </View>
         <View style={styles.quizPageFrame}>
-          <KanaQuizView leaderboardScoresEnabled={leaderboardScoresEnabled} engModeEnabled={engModeEnabled} />
+          <KanaQuizView scoreMode={quizScoreMode} engModeEnabled={engModeEnabled} />
         </View>
       </View>
     </View>
@@ -1992,14 +2028,14 @@ const getLeaderboardModeDisplayLabel = (entry: { mode: string; typemasterQueueMo
 };
 
 const getLeaderboardRankScore = (entry: { score: number; gamepoints?: number; scoreType?: string }) => {
-  if (entry.scoreType === 'quiz_points') {
+  if (entry.scoreType === 'speedrun_points' || entry.scoreType === 'quiz_points' || entry.scoreType === 'study_points') {
     return Math.round(entry.gamepoints ?? entry.score ?? 0);
   }
   return Math.round(entry.score ?? 0);
 };
 
 const getLeaderboardTestscoreDisplay = (entry: { mode: string; score: number; total: number; scoreType?: string; correctCount?: number; gamepoints?: number; testscore?: number; totalTestscore?: number }) => {
-  if (entry.scoreType === 'quiz_points') {
+  if (entry.scoreType === 'speedrun_points' || entry.scoreType === 'quiz_points' || entry.scoreType === 'study_points') {
     if (typeof entry.testscore === 'number' && typeof entry.totalTestscore === 'number') {
       return `${entry.testscore}/${entry.totalTestscore}`;
     }
@@ -2018,7 +2054,7 @@ const getLeaderboardTestscoreDisplay = (entry: { mode: string; score: number; to
 };
 
 const getLeaderboardGamepointsDisplay = (entry: { scoreType?: string; gamepoints?: number }) => {
-  if (entry.scoreType !== 'quiz_points' || typeof entry.gamepoints !== 'number') {
+  if ((entry.scoreType !== 'speedrun_points' && entry.scoreType !== 'quiz_points' && entry.scoreType !== 'study_points') || typeof entry.gamepoints !== 'number') {
     return null;
   }
   return `Pts ${entry.gamepoints.toLocaleString()}`;
@@ -2030,7 +2066,9 @@ const normalizeLeaderboardTimerMinutes = (value: any) => {
   return Math.max(QUIZ_TIMER_MIN_MINUTES, Math.min(QUIZ_TIMER_MAX_MINUTES, parsed));
 };
 
-function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false }) {
+function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode?: QuizScoreMode; engModeEnabled?: boolean }) {
+  const leaderboardScoresEnabled = scoreMode !== 'off';
+  const isStudyScoreMode = scoreMode === 'study_points';
   const defaultQuizMode = useMemo(() => getDefaultQuizModeForWeb(), []);
   const defaultQuizView = useMemo(() => getDefaultQuizViewForWeb(), []);
   const [quizView, setQuizView] = useState(defaultQuizView);
@@ -3304,7 +3342,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
     [isCorrectAnswer, quizItems],
   );
 
-  const calculateQuizGamepoints = useCallback(
+  const calculateSpeedrunQuizGamepoints = useCallback(
     (correctCharCount: number, elapsedMs: number, backspaces: number) => {
       if (correctCharCount <= 0 || elapsedMs <= 0) return 0;
 
@@ -3321,9 +3359,9 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
       if (estimatedInputCharsTotal <= 0) return 0;
 
       // Use accepted-answer input length rather than kana prompt length as the speed workload.
-      const measuredWpm = (estimatedInputCharsTotal * (correctCharCount / quizTotalChars) / QUIZ_SCORE_INPUT_CHARS_PER_WORD) / elapsedMinutes;
+      const measuredWpm = (estimatedInputCharsTotal * (correctCharCount / quizTotalChars) / SPEEDRUN_SCORE_INPUT_CHARS_PER_WORD) / elapsedMinutes;
       const speedNorm = clampNumber(
-        Math.log(1 + measuredWpm) / Math.log(1 + QUIZ_SCORE_SPEED_ANCHOR_WPM),
+        Math.log(1 + measuredWpm) / Math.log(1 + SPEEDRUN_SCORE_SPEED_ANCHOR_WPM),
         0,
         1,
       );
@@ -3333,8 +3371,8 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
       const maxTimerSeconds = QUIZ_TIMER_MAX_MINUTES * 60;
       const clampedTimerSeconds = clampNumber(timerSeconds, minTimerSeconds, maxTimerSeconds);
       const timerRangeRatio = maxTimerSeconds / minTimerSeconds;
-      const rawTimerReward = Math.pow(maxTimerSeconds / clampedTimerSeconds, QUIZ_SCORE_TIMER_CURVE);
-      const timerRewardRange = Math.pow(timerRangeRatio, QUIZ_SCORE_TIMER_CURVE) - 1;
+      const rawTimerReward = Math.pow(maxTimerSeconds / clampedTimerSeconds, SPEEDRUN_SCORE_TIMER_CURVE);
+      const timerRewardRange = Math.pow(timerRangeRatio, SPEEDRUN_SCORE_TIMER_CURVE) - 1;
       const baseTimerFactor =
         timerRewardRange > 0
           ? clampNumber((rawTimerReward - 1) / timerRewardRange, 0, 1)
@@ -3342,19 +3380,62 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
       const timerBonus = 1.0 + 0.25 * baseTimerFactor;
 
       const scoreFrac =
-        (Math.exp(QUIZ_SCORE_SPEED_SHAPE_K * speedNorm) - 1) /
-        (Math.exp(QUIZ_SCORE_SPEED_SHAPE_K) - 1);
+        (Math.exp(SPEEDRUN_SCORE_SPEED_SHAPE_K * speedNorm) - 1) /
+        (Math.exp(SPEEDRUN_SCORE_SPEED_SHAPE_K) - 1);
       const rawScore =
-        QUIZ_SCORE_MAX *
+        SPEEDRUN_SCORE_MAX *
         scoreFrac *
         completionFactor *
-        Math.pow(timerBonus, QUIZ_SCORE_TIMER_WEIGHT);
-      const backspacePenaltyPoints = Math.max(0, backspaces) * QUIZ_SCORE_BACKSPACE_PENALTY_POINTS;
+        Math.pow(timerBonus, SPEEDRUN_SCORE_TIMER_WEIGHT);
+      const backspacePenaltyPoints = Math.max(0, backspaces) * SPEEDRUN_SCORE_BACKSPACE_PENALTY_POINTS;
       const adjustedScore = rawScore - backspacePenaltyPoints;
 
-      return Math.round(clampNumber(adjustedScore, 0, QUIZ_SCORE_MAX));
+      return Math.round(clampNumber(adjustedScore, 0, SPEEDRUN_SCORE_MAX));
     },
     [getScoreInputLengthForItem, quizItems, timerMinutes],
+  );
+
+  const calculateStudyQuizGamepoints = useCallback(
+    (correctCharCount: number, elapsedMs: number, backspaces: number) => {
+      if (correctCharCount <= 0 || elapsedMs <= 0) return 0;
+
+      const elapsedMinutes = elapsedMs / 60000;
+      if (elapsedMinutes <= 0) return 0;
+
+      const quizTotalChars = getQuizTotalChars(quizItems);
+      if (quizTotalChars <= 0) return 0;
+      const estimatedInputCharsTotal = quizItems.reduce(
+        (sum, item) => sum + getScoreInputLengthForItem(item),
+        0,
+      );
+      if (estimatedInputCharsTotal <= 0) return 0;
+
+      const measuredWpm = (estimatedInputCharsTotal * (correctCharCount / quizTotalChars) / STUDY_SCORE_INPUT_CHARS_PER_WORD) / elapsedMinutes;
+      const completionFactor = clampNumber(correctCharCount / quizTotalChars, 0, 1);
+
+      // Study Score is completion-first and only mildly rewards faster clean solves.
+      const completionScoreFrac = clampNumber(
+        (STUDY_SCORE_COMPLETION_LINEAR_WEIGHT * completionFactor) +
+          (STUDY_SCORE_COMPLETION_FINISH_WEIGHT * Math.pow(completionFactor, STUDY_SCORE_COMPLETION_FINISH_POWER)),
+        0,
+        1,
+      );
+      const speedNorm = clampNumber(
+        Math.log(1 + measuredWpm) / Math.log(1 + STUDY_SCORE_SPEED_ANCHOR_WPM),
+        0,
+        1,
+      );
+      const speedBonusMultiplier = 1.0 + (STUDY_SCORE_SPEED_BONUS_MAX * Math.sqrt(speedNorm));
+      const rawScore =
+        STUDY_SCORE_MAX *
+        completionScoreFrac *
+        speedBonusMultiplier;
+      const backspacePenaltyPoints = Math.max(0, backspaces) * STUDY_SCORE_BACKSPACE_PENALTY_POINTS;
+      const adjustedScore = rawScore - backspacePenaltyPoints;
+
+      return Math.round(clampNumber(adjustedScore, 0, STUDY_SCORE_MAX));
+    },
+    [getScoreInputLengthForItem, quizItems],
   );
 
   const finalizeQuiz = useCallback(
@@ -3380,7 +3461,9 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
       elapsedMs = Math.max(0, Math.min(elapsedMs, timerTotalMs));
 
       const finalGamepoints = leaderboardScoresEnabled
-        ? calculateQuizGamepoints(finalCorrectCharCount, elapsedMs, quizBackspaceCount)
+        ? (isStudyScoreMode
+          ? calculateStudyQuizGamepoints(finalCorrectCharCount, elapsedMs, quizBackspaceCount)
+          : calculateSpeedrunQuizGamepoints(finalCorrectCharCount, elapsedMs, quizBackspaceCount))
         : finalCorrectCharCount;
 
       setCompletionTimeMs(elapsedMs);
@@ -3400,7 +3483,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
         date: now,
         finishReason: reason,
         timerMinutes,
-        scoreType: leaderboardScoresEnabled ? 'quiz_points' : undefined,
+        scoreType: leaderboardScoresEnabled ? (isStudyScoreMode ? 'study_points' : 'speedrun_points') : undefined,
         correctCount: finalCorrectCount,
         testscore: finalCorrectCharCount,
         totalTestscore: totalCharCount,
@@ -3412,7 +3495,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
         }
       });
     },
-    [activeModeKey, answers, calculateCorrectAnswers, calculateCorrectCharacterCount, calculateQuizGamepoints, hasFinished, leaderboardScoresEnabled, quizBackspaceCount, quizItems, saveLeaderboardEntry, timerMinutes],
+    [activeModeKey, answers, calculateCorrectAnswers, calculateCorrectCharacterCount, calculateSpeedrunQuizGamepoints, calculateStudyQuizGamepoints, hasFinished, isStudyScoreMode, leaderboardScoresEnabled, quizBackspaceCount, quizItems, saveLeaderboardEntry, timerMinutes],
   );
 
   useEffect(() => {
@@ -4023,8 +4106,11 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
     return Math.max(0, Math.min(timerTotalMs, timerTotalMs - remainingMs));
   }, [completionTimeMs, isRunning, remainingSeconds, timerMinutes]);
   const quizGamepoints = useMemo(
-    () => calculateQuizGamepoints(correctCharacterCount, quizElapsedMs, quizBackspaceCount),
-    [calculateQuizGamepoints, correctCharacterCount, quizBackspaceCount, quizElapsedMs],
+    () =>
+      isStudyScoreMode
+        ? calculateStudyQuizGamepoints(correctCharacterCount, quizElapsedMs, quizBackspaceCount)
+        : calculateSpeedrunQuizGamepoints(correctCharacterCount, quizElapsedMs, quizBackspaceCount),
+    [calculateSpeedrunQuizGamepoints, calculateStudyQuizGamepoints, correctCharacterCount, isStudyScoreMode, quizBackspaceCount, quizElapsedMs],
   );
 
   const focusNextAnswer = useCallback(
@@ -4304,7 +4390,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.12</Text>
+          <Text style={styles.quizNavVersion}>v1.122</Text>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
