@@ -16,10 +16,10 @@ These constants define the scoring curve:
 ```ts
 const QUIZ_TIMER_MIN_MINUTES = 1;
 const QUIZ_TIMER_MAX_MINUTES = 30;
-const QUIZ_SCORE_MAX = 10_000_000;
+const QUIZ_SCORE_MAX = 100_000_000;
 const QUIZ_SCORE_INPUT_CHARS_PER_WORD = 5;
 const QUIZ_SCORE_SPEED_ANCHOR_WPM = 180;
-const QUIZ_SCORE_SPEED_SHAPE_K = 9.93;
+const QUIZ_SCORE_SPEED_SHAPE_K = 17.48;
 const QUIZ_SCORE_TIMER_WEIGHT = 1.2;
 const QUIZ_SCORE_TIMER_CURVE = 0.7;
 const QUIZ_SCORE_BACKSPACE_PENALTY_POINTS = 1000;
@@ -40,7 +40,7 @@ const QUIZ_SCORE_BACKSPACE_PENALTY_POINTS = 1000;
   - A full-complete run at `180 WPM` maps to the top of the speed band.
 - `QUIZ_SCORE_SPEED_SHAPE_K`
   - Controls the anchored exponential speed curve.
-  - It is tuned so that roughly `50 WPM` lands around `1,000,000` on a `3` minute full-complete run before penalties.
+  - It is tuned so that roughly `45 WPM` lands around `1,000,000` on a full-complete neutral-timer run before penalties.
 - `QUIZ_SCORE_TIMER_WEIGHT`
   - Controls how much the timer bonus matters in the final score.
 - `QUIZ_SCORE_TIMER_CURVE`
@@ -263,8 +263,8 @@ const calculateQuizGamepoints = useCallback(
   - This is now the only speed shaping curve.
   - It replaces the old chain of dynamic peak normalization, extra power weighting, and a second exponential remap.
   - It is explicitly anchored to the intended design goal:
-    - around `180 WPM` -> near `10,000,000` on a full-complete neutral-timer run
-    - around `50 WPM` -> around `1,000,000` on a full-complete `3` minute run
+    - around `180 WPM` -> near `100,000,000` on a full-complete neutral-timer run
+    - around `45 WPM` -> around `1,000,000` on a full-complete neutral-timer run
 - `rawScore = QUIZ_SCORE_MAX * scoreFrac * completionFactor * Math.pow(timerBonus, QUIZ_SCORE_TIMER_WEIGHT)`
   - Final pre-penalty score.
   - Combines speed quality, completion, timer difficulty, and score cap.

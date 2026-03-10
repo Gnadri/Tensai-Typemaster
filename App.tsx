@@ -101,10 +101,10 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const QUIZ_TIMER_MIN_MINUTES = 1;
 const QUIZ_TIMER_MAX_MINUTES = 30;
-const QUIZ_SCORE_MAX = 10_000_000;
+const QUIZ_SCORE_MAX = 1_000_000_000;
 const QUIZ_SCORE_INPUT_CHARS_PER_WORD = 5;
-const QUIZ_SCORE_SPEED_ANCHOR_WPM = 180;
-const QUIZ_SCORE_SPEED_SHAPE_K = 8.25;
+const QUIZ_SCORE_SPEED_ANCHOR_WPM = 140;
+const QUIZ_SCORE_SPEED_SHAPE_K = 16;
 const QUIZ_SCORE_TIMER_WEIGHT = 1.2;
 const QUIZ_SCORE_TIMER_CURVE = 0.7;
 const QUIZ_SCORE_BACKSPACE_PENALTY_POINTS = 1000;
@@ -4304,7 +4304,7 @@ function KanaQuizView({ leaderboardScoresEnabled = false, engModeEnabled = false
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.125</Text>
+          <Text style={styles.quizNavVersion}>v1.12</Text>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
