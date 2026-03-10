@@ -105,18 +105,18 @@ const QUIZ_TIMER_MIN_MINUTES = 1;
 const QUIZ_TIMER_MAX_MINUTES = 30;
 const SPEEDRUN_SCORE_MAX = 1_000_000_000;
 const SPEEDRUN_SCORE_INPUT_CHARS_PER_WORD = 5;
-const SPEEDRUN_SCORE_SPEED_ANCHOR_WPM = 80;
-const SPEEDRUN_SCORE_SPEED_SHAPE_K = 15;
+const SPEEDRUN_SCORE_SPEED_ANCHOR_WPM = 70;
+const SPEEDRUN_SCORE_SPEED_SHAPE_K = 11;
 const SPEEDRUN_SCORE_TIMER_WEIGHT = 1.2;
 const SPEEDRUN_SCORE_TIMER_CURVE = 0.7;
 const SPEEDRUN_SCORE_BACKSPACE_PENALTY_POINTS = 1000;
 const STUDY_SCORE_MAX = 10_000_000;
 const STUDY_SCORE_INPUT_CHARS_PER_WORD = 5;
-const STUDY_SCORE_BACKSPACE_PENALTY_POINTS = 250;
+const STUDY_SCORE_BACKSPACE_PENALTY_POINTS = 15000;
 const STUDY_SCORE_COMPLETION_LINEAR_WEIGHT = 0.35;
 const STUDY_SCORE_COMPLETION_FINISH_WEIGHT = 0.55;
 const STUDY_SCORE_COMPLETION_FINISH_POWER = 4.0;
-const STUDY_SCORE_SPEED_ANCHOR_WPM = 30;
+const STUDY_SCORE_SPEED_ANCHOR_WPM = 60;
 const STUDY_SCORE_SPEED_BONUS_MAX = 0.1;
 
 const KATAKANA_QUIZ = [
@@ -2066,9 +2066,21 @@ const normalizeLeaderboardTimerMinutes = (value: any) => {
   return Math.max(QUIZ_TIMER_MIN_MINUTES, Math.min(QUIZ_TIMER_MAX_MINUTES, parsed));
 };
 
+const normalizeLeaderboardScoreType = (value: any): QuizScoreMode => {
+  if (value === 'study_points') return 'study_points';
+  if (value === 'speedrun_points' || value === 'quiz_points') return 'speedrun_points';
+  return 'off';
+};
+
 function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode?: QuizScoreMode; engModeEnabled?: boolean }) {
   const leaderboardScoresEnabled = scoreMode !== 'off';
   const isStudyScoreMode = scoreMode === 'study_points';
+  const activeQuizLeaderboardScoreType = isStudyScoreMode ? 'study_points' : leaderboardScoresEnabled ? 'speedrun_points' : 'off';
+  const activeQuizLeaderboardLabel = activeQuizLeaderboardScoreType === 'study_points'
+    ? 'Study Score'
+    : activeQuizLeaderboardScoreType === 'speedrun_points'
+      ? 'Speedrun Score'
+      : 'Time';
   const defaultQuizMode = useMemo(() => getDefaultQuizModeForWeb(), []);
   const defaultQuizView = useMemo(() => getDefaultQuizViewForWeb(), []);
   const [quizView, setQuizView] = useState(defaultQuizView);
@@ -2093,10 +2105,11 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const [hasFinished, setHasFinished] = useState(false);
   const [finishReason, setFinishReason] = useState<'time' | 'complete' | 'stopped' | null>(null);
   const [completionTimeMs, setCompletionTimeMs] = useState<number | null>(null);
+  const [isQuizScoreHidden, setIsQuizScoreHidden] = useState(false);
   const [isLeaderboardEditMode, setIsLeaderboardEditMode] = useState(false);
-  const [lastRecordUpdate, setLastRecordUpdate] = useState<{ mode: string; isNewRecord: boolean; rank: number | null } | null>(null);
-  const [leaderboard, setLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped' }>>([]);
-  const [sessionLeaderboard, setSessionLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped' }>>([]);
+  const [lastRecordUpdate, setLastRecordUpdate] = useState<{ mode: string; scoreType?: QuizScoreMode; isNewRecord: boolean; rank: number | null } | null>(null);
+  const [leaderboard, setLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; scoreType?: string }>>([]);
+  const [sessionLeaderboard, setSessionLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; scoreType?: string }>>([]);
   const [quizBackspaceCount, setQuizBackspaceCount] = useState(0);
   const quizBackspacePenaltyWordIdsRef = React.useRef<Set<string>>(new Set());
   const inputRefs = React.useRef<Record<string, TextInput | null>>({});
@@ -2529,9 +2542,10 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
           const rawMode = item?.mode || QUIZ_MODES[0].value;
           const modeKey = normalizeStoredQuizModeKey(rawMode);
           const normalizedTimerMinutes = normalizeLeaderboardTimerMinutes(item?.timerMinutes);
-          const bucketKey = `${modeKey}|${normalizedTimerMinutes}`;
+          const normalizedScoreType = normalizeLeaderboardScoreType(item?.scoreType);
+          const bucketKey = `${modeKey}|${normalizedTimerMinutes}|${normalizedScoreType}`;
           if (!acc[bucketKey]) acc[bucketKey] = [];
-          acc[bucketKey].push({ ...item, mode: modeKey, timerMinutes: normalizedTimerMinutes });
+          acc[bucketKey].push({ ...item, mode: modeKey, timerMinutes: normalizedTimerMinutes, scoreType: normalizedScoreType === 'off' ? undefined : normalizedScoreType });
           return acc;
         },
         {},
@@ -2550,6 +2564,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               candidate.total === entry.total &&
               candidate.mode === entry.mode &&
               normalizeLeaderboardTimerMinutes(candidate.timerMinutes) === normalizeLeaderboardTimerMinutes(entry.timerMinutes) &&
+              normalizeLeaderboardScoreType(candidate.scoreType) === normalizeLeaderboardScoreType(entry.scoreType) &&
               (candidate.finishReason || 'complete') === (entry.finishReason || 'complete') &&
               (candidate.typemasterQueueMode || '') === (entry.typemasterQueueMode || '')
             );
@@ -2757,7 +2772,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     void persistActiveFocusSnapshotLeaderboard(focusEntries);
   }, [activeFocusSnapshotId, persistActiveFocusSnapshotLeaderboard, sessionLeaderboard]);
 
-  const saveLeaderboardEntry = useCallback(async (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; timerMinutes?: number }) => {
+  const saveLeaderboardEntry = useCallback(async (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; timerMinutes?: number; scoreType?: string }) => {
     try {
       const isFocusEntry = isFocusModeKey(entry.mode);
       const normalizedEntry = {
@@ -2794,10 +2809,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       const stored = await AsyncStorage.getItem(QUIZ_LEADERBOARD_STORAGE_KEY);
       const current = stored ? JSON.parse(stored) : [];
       const currentEntries = Array.isArray(current) ? current : [];
+      const normalizedScoreType = normalizeLeaderboardScoreType(normalizedEntry.scoreType);
       const currentModeEntries = currentEntries
         .filter(item => normalizeStoredQuizModeKey(item?.mode) === normalizedEntry.mode)
         .filter(item => normalizeLeaderboardTimerMinutes(item?.timerMinutes) === normalizedEntry.timerMinutes)
-        .map(item => ({ ...item, finishReason: item.finishReason || 'complete', timerMinutes: normalizeLeaderboardTimerMinutes(item?.timerMinutes) }))
+        .filter(item => normalizeLeaderboardScoreType(item?.scoreType) === normalizedScoreType)
+        .map(item => ({ ...item, finishReason: item.finishReason || 'complete', timerMinutes: normalizeLeaderboardTimerMinutes(item?.timerMinutes), scoreType: normalizeLeaderboardScoreType(item?.scoreType) === 'off' ? undefined : normalizeLeaderboardScoreType(item?.scoreType) }))
         .sort(compareLeaderboardEntriesByTime);
       const previousTop = currentModeEntries.length ? currentModeEntries[0] : null;
       const updated = Array.isArray(current) ? [...current, normalizedEntry] : [normalizedEntry];
@@ -2807,7 +2824,8 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       const updatedModeEntries = perModeTop10
         .filter(item => item?.mode === normalizedEntry.mode)
         .filter(item => normalizeLeaderboardTimerMinutes(item?.timerMinutes) === normalizedEntry.timerMinutes)
-        .map(item => ({ ...item, finishReason: item.finishReason || 'complete', timerMinutes: normalizeLeaderboardTimerMinutes(item?.timerMinutes) }))
+        .filter(item => normalizeLeaderboardScoreType(item?.scoreType) === normalizedScoreType)
+        .map(item => ({ ...item, finishReason: item.finishReason || 'complete', timerMinutes: normalizeLeaderboardTimerMinutes(item?.timerMinutes), scoreType: normalizeLeaderboardScoreType(item?.scoreType) === 'off' ? undefined : normalizeLeaderboardScoreType(item?.scoreType) }))
         .sort(compareLeaderboardEntriesByTime);
       const rankIndex = updatedModeEntries.findIndex(item => item?.date === normalizedEntry.date);
       return {
@@ -3266,8 +3284,8 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   }, [activeFocusSnapshotId, focusSnapshots, persistActiveFocusSnapshotId, persistFocusSnapshots]);
 
   const getEntryIdentity = useCallback(
-    (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number; typemasterQueueMode?: string }) =>
-      `${entry.mode}|${normalizeLeaderboardTimerMinutes(entry.timerMinutes)}|${entry.typemasterQueueMode || ''}|${entry.date}|${entry.timeMs}|${entry.score}|${entry.total}|${entry.finishReason || 'complete'}`,
+    (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number; typemasterQueueMode?: string; scoreType?: string }) =>
+      `${entry.mode}|${normalizeLeaderboardTimerMinutes(entry.timerMinutes)}|${normalizeLeaderboardScoreType(entry.scoreType)}|${entry.typemasterQueueMode || ''}|${entry.date}|${entry.timeMs}|${entry.score}|${entry.total}|${entry.finishReason || 'complete'}`,
     [],
   );
 
@@ -3413,7 +3431,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       const measuredWpm = (estimatedInputCharsTotal * (correctCharCount / quizTotalChars) / STUDY_SCORE_INPUT_CHARS_PER_WORD) / elapsedMinutes;
       const completionFactor = clampNumber(correctCharCount / quizTotalChars, 0, 1);
 
-      // Study Score is completion-first and only mildly rewards faster clean solves.
+      // Study Score is completion-first, but it should still separate moderately faster clean solves.
       const completionScoreFrac = clampNumber(
         (STUDY_SCORE_COMPLETION_LINEAR_WEIGHT * completionFactor) +
           (STUDY_SCORE_COMPLETION_FINISH_WEIGHT * Math.pow(completionFactor, STUDY_SCORE_COMPLETION_FINISH_POWER)),
@@ -3425,7 +3443,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         0,
         1,
       );
-      const speedBonusMultiplier = 1.0 + (STUDY_SCORE_SPEED_BONUS_MAX * Math.sqrt(speedNorm));
+      const speedBonusMultiplier = 1.0 + (STUDY_SCORE_SPEED_BONUS_MAX * speedNorm);
       const rawScore =
         STUDY_SCORE_MAX *
         completionScoreFrac *
@@ -3467,6 +3485,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         : finalCorrectCharCount;
 
       setCompletionTimeMs(elapsedMs);
+      setIsQuizScoreHidden(false);
       setRemainingSeconds(remainingSecondsAtFinish);
       remainingSecondsRef.current = remainingSecondsAtFinish;
       setHasFinished(true);
@@ -3491,11 +3510,11 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       };
       saveLeaderboardEntry(entry).then(result => {
         if (result) {
-          setLastRecordUpdate({ mode: entry.mode, ...result });
+          setLastRecordUpdate({ mode: entry.mode, scoreType: activeQuizLeaderboardScoreType, ...result });
         }
       });
     },
-    [activeModeKey, answers, calculateCorrectAnswers, calculateCorrectCharacterCount, calculateSpeedrunQuizGamepoints, calculateStudyQuizGamepoints, hasFinished, isStudyScoreMode, leaderboardScoresEnabled, quizBackspaceCount, quizItems, saveLeaderboardEntry, timerMinutes],
+    [activeModeKey, activeQuizLeaderboardScoreType, answers, calculateCorrectAnswers, calculateCorrectCharacterCount, calculateSpeedrunQuizGamepoints, calculateStudyQuizGamepoints, hasFinished, isStudyScoreMode, leaderboardScoresEnabled, quizBackspaceCount, quizItems, saveLeaderboardEntry, timerMinutes],
   );
 
   useEffect(() => {
@@ -3553,6 +3572,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     setHasFinished(false);
     setFinishReason(null);
     setCompletionTimeMs(null);
+    setIsQuizScoreHidden(false);
     setQuizBackspaceCount(0);
     quizBackspacePenaltyWordIdsRef.current.clear();
     setIsQuizPaused(false);
@@ -3592,6 +3612,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     setHasFinished(false);
     setFinishReason(null);
     setCompletionTimeMs(null);
+    setIsQuizScoreHidden(false);
     setQuizBackspaceCount(0);
     quizBackspacePenaltyWordIdsRef.current.clear();
     setLastRecordUpdate(null);
@@ -4203,6 +4224,9 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     ? `Focus leaderboard positions are saved with the active Focus save state.`
     : 'Focus leaderboard positions save with a Focus save state. Save or load a Focus set in Settings > Save Manager to keep them.';
   const activeLeaderboardModeLabel = getQuizModeLabel(activeLeaderboardModeKey);
+  const activeLeaderboardDisplayLabel = isTypeMasterModeKey(activeLeaderboardModeKey) || isEndlessModeKey(activeLeaderboardModeKey) || isFocusModeKey(activeLeaderboardModeKey)
+    ? 'Time'
+    : activeQuizLeaderboardLabel;
   const activeLeaderboardSource = leaderboardScope === 'session' ? sessionLeaderboard : leaderboard;
   const activeLeaderboard = useMemo(
     () =>
@@ -4214,9 +4238,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         })
         .filter(entry => entry.mode === activeLeaderboardModeKey)
         .filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === timerMinutes)
+        .filter(entry => isTypeMasterModeKey(activeLeaderboardModeKey) || isEndlessModeKey(activeLeaderboardModeKey) || isFocusModeKey(activeLeaderboardModeKey)
+          ? true
+          : normalizeLeaderboardScoreType(entry.scoreType) === activeQuizLeaderboardScoreType)
         .sort(activeLeaderboardComparator)
         .slice(0, 10),
-    [activeLeaderboardComparator, activeLeaderboardModeKey, activeLeaderboardSource, leaderboardScope, timerMinutes, todayKey],
+    [activeLeaderboardComparator, activeLeaderboardModeKey, activeLeaderboardSource, activeQuizLeaderboardScoreType, leaderboardScope, timerMinutes, todayKey],
   );
   const completedModeLabel = getQuizModeLabel(activeModeKey);
   const typemasterModeKey = getTypeMasterModeKey(activeModeKey);
@@ -4295,9 +4322,10 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         })
         .filter(entry => entry.mode === activeModeKey)
         .filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === timerMinutes)
+        .filter(entry => normalizeLeaderboardScoreType(entry.scoreType) === activeQuizLeaderboardScoreType)
         .sort(activeLeaderboardComparator)
         .slice(0, 10),
-    [activeLeaderboardComparator, activeModeKey, completedModeLeaderboardSource, leaderboardScope, timerMinutes, todayKey],
+    [activeLeaderboardComparator, activeModeKey, activeQuizLeaderboardScoreType, completedModeLeaderboardSource, leaderboardScope, timerMinutes, todayKey],
   );
   const typemasterCompletedModeLeaderboard = useMemo(
     () =>
@@ -4390,7 +4418,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.122</Text>
+          <Text style={styles.quizNavVersion}>v1.22</Text>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
@@ -4693,7 +4721,14 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
             </View>
           ) : (
             <>
-              <View style={styles.quizStatBlock}>
+              <Pressable
+                style={styles.quizStatBlock}
+                disabled={quizView !== 'quiz' || hasFinished}
+                onPress={() => {
+                  if (quizView !== 'quiz' || hasFinished) return;
+                  setIsQuizScoreHidden(prev => !prev);
+                }}
+              >
                 <Text style={styles.quizStatLabel}>
                   {quizView === 'endless' || quizView === 'typemaster' ? 'Characters' : 'Score'}
                 </Text>
@@ -4702,11 +4737,13 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     ? endlessScore
                     : quizView === 'typemaster'
                       ? typemasterScore
-                      : leaderboardScoresEnabled
-                        ? quizGamepoints.toLocaleString()
-                        : `${correctCharacterCount}/${totalCharacterCount}`}
+                      : isQuizScoreHidden
+                        ? 'Hidden'
+                        : leaderboardScoresEnabled
+                          ? quizGamepoints.toLocaleString()
+                          : `${correctCharacterCount}/${totalCharacterCount}`}
                 </Text>
-              </View>
+              </Pressable>
               <View style={styles.quizStatBlock}>
                 <Text style={styles.quizStatLabel}>Timer</Text>
                 <Text style={[styles.quizStatValueTimer, (hasFinished || endlessHasFinished || typemasterHasFinished) && styles.quizTimerValueExpired]}>
@@ -5380,7 +5417,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               {activeLeaderboard.length > 0 ? (
                 <View style={styles.quizLeaderboard}>
                   <View style={styles.quizLeaderboardHeaderRow}>
-                    <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} Top 10 ({timerMinutes} min, {activeScopeLabel})</Text>
+                    <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} {activeLeaderboardDisplayLabel} Top 10 ({timerMinutes} min, {activeScopeLabel})</Text>
                     <View style={styles.quizLeaderboardScopeTabs}>
                       {LEADERBOARD_GAME_OPTIONS.map(option => {
                         const selected = option.value === leaderboardGameType;
@@ -5458,7 +5495,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               ) : (
                 <View style={styles.quizLeaderboard}>
                   <View style={styles.quizLeaderboardHeaderRow}>
-                    <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} Top 10 ({timerMinutes} min, {activeScopeLabel})</Text>
+                    <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} {activeLeaderboardDisplayLabel} Top 10 ({timerMinutes} min, {activeScopeLabel})</Text>
                     <View style={styles.quizLeaderboardScopeTabs}>
                       {LEADERBOARD_GAME_OPTIONS.map(option => {
                         const selected = option.value === leaderboardGameType;
@@ -5502,7 +5539,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                   {isFocusModeKey(activeLeaderboardModeKey) && leaderboardScope === 'session' ? (
                     <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
                   ) : null}
-                  <Text style={styles.quizLeaderboardEmpty}>No {activeScopeLabel.toLowerCase()} scores for this mode.</Text>
+                  <Text style={styles.quizLeaderboardEmpty}>No {activeScopeLabel.toLowerCase()} {activeLeaderboardDisplayLabel.toLowerCase()} entries for this mode.</Text>
                 </View>
               )}
             </View>
@@ -5519,13 +5556,13 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                       ? 'Quiz stopped early.'
                       : 'All answers correct.'}
                 </Text>
-                {finishReason === 'complete' && lastRecordUpdate && lastRecordUpdate.mode === activeModeKey ? (
+                {finishReason === 'complete' && lastRecordUpdate && lastRecordUpdate.mode === activeModeKey && normalizeLeaderboardScoreType(lastRecordUpdate.scoreType) === activeQuizLeaderboardScoreType ? (
                   <Text style={[styles.quizRecordNotice, lastRecordUpdate.isNewRecord && styles.quizRecordNoticeNew]}>
                     {lastRecordUpdate.isNewRecord
-                      ? `New ${completedModeLabel} record!`
+                      ? `New ${completedModeLabel} ${activeQuizLeaderboardLabel} record!`
                       : lastRecordUpdate.rank
-                        ? `Placed #${lastRecordUpdate.rank} on ${completedModeLabel} leaderboard.`
-                        : `Completed ${completedModeLabel} run saved.`}
+                        ? `Placed #${lastRecordUpdate.rank} on ${completedModeLabel} ${activeQuizLeaderboardLabel} leaderboard.`
+                        : `Completed ${completedModeLabel} ${activeQuizLeaderboardLabel.toLowerCase()} run saved.`}
                   </Text>
                 ) : null}
               </View>
@@ -5569,7 +5606,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                 {completedModeLeaderboard.length > 0 ? (
                   <View style={styles.quizLeaderboard}>
                     <View style={styles.quizLeaderboardHeaderRow}>
-                      <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Top 10 ({timerMinutes} min, {completedScopeLabel})</Text>
+                      <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} {activeQuizLeaderboardLabel} Top 10 ({timerMinutes} min, {completedScopeLabel})</Text>
                       <View style={styles.quizLeaderboardScopeTabs}>
                         {renderLeaderboardRankPills('completed-main')}
                         <Pressable
@@ -5633,7 +5670,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                 ) : (
                   <View style={styles.quizLeaderboard}>
                     <View style={styles.quizLeaderboardHeaderRow}>
-                      <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Top 10 ({timerMinutes} min, {completedScopeLabel})</Text>
+                      <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} {activeQuizLeaderboardLabel} Top 10 ({timerMinutes} min, {completedScopeLabel})</Text>
                       <View style={styles.quizLeaderboardScopeTabs}>
                         {renderLeaderboardRankPills('completed-empty')}
                         <Pressable
@@ -5663,7 +5700,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     {isFocusModeKey(activeModeKey) && leaderboardScope === 'session' ? (
                       <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
                     ) : null}
-                    <Text style={styles.quizLeaderboardEmpty}>No {completedScopeLabel.toLowerCase()} scores for this mode.</Text>
+                    <Text style={styles.quizLeaderboardEmpty}>No {completedScopeLabel.toLowerCase()} {activeQuizLeaderboardLabel.toLowerCase()} entries for this mode.</Text>
                   </View>
                 )}
               </View>

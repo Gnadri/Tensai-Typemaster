@@ -7,7 +7,7 @@ The app now supports two score modes for quiz leaderboard scoring:
 - `Speedrun Score`
 - `Study Score`
 
-`Speedrun Score` and `Study Score` now have separate tuning constants. `Study Score` is the completion-first algorithm path and is intentionally much more time-lenient than `Speedrun Score`.
+`Speedrun Score` and `Study Score` now have separate tuning constants. `Study Score` is the completion-first algorithm path and gives speed/timer performance a secondary, but still meaningful, bonus.
 
 ## Source Location
 
