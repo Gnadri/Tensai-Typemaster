@@ -4223,6 +4223,9 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const focusLeaderboardSaveNotice = activeFocusSnapshotId
     ? `Focus leaderboard positions are saved with the active Focus save state.`
     : 'Focus leaderboard positions save with a Focus save state. Save or load a Focus set in Settings > Save Manager to keep them.';
+  const activeFocusSnapshotName = activeFocusSnapshotId
+    ? (focusSnapshots.find(snapshot => snapshot.id === activeFocusSnapshotId)?.name || 'Unnamed Focus save')
+    : null;
   const activeLeaderboardModeLabel = getQuizModeLabel(activeLeaderboardModeKey);
   const activeLeaderboardDisplayLabel = isTypeMasterModeKey(activeLeaderboardModeKey) || isEndlessModeKey(activeLeaderboardModeKey) || isFocusModeKey(activeLeaderboardModeKey)
     ? 'Time'
@@ -5828,167 +5831,211 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                 <Text style={styles.editModalClose}>×</Text>
               </Pressable>
             </View>
-
-            <View style={styles.saveManagerToolbar}>
-              <View style={styles.saveManagerSummaryGrid}>
-                <View style={styles.saveManagerSummaryCard}>
-                  <Text style={styles.saveManagerSummaryValue}>{focusSnapshots.length}</Text>
-                  <Text style={styles.saveManagerSummaryLabel}>Focus saves</Text>
+            <ScrollView style={styles.saveManagerScroll} contentContainerStyle={styles.saveManagerScrollContent}>
+              <View style={styles.saveManagerToolbar}>
+                <View style={styles.saveManagerSummaryGrid}>
+                  <View style={styles.saveManagerSummaryCard}>
+                    <Text style={styles.saveManagerSummaryValue}>{focusSnapshots.length}</Text>
+                    <Text style={styles.saveManagerSummaryLabel}>Focus saves</Text>
+                  </View>
+                  <View style={styles.saveManagerSummaryCard}>
+                    <Text style={styles.saveManagerSummaryValue}>{leaderboardSnapshots.length}</Text>
+                    <Text style={styles.saveManagerSummaryLabel}>Leaderboard saves</Text>
+                  </View>
+                  <View style={styles.saveManagerSummaryCard}>
+                    <Text style={styles.saveManagerSummaryValue}>{focusedItems.length}</Text>
+                    <Text style={styles.saveManagerSummaryLabel}>Current Focus items</Text>
+                  </View>
                 </View>
-                <View style={styles.saveManagerSummaryCard}>
-                  <Text style={styles.saveManagerSummaryValue}>{leaderboardSnapshots.length}</Text>
-                  <Text style={styles.saveManagerSummaryLabel}>Leaderboard saves</Text>
-                </View>
-                <View style={styles.saveManagerSummaryCard}>
-                  <Text style={styles.saveManagerSummaryValue}>{focusedItems.length}</Text>
-                  <Text style={styles.saveManagerSummaryLabel}>Current Focus items</Text>
-                </View>
-              </View>
-              <View style={styles.saveManagerActionRow}>
-                <Text style={styles.calendarNoteSource}>{`Export/import Save Manager data as *${SAVE_STATES_FILE_EXTENSION}`}</Text>
-                <View style={styles.saveManagerButtonRow}>
-                  <Pressable style={styles.stageSecondaryButton} onPress={exportSaveStatesData}>
-                    <Text style={styles.stageSecondaryLabel}>Export Save States</Text>
-                  </Pressable>
-                  <Pressable style={styles.stageSecondaryButton} onPress={() => void importSaveStatesData()}>
-                    <Text style={styles.stageSecondaryLabel}>Import Save States</Text>
-                  </Pressable>
-                </View>
-              </View>
-              <View style={styles.saveManagerTabRow}>
-                <Pressable
-                  style={[styles.saveManagerTab, saveManagerTab === 'focus' && styles.saveManagerTabActive]}
-                  onPress={() => setSaveManagerTab('focus')}
-                >
-                  <Text style={[styles.saveManagerTabLabel, saveManagerTab === 'focus' && styles.saveManagerTabLabelActive]}>
-                    Focus Saves
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.saveManagerTab, saveManagerTab === 'leaderboard' && styles.saveManagerTabActive]}
-                  onPress={() => setSaveManagerTab('leaderboard')}
-                >
-                  <Text style={[styles.saveManagerTabLabel, saveManagerTab === 'leaderboard' && styles.saveManagerTabLabelActive]}>
-                    Leaderboards
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={styles.saveManagerBody}>
-              <View style={styles.saveManagerComposePane}>
-                {saveManagerTab === 'leaderboard' ? (
-                  <View style={styles.saveManagerPaneCard}>
-                    <Text style={styles.saveManagerPaneTitle}>Create leaderboard save</Text>
-                    <Text style={styles.saveManagerPaneSubtitle}>Store the current all-time and session leaderboards as a named snapshot.</Text>
-                    <TextInput
-                      style={styles.calendarInput}
-                      placeholder="Save name (e.g. JLPT practice set A)"
-                      placeholderTextColor="#94A3B8"
-                      value={leaderboardSnapshotName}
-                      onChangeText={setLeaderboardSnapshotName}
-                    />
-                    <Pressable style={[styles.stagePrimaryButton, styles.saveManagerPrimaryButton]} onPress={() => void createLeaderboardSnapshot()}>
-                      <Text style={styles.stagePrimaryLabel}>Save Current Leaderboards</Text>
+                <View style={styles.saveManagerActionRow}>
+                  <View style={styles.saveManagerActionInfo}>
+                    <Text style={styles.saveManagerSectionEyebrow}>Save Manager backup</Text>
+                    <Text style={styles.calendarNoteSource}>{`Export or import the full Save Manager as *${SAVE_STATES_FILE_EXTENSION}`}</Text>
+                  </View>
+                  <View style={styles.saveManagerButtonRow}>
+                    <Pressable style={[styles.stageSecondaryButton, styles.saveManagerTopActionButton]} onPress={exportSaveStatesData}>
+                      <Text style={styles.stageSecondaryLabel}>Export Save States</Text>
+                    </Pressable>
+                    <Pressable style={[styles.stageSecondaryButton, styles.saveManagerTopActionButton]} onPress={() => void importSaveStatesData()}>
+                      <Text style={styles.stageSecondaryLabel}>Import Save States</Text>
                     </Pressable>
                   </View>
-                ) : (
-                  <View style={styles.saveManagerPaneCard}>
-                    <Text style={styles.saveManagerPaneTitle}>Create focus save</Text>
-                    <Text style={styles.saveManagerPaneSubtitle}>Save the current Focus set so it can be reloaded or overwritten later.</Text>
-                    <View style={styles.saveManagerPaneUtilityRow}>
-                      <Text style={[styles.calendarNoteSource, styles.saveManagerPaneUtilityNote]}>
-                        {`Export/import Focus saves as *${FOCUS_SAVE_STATES_FILE_EXTENSION}`}
+                </View>
+                <View style={styles.saveManagerTabRow}>
+                  <Pressable
+                    style={[styles.saveManagerTab, saveManagerTab === 'focus' && styles.saveManagerTabActive]}
+                    onPress={() => setSaveManagerTab('focus')}
+                  >
+                    <Text style={[styles.saveManagerTabLabel, saveManagerTab === 'focus' && styles.saveManagerTabLabelActive]}>
+                      Focus Saves
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.saveManagerTab, saveManagerTab === 'leaderboard' && styles.saveManagerTabActive]}
+                    onPress={() => setSaveManagerTab('leaderboard')}
+                  >
+                    <Text style={[styles.saveManagerTabLabel, saveManagerTab === 'leaderboard' && styles.saveManagerTabLabelActive]}>
+                      Leaderboards
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.saveManagerBody}>
+                <View style={styles.saveManagerComposePane}>
+                  <View style={styles.saveManagerGuideCard}>
+                    <Text style={styles.saveManagerSectionEyebrow}>How to use</Text>
+                    <Text style={styles.saveManagerPaneTitle}>
+                      {saveManagerTab === 'leaderboard' ? 'Save leaderboard snapshots in 3 steps' : 'Save Focus sets in 3 steps'}
+                    </Text>
+                    <View style={styles.saveManagerGuideList}>
+                      <Text style={styles.saveManagerGuideStep}>
+                        {saveManagerTab === 'leaderboard'
+                          ? '1. Name the snapshot you want to keep.'
+                          : '1. Build or update your current Focus item list.'}
                       </Text>
-                      <View style={styles.saveManagerPaneUtilityButtons}>
-                        <Pressable
-                          style={[styles.stageSecondaryButton, styles.saveManagerPaneUtilityButton]}
-                          onPress={exportFocusSaveStatesData}
-                        >
-                          <Text style={styles.stageSecondaryLabel}>Export Focus Saves</Text>
-                        </Pressable>
-                        <Pressable
-                          style={[styles.stageSecondaryButton, styles.saveManagerPaneUtilityButton]}
-                          onPress={() => void importFocusSaveStatesData()}
-                        >
-                          <Text style={styles.stageSecondaryLabel}>Import Focus Saves</Text>
-                        </Pressable>
-                      </View>
+                      <Text style={styles.saveManagerGuideStep}>
+                        {saveManagerTab === 'leaderboard'
+                          ? '2. Click the save button to capture the current all-time and session boards.'
+                          : '2. Enter a save name, then click Save Focus Set.'}
+                      </Text>
+                      <Text style={styles.saveManagerGuideStep}>
+                        {saveManagerTab === 'leaderboard'
+                          ? '3. Load a snapshot later to restore both leaderboard views.'
+                          : '3. Load a saved set later, or overwrite an existing one from the list.'}
+                      </Text>
                     </View>
-                    <TextInput
-                      style={styles.calendarInput}
-                      placeholder="Save name (e.g. Week 2 kanji set)"
-                      placeholderTextColor="#94A3B8"
-                      value={focusSnapshotName}
-                      onChangeText={setFocusSnapshotName}
-                    />
-                    <Text style={styles.saveManagerMetaText}>Current Focus items: {focusedItems.length}</Text>
-                    <Pressable style={[styles.stagePrimaryButton, styles.saveManagerPrimaryButton]} onPress={() => void createFocusSnapshot()}>
-                      <Text style={styles.stagePrimaryLabel}>Save Current Focus Set</Text>
-                    </Pressable>
                   </View>
-                )}
-              </View>
 
-              <View style={styles.saveManagerListPane}>
-                <View style={styles.saveManagerListHeader}>
-                  <Text style={styles.saveManagerPaneTitle}>
-                    {saveManagerTab === 'leaderboard' ? 'Leaderboard saves' : 'Focus saves'}
-                  </Text>
-                  <Text style={styles.saveManagerMetaText}>
-                    {saveManagerTab === 'leaderboard'
-                      ? `${leaderboardSnapshots.length} saved`
-                      : `${focusSnapshots.length} saved`}
-                  </Text>
-                </View>
-                <ScrollView style={styles.saveManagerListScroll} contentContainerStyle={styles.saveManagerListContent}>
                   {saveManagerTab === 'leaderboard' ? (
-                    leaderboardSnapshots.length === 0 ? (
-                      <Text style={styles.calendarNoteEmpty}>No leaderboard saves yet.</Text>
+                    <View style={styles.saveManagerPaneCard}>
+                      <Text style={styles.saveManagerSectionEyebrow}>Step 1</Text>
+                      <Text style={styles.saveManagerPaneTitle}>Create leaderboard save</Text>
+                      <Text style={styles.saveManagerPaneSubtitle}>Store the current all-time and session leaderboards as a named snapshot.</Text>
+                      <TextInput
+                        style={styles.calendarInput}
+                        placeholder="Save name (e.g. JLPT practice set A)"
+                        placeholderTextColor="#94A3B8"
+                        value={leaderboardSnapshotName}
+                        onChangeText={setLeaderboardSnapshotName}
+                      />
+                      <Pressable style={[styles.stagePrimaryButton, styles.saveManagerPrimaryButton]} onPress={() => void createLeaderboardSnapshot()}>
+                        <Text style={styles.stagePrimaryLabel}>Save Leaderboard Snapshot</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <View style={styles.saveManagerPaneCard}>
+                      <Text style={styles.saveManagerSectionEyebrow}>Step 2</Text>
+                      <Text style={styles.saveManagerPaneTitle}>Create focus save</Text>
+                      <Text style={styles.saveManagerPaneSubtitle}>Save the current Focus set so it can be reloaded or overwritten later.</Text>
+                      <View style={styles.saveManagerPaneUtilityRow}>
+                        <Text style={[styles.calendarNoteSource, styles.saveManagerPaneUtilityNote]}>
+                          {`Focus-only import/export uses *${FOCUS_SAVE_STATES_FILE_EXTENSION}`}
+                        </Text>
+                        <View style={styles.saveManagerPaneUtilityButtons}>
+                          <Pressable
+                            style={[styles.stageSecondaryButton, styles.saveManagerPaneUtilityButton]}
+                            onPress={exportFocusSaveStatesData}
+                          >
+                            <Text style={styles.stageSecondaryLabel}>Export Focus Saves</Text>
+                          </Pressable>
+                          <Pressable
+                            style={[styles.stageSecondaryButton, styles.saveManagerPaneUtilityButton]}
+                            onPress={() => void importFocusSaveStatesData()}
+                          >
+                            <Text style={styles.stageSecondaryLabel}>Import Focus Saves</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                      <TextInput
+                        style={styles.calendarInput}
+                        placeholder="Save name (e.g. Week 2 kanji set)"
+                        placeholderTextColor="#94A3B8"
+                        value={focusSnapshotName}
+                        onChangeText={setFocusSnapshotName}
+                      />
+                      <Text style={styles.saveManagerMetaText}>Current Focus items: {focusedItems.length}</Text>
+                      <Text style={styles.saveManagerMetaText}>
+                        {activeFocusSnapshotName ? `Loaded save: ${activeFocusSnapshotName}` : 'No Focus save is currently loaded.'}
+                      </Text>
+                      <Pressable style={[styles.stagePrimaryButton, styles.saveManagerPrimaryButton]} onPress={() => void createFocusSnapshot()}>
+                        <Text style={styles.stagePrimaryLabel}>Save Focus Set</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.saveManagerListPane}>
+                  <View style={styles.saveManagerListHeader}>
+                    <Text style={styles.saveManagerPaneTitle}>
+                      {saveManagerTab === 'leaderboard' ? 'Saved leaderboards' : 'Saved Focus sets'}
+                    </Text>
+                    <Text style={styles.saveManagerMetaText}>
+                      {saveManagerTab === 'leaderboard'
+                        ? `${leaderboardSnapshots.length} saved`
+                        : `${focusSnapshots.length} saved`}
+                    </Text>
+                  </View>
+                  <ScrollView style={styles.saveManagerListScroll} contentContainerStyle={styles.saveManagerListContent}>
+                    {saveManagerTab === 'leaderboard' ? (
+                      leaderboardSnapshots.length === 0 ? (
+                        <Text style={styles.calendarNoteEmpty}>No leaderboard saves yet.</Text>
+                      ) : (
+                        leaderboardSnapshots.map(snapshot => (
+                          <View key={snapshot.id} style={styles.saveManagerEntryCard}>
+                            <View style={styles.saveManagerEntryHeader}>
+                              <View style={styles.saveManagerEntryInfo}>
+                                <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
+                                <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
+                              </View>
+                            </View>
+                            <Text style={styles.calendarNoteSource}>
+                              All-time: {snapshot.leaderboard.length} entries | Session: {snapshot.sessionLeaderboard.length} entries
+                            </Text>
+                            <View style={styles.saveManagerEntryActions}>
+                              <Pressable style={[styles.saveManagerEntryButton, styles.saveManagerEntryButtonPrimary]} onPress={() => void loadLeaderboardSnapshot(snapshot)}>
+                                <Text style={styles.saveManagerEntryButtonLabel}>Load Snapshot</Text>
+                              </Pressable>
+                              <Pressable style={styles.saveManagerEntryDeleteButton} onPress={() => void deleteLeaderboardSnapshot(snapshot.id)}>
+                                <Text style={styles.saveManagerEntryDeleteButtonLabel}>Delete</Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        ))
+                      )
+                    ) : focusSnapshots.length === 0 ? (
+                      <Text style={styles.calendarNoteEmpty}>No focus saves yet.</Text>
                     ) : (
-                      leaderboardSnapshots.map(snapshot => (
+                      focusSnapshots.map(snapshot => (
                         <View key={snapshot.id} style={styles.saveManagerEntryCard}>
-                          <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
-                          <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
-                          <Text style={styles.calendarNoteSource}>
-                            All-time: {snapshot.leaderboard.length} entries | Session: {snapshot.sessionLeaderboard.length} entries
-                          </Text>
+                          <View style={styles.saveManagerEntryHeader}>
+                            <View style={styles.saveManagerEntryInfo}>
+                              <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
+                              <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
+                            </View>
+                            {activeFocusSnapshotId === snapshot.id ? (
+                              <Text style={styles.saveManagerActiveTag}>Loaded</Text>
+                            ) : null}
+                          </View>
+                          <Text style={styles.calendarNoteSource}>Focus items: {snapshot.focusItems.length}</Text>
                           <View style={styles.saveManagerEntryActions}>
-                            <Pressable style={styles.saveManagerEntryButton} onPress={() => void loadLeaderboardSnapshot(snapshot)}>
-                              <Text style={styles.saveManagerEntryButtonLabel}>Load</Text>
+                            <Pressable style={[styles.saveManagerEntryButton, styles.saveManagerEntryButtonPrimary]} onPress={() => void loadFocusSnapshot(snapshot)}>
+                              <Text style={styles.saveManagerEntryButtonLabel}>Load Set</Text>
                             </Pressable>
-                            <Pressable style={styles.saveManagerEntryDeleteButton} onPress={() => void deleteLeaderboardSnapshot(snapshot.id)}>
+                            <Pressable style={styles.saveManagerEntryButton} onPress={() => void overwriteFocusSnapshot(snapshot.id)}>
+                              <Text style={styles.saveManagerEntryButtonLabel}>Overwrite</Text>
+                            </Pressable>
+                            <Pressable style={styles.saveManagerEntryDeleteButton} onPress={() => void deleteFocusSnapshot(snapshot.id)}>
                               <Text style={styles.saveManagerEntryDeleteButtonLabel}>Delete</Text>
                             </Pressable>
                           </View>
                         </View>
                       ))
-                    )
-                  ) : focusSnapshots.length === 0 ? (
-                    <Text style={styles.calendarNoteEmpty}>No focus saves yet.</Text>
-                  ) : (
-                    focusSnapshots.map(snapshot => (
-                      <View key={snapshot.id} style={styles.saveManagerEntryCard}>
-                        <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
-                        <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
-                        <Text style={styles.calendarNoteSource}>Focus items: {snapshot.focusItems.length}</Text>
-                        <View style={styles.saveManagerEntryActions}>
-                          <Pressable style={styles.saveManagerEntryButton} onPress={() => void overwriteFocusSnapshot(snapshot.id)}>
-                            <Text style={styles.saveManagerEntryButtonLabel}>Overwrite</Text>
-                          </Pressable>
-                          <Pressable style={styles.saveManagerEntryButton} onPress={() => void loadFocusSnapshot(snapshot)}>
-                            <Text style={styles.saveManagerEntryButtonLabel}>Load</Text>
-                          </Pressable>
-                          <Pressable style={styles.saveManagerEntryDeleteButton} onPress={() => void deleteFocusSnapshot(snapshot.id)}>
-                            <Text style={styles.saveManagerEntryDeleteButtonLabel}>Delete</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ))
-                  )}
-                </ScrollView>
+                    )}
+                  </ScrollView>
+                </View>
               </View>
-            </View>
+            </ScrollView>
           </View>
         </View>
       ) : null}
