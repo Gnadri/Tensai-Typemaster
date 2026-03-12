@@ -89,13 +89,19 @@ function parseFocusItems() {
       if (!Array.isArray(parsed)) continue;
       const items = parsed
         .map((entry) => entry?.item)
-        .filter((item) => item && item.kana && Array.isArray(item.answers))
+        .filter((item) =>
+          item &&
+          item.kana &&
+          (Array.isArray(item.answers) || Array.isArray(item.onyomi) || Array.isArray(item.kunyomi)),
+        )
         .map((item) => ({
           kana: item.kana,
-          answers: item.answers.map(normalizeRomaji).filter(Boolean),
+          answers: Array.isArray(item.answers) ? item.answers.map(normalizeRomaji).filter(Boolean) : [],
+          onyomi: Array.isArray(item.onyomi) ? item.onyomi.map(normalizeRomaji).filter(Boolean) : [],
+          kunyomi: Array.isArray(item.kunyomi) ? item.kunyomi.map(normalizeRomaji).filter(Boolean) : [],
           meanings: [],
         }))
-        .filter((item) => item.answers.length > 0);
+        .filter((item) => item.answers.length > 0 || item.onyomi.length > 0 || item.kunyomi.length > 0);
       if (items.length > 0) return items;
     } catch (_err) {
       // Keep trying fallbacks.
@@ -128,17 +134,24 @@ function setStatus(message, type = '') {
 
 function getAcceptedAnswers(item) {
   const all = (item.answers || []).map(normalizeRomaji).filter(Boolean);
+  const onyomi = (item.onyomi && item.onyomi.length ? item.onyomi : all.slice(0, 1))
+    .map(normalizeRomaji)
+    .filter(Boolean);
+  const kunyomi = (item.kunyomi && item.kunyomi.length ? item.kunyomi : all.slice(1))
+    .map(normalizeRomaji)
+    .filter(Boolean);
+  const grouped = [...new Set([...onyomi, ...kunyomi, ...all])];
   if (state.readingMode === 'onyomi_only') {
-    return all[0] ? [all[0]] : [];
+    return onyomi.length ? onyomi : grouped.slice(0, 1);
   }
   if (state.readingMode === 'kunyomi_only') {
-    return all.length > 1 ? all.slice(1) : (all[0] ? [all[0]] : []);
+    return kunyomi.length ? kunyomi : grouped.slice(0, 1);
   }
   if (state.readingMode === 'en_on_kun') {
     const meanings = (item.meanings || []).map(normalizeRomaji).filter(Boolean);
     return meanings;
   }
-  return all;
+  return grouped;
 }
 
 function pickNextItem() {

@@ -641,11 +641,16 @@ const JLPT_N4_KANJI_DETAILS: Record<string, { readings: string[]; meanings: stri
 };
 const JLPT_N4_KANJI_QUIZ = JLPT_N4_KANJI_SOURCE.split(/\s+/)
   .filter(Boolean)
-  .map((kana, index) => ({
-    id: `n4_${`${index + 1}`.padStart(3, '0')}`,
-    kana,
-    answers: JLPT_N4_KANJI_DETAILS[kana]?.readings || [],
-  }));
+  .map((kana, index) => {
+    const detail = JLPT_N4_KANJI_DETAILS[kana];
+    return {
+      id: `n4_${`${index + 1}`.padStart(3, '0')}`,
+      kana,
+      answers: detail?.readings || [],
+      onyomi: detail?.readings?.slice(0, 1) || [],
+      kunyomi: detail?.readings?.slice(1) || [],
+    };
+  });
 const JLPT_N4_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
   Object.entries(JLPT_N4_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
 );
@@ -658,24 +663,24 @@ const JLPT_N4_2_KANJI_DETAILS: Record<string, { readings: string[]; meanings: st
   冬: { readings: ['tou', 'fuyu'], meanings: ['winter'] },
   昼: { readings: ['chuu', 'hiru'], meanings: ['daytime', 'noon'] },
   夕: { readings: ['yuu'], meanings: ['evening'] },
-  夜: { readings: ['ya', 'yoru'], meanings: ['night'] },
+  夜: { readings: ['ya', 'yoru', 'yo'], meanings: ['night'] },
   雪: { readings: ['setsu', 'yuki'], meanings: ['snow'] },
   森: { readings: ['shin', 'mori'], meanings: ['forest'] },
   林: { readings: ['rin', 'hayashi'], meanings: ['woods'] },
   池: { readings: ['chi', 'ike'], meanings: ['pond'] },
   島: { readings: ['tou', 'shima'], meanings: ['island'] },
   風: { readings: ['fuu', 'kaze'], meanings: ['wind'] },
-  色: { readings: ['shoku', 'iro'], meanings: ['color'] },
+  色: { readings: ['shoku', 'iro', 'shiki'], meanings: ['color'] },
   音: { readings: ['on', 'oto'], meanings: ['sound'] },
   牛: { readings: ['gyuu', 'ushi'], meanings: ['cow'] },
   犬: { readings: ['ken', 'inu'], meanings: ['dog'] },
   猫: { readings: ['byou', 'neko'], meanings: ['cat'] },
   鳥: { readings: ['chou', 'tori'], meanings: ['bird'] },
-  兄: { readings: ['kei', 'ani'], meanings: ['older brother'] },
-  弟: { readings: ['tei', 'otouto'], meanings: ['younger brother'] },
+  兄: { readings: ['kei', 'ani', 'kyou'], meanings: ['older brother'] },
+  弟: { readings: ['tei', 'otouto', 'dai'], meanings: ['younger brother'] },
   妹: { readings: ['mai', 'imouto'], meanings: ['younger sister'] },
-  親: { readings: ['shin', 'oya'], meanings: ['parent'] },
-  夫: { readings: ['fuu', 'otto'], meanings: ['husband'] },
+  親: { readings: ['shin', 'oya', 'shita'], meanings: ['parent'] },
+  夫: { readings: ['fuu', 'otto', 'fu'], meanings: ['husband'] },
   婦: { readings: ['fu'], meanings: ['wife'] },
   民: { readings: ['min', 'tami'], meanings: ['people'] },
   客: { readings: ['kyaku'], meanings: ['guest'] },
@@ -685,7 +690,7 @@ const JLPT_N4_2_KANJI_DETAILS: Record<string, { readings: string[]; meanings: st
   館: { readings: ['kan', 'yakata'], meanings: ['building', 'hall'] },
   区: { readings: ['ku'], meanings: ['ward', 'district'] },
   市: { readings: ['shi', 'ichi'], meanings: ['city', 'market'] },
-  都: { readings: ['to', 'miyako'], meanings: ['capital', 'metropolis'] },
+  都: { readings: ['to', 'miyako', 'tsu'], meanings: ['capital', 'metropolis'] },
   所: { readings: ['sho', 'tokoro'], meanings: ['place'] },
   門: { readings: ['mon', 'kado'], meanings: ['gate'] },
   部: { readings: ['bu'], meanings: ['section', 'department'] },
@@ -697,12 +702,12 @@ const JLPT_N4_2_KANJI_DETAILS: Record<string, { readings: string[]; meanings: st
   乗: { readings: ['jou', 'no'], meanings: ['ride'] },
   進: { readings: ['shin', 'susu'], meanings: ['advance'] },
   走: { readings: ['sou', 'hashi'], meanings: ['run'] },
-  歩: { readings: ['ho', 'aru', 'ayu'], meanings: ['walk'] },
+  歩: { readings: ['ho', 'aru', 'ayu', 'po'], meanings: ['walk'] },
   登: { readings: ['tou', 'nobo'], meanings: ['climb'] },
   回: { readings: ['kai', 'mawa'], meanings: ['turn', 'times'] },
   歌: { readings: ['ka', 'uta'], meanings: ['song'] },
   答: { readings: ['tou', 'kotae'], meanings: ['answer'] },
-  伝: { readings: ['den', 'tsutae'], meanings: ['convey'] },
+  伝: { readings: ['den', 'tsutae', 'tsuda'], meanings: ['convey'] },
   借: { readings: ['shaku', 'ka'], meanings: ['borrow'] },
   買: { readings: ['bai', 'ka'], meanings: ['buy'] },
   払: { readings: ['futsu', 'hara'], meanings: ['pay'] },
@@ -710,29 +715,29 @@ const JLPT_N4_2_KANJI_DETAILS: Record<string, { readings: string[]; meanings: st
   選: { readings: ['sen', 'era'], meanings: ['choose'] },
   遊: { readings: ['yuu', 'aso'], meanings: ['play'] },
   待: { readings: ['tai', 'ma'], meanings: ['wait'] },
-  降: { readings: ['kou', 'o'], meanings: ['descend', 'fall'] },
+  降: { readings: ['kou', 'o', 'fu'], meanings: ['descend', 'fall'] },
   困: { readings: ['kon', 'koma'], meanings: ['troubled'] },
   散: { readings: ['san', 'chi'], meanings: ['scatter'] },
   写: { readings: ['sha', 'utsu'], meanings: ['copy'] },
   注: { readings: ['chuu', 'soso'], meanings: ['pour', 'note'] },
   寒: { readings: ['kan', 'samu'], meanings: ['cold'] },
   暑: { readings: ['sho', 'atsu'], meanings: ['hot'] },
-  冷: { readings: ['rei', 'tsume', 'hie'], meanings: ['cool', 'cold'] },
+  冷: { readings: ['rei', 'tsume', 'hie', 'sa'], meanings: ['cool', 'cold'] },
   暗: { readings: ['an', 'kura'], meanings: ['dark'] },
   軽: { readings: ['kei', 'karu'], meanings: ['light'] },
   黒: { readings: ['koku', 'kuro'], meanings: ['black'] },
   悪: { readings: ['aku', 'waru'], meanings: ['bad'] },
   弱: { readings: ['jaku', 'yowa'], meanings: ['weak'] },
-  太: { readings: ['tai', 'futo'], meanings: ['thick', 'fat'] },
+  太: { readings: ['tai', 'futo', 'ta'], meanings: ['thick', 'fat'] },
   短: { readings: ['tan', 'mijika'], meanings: ['short'] },
   早: { readings: ['sou', 'haya'], meanings: ['early'] },
   首: { readings: ['shu', 'kubi'], meanings: ['neck'] },
   顔: { readings: ['gan', 'kao'], meanings: ['face'] },
-  頭: { readings: ['tou', 'atama'], meanings: ['head'] },
+  頭: { readings: ['tou', 'atama', 'zu'], meanings: ['head'] },
   紙: { readings: ['shi', 'kami'], meanings: ['paper'] },
   薬: { readings: ['yaku', 'kusuri'], meanings: ['medicine'] },
   肉: { readings: ['niku'], meanings: ['meat'] },
-  茶: { readings: ['cha'], meanings: ['tea'] },
+  茶: { readings: ['cha', 'sa'], meanings: ['tea'] },
   洋: { readings: ['you'], meanings: ['western'] },
   服: { readings: ['fuku'], meanings: ['clothes'] },
   線: { readings: ['sen'], meanings: ['line'] },
@@ -742,30 +747,35 @@ const JLPT_N4_2_KANJI_DETAILS: Record<string, { readings: string[]; meanings: st
   勉: { readings: ['ben', 'tsuto'], meanings: ['diligence'] },
   査: { readings: ['sa'], meanings: ['inspect', 'investigate'] },
   説: { readings: ['setsu', 'to'], meanings: ['explain'] },
-  留: { readings: ['ryuu', 'to'], meanings: ['stay'] },
-  図: { readings: ['zu', 'haka'], meanings: ['diagram'] },
+  留: { readings: ['ryuu', 'to', 'ru'], meanings: ['stay'] },
+  図: { readings: ['zu', 'haka', 'to'], meanings: ['diagram'] },
   婚: { readings: ['kon'], meanings: ['marriage'] },
   産: { readings: ['san', 'u'], meanings: ['produce', 'give birth'] },
   旅: { readings: ['ryo', 'tabi'], meanings: ['trip'] },
   便: { readings: ['ben', 'bin', 'tayo'], meanings: ['convenience', 'mail'] },
   両: { readings: ['ryou'], meanings: ['both'] },
   礼: { readings: ['rei'], meanings: ['thanks', 'courtesy'] },
-  然: { readings: ['zen'], meanings: ['so', 'natural'] },
+  然: { readings: ['zen', 'shika'], meanings: ['so', 'natural'] },
   全: { readings: ['zen', 'matta'], meanings: ['all'] },
   組: { readings: ['so', 'kumi'], meanings: ['group'] },
   点: { readings: ['ten'], meanings: ['point'] },
   番: { readings: ['ban'], meanings: ['number', 'turn'] },
   味: { readings: ['mi', 'aji'], meanings: ['taste'] },
-  由: { readings: ['yu', 'yoshi'], meanings: ['reason'] },
+  由: { readings: ['yu', 'yoshi', 'yuu'], meanings: ['reason'] },
   予: { readings: ['yo'], meanings: ['beforehand'] },
 };
 const JLPT_N4_2_KANJI_QUIZ = JLPT_N4_2_KANJI_SOURCE.split(/\s+/)
   .filter(Boolean)
-  .map((kana, index) => ({
-    id: `n4_2_${`${index + 1}`.padStart(3, '0')}`,
-    kana,
-    answers: JLPT_N4_2_KANJI_DETAILS[kana]?.readings || [],
-  }));
+  .map((kana, index) => {
+    const detail = JLPT_N4_2_KANJI_DETAILS[kana];
+    return {
+      id: `n4_2_${`${index + 1}`.padStart(3, '0')}`,
+      kana,
+      answers: detail?.readings || [],
+      onyomi: detail?.readings?.slice(0, 1) || [],
+      kunyomi: detail?.readings?.slice(1) || [],
+    };
+  });
 const JLPT_N4_2_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
   Object.entries(JLPT_N4_2_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
 );
@@ -1943,16 +1953,31 @@ const getQuizModeLabel = (mode: string) => {
   return selectedJlptMode ? `JLPT N5 - ${selectedJlptMode.label}` : selected.label;
 };
 
+const getNormalizedJlptReadingGroups = (item: any) => {
+  const normalizedAnswers = (item.answers || []).map((value: string) => normalizeRomaji(value)).filter(Boolean);
+  const normalizedOnyomi = (Array.isArray(item.onyomi) && item.onyomi.length ? item.onyomi : (item.answers || []).slice(0, 1))
+    .map((value: string) => normalizeRomaji(value))
+    .filter(Boolean);
+  const normalizedKunyomi = (Array.isArray(item.kunyomi) && item.kunyomi.length ? item.kunyomi : (item.answers || []).slice(1))
+    .map((value: string) => normalizeRomaji(value))
+    .filter(Boolean);
+  return {
+    all: Array.from(new Set([...normalizedOnyomi, ...normalizedKunyomi, ...normalizedAnswers])),
+    onyomi: Array.from(new Set(normalizedOnyomi)),
+    kunyomi: Array.from(new Set(normalizedKunyomi)),
+  };
+};
+
 const getJlptAcceptedReadings = (item: any, jlptReadingMode: string) => {
-  const normalized = (item.answers || []).map((value: string) => normalizeRomaji(value)).filter(Boolean);
-  if (!normalized.length) return [];
+  const groupedReadings = getNormalizedJlptReadingGroups(item);
+  if (!groupedReadings.all.length) return [];
   if (jlptReadingMode === 'onyomi_only') {
-    return [normalized[0]];
+    return groupedReadings.onyomi.length ? groupedReadings.onyomi : groupedReadings.all.slice(0, 1);
   }
   if (jlptReadingMode === 'kunyomi_only') {
-    return normalized.slice(1).length ? normalized.slice(1) : [normalized[0]];
+    return groupedReadings.kunyomi.length ? groupedReadings.kunyomi : groupedReadings.all.slice(0, 1);
   }
-  return normalized;
+  return groupedReadings.all;
 };
 
 const isJlptEnglishTranslateMode = (jlptReadingMode: string) =>
@@ -1993,6 +2018,29 @@ const getJlptPromptText = (item: any, jlptReadingMode: string) => {
     return (item.answers || []).join(' / ');
   }
   return item.kana;
+};
+const getCanonicalFocusItem = (sourceMode: string | undefined, rawItem: any) => {
+  if (!sourceMode || sourceMode === 'focus') return null;
+  const dataset = getQuizDataset(sourceMode);
+  if (!Array.isArray(dataset) || !dataset.length) return null;
+  const originalId = rawItem?.__focusOriginalId || rawItem?.id;
+  const kana = rawItem?.kana;
+  return dataset.find((candidate: any) =>
+    (originalId && candidate?.id === originalId) ||
+    (kana && candidate?.kana === kana),
+  ) || null;
+};
+const normalizeStoredFocusItem = (rawItem: any, sourceMode?: string) => {
+  const canonical = getCanonicalFocusItem(sourceMode, rawItem);
+  const base = canonical || rawItem || {};
+  return {
+    ...rawItem,
+    id: rawItem?.id ?? base.id,
+    kana: rawItem?.kana ?? base.kana,
+    answers: Array.isArray(base?.answers) ? base.answers : Array.isArray(rawItem?.answers) ? rawItem.answers : [],
+    onyomi: Array.isArray(base?.onyomi) ? base.onyomi : Array.isArray(rawItem?.onyomi) ? rawItem.onyomi : [],
+    kunyomi: Array.isArray(base?.kunyomi) ? base.kunyomi : Array.isArray(rawItem?.kunyomi) ? rawItem.kunyomi : [],
+  };
 };
 
 const getFinishReasonLabel = (reason: string) => {
@@ -2291,11 +2339,13 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       try {
         const resolvedSourceMode = sourceMode || getItemSourceMode(item);
         const key = getFocusItemKey(item, resolvedSourceMode);
-        const plainItem = {
+        const plainItem = normalizeStoredFocusItem({
           id: item.__focusOriginalId || item.id,
           kana: item.kana,
           answers: Array.isArray(item.answers) ? item.answers : [],
-        };
+          onyomi: Array.isArray(item.onyomi) ? item.onyomi : [],
+          kunyomi: Array.isArray(item.kunyomi) ? item.kunyomi : [],
+        }, resolvedSourceMode);
         const existing = focusedItems.some(entry => entry.key === key);
         const next = existing
           ? focusedItems.filter(entry => entry.key !== key)
@@ -2378,13 +2428,16 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
           .map(entry => ({
             key: entry.key || `${entry.sourceMode}:${entry.item?.id || entry.item?.kana || ''}`,
             sourceMode: entry.sourceMode,
-            item: {
+            item: normalizeStoredFocusItem({
               id: entry.item.id,
               kana: entry.item.kana,
-              answers: Array.isArray(entry.item.answers) ? entry.item.answers : [],
-            },
+              answers: entry.item.answers,
+              onyomi: entry.item.onyomi,
+              kunyomi: entry.item.kunyomi,
+            }, entry.sourceMode),
           }));
         setFocusedItems(cleaned);
+        await AsyncStorage.setItem(QUIZ_FOCUS_STORAGE_KEY, JSON.stringify(cleaned));
       } catch (err) {
         console.error('Failed to load focus items:', err);
       }
@@ -2938,8 +2991,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     key: entry.key ? `${entry.key}` : `${sourceMode}:${rawItem.id || rawItem.kana || Math.random().toString(36).slice(2, 8)}`,
                     sourceMode,
                     item: {
-                      ...rawItem,
-                      answers: Array.isArray(rawItem.answers) ? rawItem.answers : [],
+                      ...normalizeStoredFocusItem(rawItem, sourceMode),
                     },
                   };
                 }),
@@ -3053,8 +3105,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     key: entry.key ? `${entry.key}` : `${sourceMode}:${rawItem.id || rawItem.kana || Math.random().toString(36).slice(2, 8)}`,
                     sourceMode,
                     item: {
-                      ...rawItem,
-                      answers: Array.isArray(rawItem.answers) ? rawItem.answers : [],
+                      ...normalizeStoredFocusItem(rawItem, sourceMode),
                     },
                   };
                 }),
@@ -3232,8 +3283,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
           key: entry.key || `${entry.sourceMode}:${entry.item?.id || entry.item?.kana || Math.random().toString(36).slice(2, 8)}`,
           sourceMode: entry.sourceMode,
           item: {
-            ...entry.item,
-            answers: Array.isArray(entry.item.answers) ? entry.item.answers : [],
+            ...normalizeStoredFocusItem(entry.item, entry.sourceMode),
           },
         }));
       await saveFocusedItems(cleaned);
@@ -4421,7 +4471,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.22</Text>
+          <Text style={styles.quizNavVersion}>v1.23</Text>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
