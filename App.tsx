@@ -703,7 +703,7 @@ const JLPT_N4_2_KANJI_DETAILS: Record<string, { readings: string[]; meanings: st
   進: { readings: ['shin', 'susu'], meanings: ['advance'] },
   走: { readings: ['sou', 'hashi'], meanings: ['run'] },
   歩: { readings: ['ho', 'aru', 'ayu', 'po'], meanings: ['walk'] },
-  登: { readings: ['tou', 'nobo'], meanings: ['climb'] },
+  登: { readings: ['tou', 'nobo', 'aga'], meanings: ['climb'] },
   回: { readings: ['kai', 'mawa'], meanings: ['turn', 'times'] },
   歌: { readings: ['ka', 'uta'], meanings: ['song'] },
   答: { readings: ['tou', 'kotae'], meanings: ['answer'] },
@@ -2448,7 +2448,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   useEffect(() => {
     if (quizMode !== 'focus') return;
     setQuizItems(
-      focusDataset.map(entry => ({
+      shuffleQuiz(focusDataset).map(entry => ({
         ...entry,
       })),
     );
@@ -2910,6 +2910,23 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     await AsyncStorage.removeItem(QUIZ_ACTIVE_FOCUS_SNAPSHOT_STORAGE_KEY);
   }, []);
 
+  const buildFocusSnapshotPayload = useCallback(
+    (overrides?: Partial<{ id: string; name: string; createdAt: number }>) => ({
+      id: overrides?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: overrides?.name ?? focusSnapshotName.trim(),
+      createdAt: overrides?.createdAt ?? Date.now(),
+      focusItems: focusedItems.map(item => ({
+        key: item.key,
+        sourceMode: item.sourceMode,
+        item: item.item,
+      })),
+      focusLeaderboard: limitLeaderboardPerMode(
+        sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)),
+      ),
+    }),
+    [focusSnapshotName, focusedItems, limitLeaderboardPerMode, sessionLeaderboard],
+  );
+
   const exportSaveStatesData = useCallback(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
       Alert.alert('Unavailable', 'Save state export is only available in the web/extension view.');
@@ -3216,17 +3233,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       Alert.alert('Name required', 'Enter a name for the Focus save.');
       return;
     }
-    const snapshot = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      createdAt: Date.now(),
-      focusItems: focusedItems.map(item => ({
-        key: item.key,
-        sourceMode: item.sourceMode,
-        item: item.item,
-      })),
-      focusLeaderboard: sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)),
-    };
+    const snapshot = buildFocusSnapshotPayload({ name });
     const next = [snapshot, ...focusSnapshots].slice(0, 100);
     try {
       await persistFocusSnapshots(next);
@@ -3247,22 +3254,16 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
 
     const confirmed = await confirmAction(
       'Overwrite Focus Save',
-      `Overwrite "${targetSnapshot.name}" with the currently loaded Focus items? This cannot be undone.`,
+      `Overwrite "${targetSnapshot.name}" with the currently loaded Focus items and focus leaderboard? This cannot be undone.`,
     );
     if (!confirmed) return;
 
     const nextSnapshots = focusSnapshots.map(snapshot =>
       snapshot.id === snapshotId
-        ? {
-            ...snapshot,
-            createdAt: Date.now(),
-            focusItems: focusedItems.map(item => ({
-              key: item.key,
-              sourceMode: item.sourceMode,
-              item: item.item,
-            })),
-            focusLeaderboard: sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)),
-          }
+        ? buildFocusSnapshotPayload({
+            id: snapshot.id,
+            name: snapshot.name,
+          })
         : snapshot,
     );
 
@@ -3273,7 +3274,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       console.error('Failed to overwrite focus snapshot:', err);
       Alert.alert('Overwrite failed', 'Could not overwrite Focus snapshot.');
     }
-  }, [confirmAction, focusSnapshots, focusedItems, persistActiveFocusSnapshotId, persistFocusSnapshots, sessionLeaderboard]);
+  }, [buildFocusSnapshotPayload, confirmAction, focusSnapshots, persistActiveFocusSnapshotId, persistFocusSnapshots]);
 
   const loadFocusSnapshot = useCallback(async (snapshot: { id: string; name: string; createdAt: number; focusItems: any[]; focusLeaderboard?: any[] }) => {
     try {
@@ -5947,12 +5948,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                       <Text style={styles.saveManagerGuideStep}>
                         {saveManagerTab === 'leaderboard'
                           ? '2. Click the save button to capture the current all-time and session boards.'
-                          : '2. Enter a save name, then click Save Focus Set.'}
+                          : '2. Enter a save name, then click Save Focus Set to capture the set and its leaderboard.'}
                       </Text>
                       <Text style={styles.saveManagerGuideStep}>
                         {saveManagerTab === 'leaderboard'
                           ? '3. Load a snapshot later to restore both leaderboard views.'
-                          : '3. Load a saved set later, or overwrite an existing one from the list.'}
+                          : '3. Load a saved set later to restore both the Focus items and that set\'s leaderboard.'}
                       </Text>
                     </View>
                   </View>
@@ -5977,7 +5978,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     <View style={styles.saveManagerPaneCard}>
                       <Text style={styles.saveManagerSectionEyebrow}>Step 2</Text>
                       <Text style={styles.saveManagerPaneTitle}>Create focus save</Text>
-                      <Text style={styles.saveManagerPaneSubtitle}>Save the current Focus set so it can be reloaded or overwritten later.</Text>
+                      <Text style={styles.saveManagerPaneSubtitle}>Save the current Focus set and its leaderboard so both can be restored later.</Text>
                       <View style={styles.saveManagerPaneUtilityRow}>
                         <Text style={[styles.calendarNoteSource, styles.saveManagerPaneUtilityNote]}>
                           {`Focus-only import/export uses *${FOCUS_SAVE_STATES_FILE_EXTENSION}`}
@@ -6005,6 +6006,9 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                         onChangeText={setFocusSnapshotName}
                       />
                       <Text style={styles.saveManagerMetaText}>Current Focus items: {focusedItems.length}</Text>
+                      <Text style={styles.saveManagerMetaText}>
+                        Current Focus leaderboard entries: {sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)).length}
+                      </Text>
                       <Text style={styles.saveManagerMetaText}>
                         {activeFocusSnapshotName ? `Loaded save: ${activeFocusSnapshotName}` : 'No Focus save is currently loaded.'}
                       </Text>
@@ -6067,10 +6071,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                               <Text style={styles.saveManagerActiveTag}>Loaded</Text>
                             ) : null}
                           </View>
-                          <Text style={styles.calendarNoteSource}>Focus items: {snapshot.focusItems.length}</Text>
+                          <Text style={styles.calendarNoteSource}>
+                            Focus items: {snapshot.focusItems.length} | Leaderboard: {Array.isArray(snapshot.focusLeaderboard) ? snapshot.focusLeaderboard.length : 0} entries
+                          </Text>
                           <View style={styles.saveManagerEntryActions}>
                             <Pressable style={[styles.saveManagerEntryButton, styles.saveManagerEntryButtonPrimary]} onPress={() => void loadFocusSnapshot(snapshot)}>
-                              <Text style={styles.saveManagerEntryButtonLabel}>Load Set</Text>
+                              <Text style={styles.saveManagerEntryButtonLabel}>Load Set + Board</Text>
                             </Pressable>
                             <Pressable style={styles.saveManagerEntryButton} onPress={() => void overwriteFocusSnapshot(snapshot.id)}>
                               <Text style={styles.saveManagerEntryButtonLabel}>Overwrite</Text>
