@@ -880,13 +880,18 @@ export const styles = StyleSheet.create({
   quizTimerControl: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
     backgroundColor: '#0f172a',
     borderRadius: 8,
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: '#1f2937',
+  },
+  quizTimerReadout: {
+    minWidth: 86,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   quizStatBlock: {
     alignItems: 'center',
@@ -1043,6 +1048,10 @@ export const styles = StyleSheet.create({
     borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  quizTimerStepperButtonDisabled: {
+    backgroundColor: '#334155',
+    opacity: 0.6,
   },
   quizTimerStepperLabel: { color: '#ffffff', fontWeight: '700', fontSize: 16, lineHeight: 18 },
   quizTimerUnitLabel: { color: '#64748b', fontWeight: '600', fontSize: 13, minWidth: 28 },

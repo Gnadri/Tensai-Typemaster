@@ -16,6 +16,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { styles } from './mobile/src/styles/appStyles';
+import { JLPT_N3_KANJI_DETAILS, JLPT_N3_KANJI_SOURCE } from './mobile/src/data/jlpt_n3_kanji';
 // Sentence analyzer wiring is temporarily disabled until backend integration is ready.
 // const AsyncStorage: any = require('@react-native-async-storage/async-storage');
 // import { analyzeSentence } from './mobile/src/services/analyzerClient';
@@ -703,8 +704,8 @@ const JLPT_N4_2_KANJI_DETAILS: Record<string, { readings: string[]; meanings: st
   進: { readings: ['shin', 'susu'], meanings: ['advance'] },
   走: { readings: ['sou', 'hashi'], meanings: ['run'] },
   歩: { readings: ['ho', 'aru', 'ayu', 'po'], meanings: ['walk'] },
-  登: { readings: ['tou', 'nobo', 'aga'], meanings: ['climb'] },
-  回: { readings: ['kai', 'mawa'], meanings: ['turn', 'times'] },
+  登: { readings: ['tou', 'nobo', 'aga'], meanings: ['climb', 'ascend'] },
+  回: { readings: ['kai', 'mawa'], meanings: ['turn', 'times', 'revolve'] },
   歌: { readings: ['ka', 'uta'], meanings: ['song'] },
   答: { readings: ['tou', 'kotae'], meanings: ['answer'] },
   伝: { readings: ['den', 'tsutae', 'tsuda'], meanings: ['convey'] },
@@ -740,18 +741,18 @@ const JLPT_N4_2_KANJI_DETAILS: Record<string, { readings: string[]; meanings: st
   茶: { readings: ['cha', 'sa'], meanings: ['tea'] },
   洋: { readings: ['you'], meanings: ['western'] },
   服: { readings: ['fuku'], meanings: ['clothes'] },
-  線: { readings: ['sen'], meanings: ['line'] },
+  線: { readings: ['sen', 'suji'], meanings: ['line'] },
   字: { readings: ['ji', 'aza'], meanings: ['character', 'letter'] },
   漢: { readings: ['kan'], meanings: ['china'] },
   験: { readings: ['ken'], meanings: ['test'] },
   勉: { readings: ['ben', 'tsuto'], meanings: ['diligence', 'study', 'effort', 'strive'] },
   査: { readings: ['sa'], meanings: ['inspect', 'investigate'] },
   説: { readings: ['setsu', 'to'], meanings: ['explain', ] },
-  留: { readings: ['ryuu', 'to', 'ru'], meanings: ['stay', ] },
+  留: { readings: ['ryuu', 'to', 'ru'], meanings: ['stay', 'halt', 'ruble'] },
   図: { readings: ['zu', 'haka', 'to'], meanings: ['diagram', 'map'] },
   婚: { readings: ['kon'], meanings: ['marriage'] },
   産: { readings: ['san', 'u'], meanings: ['produce', 'give birth'] },
-  旅: { readings: ['ryo', 'tabi'], meanings: ['trip'] },
+  旅: { readings: ['ryo', 'tabi'], meanings: ['trip', 'journey', 'travel'] },
   便: { readings: ['ben', 'bin', 'tayo'], meanings: ['convenience', 'mail'] },
   両: { readings: ['ryou'], meanings: ['both'] },
   礼: { readings: ['rei'], meanings: ['thanks', 'courtesy', 'gratitude'] },
@@ -778,6 +779,41 @@ const JLPT_N4_2_KANJI_QUIZ = JLPT_N4_2_KANJI_SOURCE.split(/\s+/)
   });
 const JLPT_N4_2_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
   Object.entries(JLPT_N4_2_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
+);
+const buildJlptKanjiQuiz = (
+  source: string,
+  details: Record<string, { readings: string[]; meanings: string[] }>,
+  prefix: string,
+) =>
+  source.split(/\s+/)
+    .filter(Boolean)
+    .map((kana, index) => {
+      const detail = details[kana];
+      return {
+        id: `${prefix}_${`${index + 1}`.padStart(3, '0')}`,
+        kana,
+        answers: detail?.readings || [],
+        onyomi: detail?.readings?.slice(0, 1) || [],
+        kunyomi: detail?.readings?.slice(1) || [],
+      };
+    });
+const JLPT_N3_KANJI_SOURCE_PARTS = (() => {
+  const allKanji = JLPT_N3_KANJI_SOURCE.split(/\s+/).filter(Boolean);
+  const partSize = Math.ceil(allKanji.length / 4);
+  return Array.from({ length: 4 }, (_, index) =>
+    allKanji.slice(index * partSize, (index + 1) * partSize).join(' '),
+  );
+})();
+const JLPT_N3_1_KANJI_SOURCE = JLPT_N3_KANJI_SOURCE_PARTS[0];
+const JLPT_N3_2_KANJI_SOURCE = JLPT_N3_KANJI_SOURCE_PARTS[1];
+const JLPT_N3_3_KANJI_SOURCE = JLPT_N3_KANJI_SOURCE_PARTS[2];
+const JLPT_N3_4_KANJI_SOURCE = JLPT_N3_KANJI_SOURCE_PARTS[3];
+const JLPT_N3_1_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N3_1_KANJI_SOURCE, JLPT_N3_KANJI_DETAILS, 'n3_1');
+const JLPT_N3_2_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N3_2_KANJI_SOURCE, JLPT_N3_KANJI_DETAILS, 'n3_2');
+const JLPT_N3_3_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N3_3_KANJI_SOURCE, JLPT_N3_KANJI_DETAILS, 'n3_3');
+const JLPT_N3_4_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N3_4_KANJI_SOURCE, JLPT_N3_KANJI_DETAILS, 'n3_4');
+const JLPT_N3_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
+  Object.entries(JLPT_N3_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
 );
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 
@@ -1776,6 +1812,10 @@ const QUIZ_MODES = [
   { value: 'jlpt_n5', label: 'JLPT N5 (On/Kun)', tabLabel: 'N5', family: 'jlpt', dataset: JLPT_N5_KANJI_QUIZ },
   { value: 'jlpt_n4', label: 'JLPT N4', tabLabel: 'N4', family: 'jlpt', dataset: JLPT_N4_KANJI_QUIZ },
   { value: 'jlpt_n4_2', label: 'JLPT N4-2', tabLabel: 'N4-2', family: 'jlpt', dataset: JLPT_N4_2_KANJI_QUIZ },
+  { value: 'jlpt_n3', label: 'JLPT N3-1', tabLabel: 'N3-1', family: 'jlpt', dataset: JLPT_N3_1_KANJI_QUIZ },
+  { value: 'jlpt_n3_2', label: 'JLPT N3-2', tabLabel: 'N3-2', family: 'jlpt', dataset: JLPT_N3_2_KANJI_QUIZ },
+  { value: 'jlpt_n3_3', label: 'JLPT N3-3', tabLabel: 'N3-3', family: 'jlpt', dataset: JLPT_N3_3_KANJI_QUIZ },
+  { value: 'jlpt_n3_4', label: 'JLPT N3-4', tabLabel: 'N3-4', family: 'jlpt', dataset: JLPT_N3_4_KANJI_QUIZ },
   { value: 'focus', label: 'Focus', tabLabel: 'Focus', family: 'focus', dataset: [] },
 ];
 const JLPT_READING_MODES = [
@@ -1819,6 +1859,7 @@ const KANA_VARIANT_OPTIONS = {
   hiragana: ['hiragana', 'hiragana_dakuten'],
   katakana: ['katakana', 'katakana_dakuten'],
 };
+const JLPT_N3_VARIANT_VALUES = ['jlpt_n3', 'jlpt_n3_2', 'jlpt_n3_3', 'jlpt_n3_4'];
 const JLPT_N4_VARIANT_VALUES = ['jlpt_n4', 'jlpt_n4_2'];
 
 const isJlptQuizMode = (mode: string) => mode.startsWith('jlpt_');
@@ -1983,7 +2024,7 @@ const getJlptAcceptedReadings = (item: any, jlptReadingMode: string) => {
 const isJlptEnglishTranslateMode = (jlptReadingMode: string) =>
   JLPT_ENGLISH_TRANSLATE_MODES.includes(jlptReadingMode);
 const getJlptEnglishMeaningsForItem = (item: any) =>
-  ([...(JLPT_N5_ENGLISH_MEANINGS[item.id] || []), ...(JLPT_N4_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N4_2_ENGLISH_MEANINGS_BY_KANA[item.kana] || [])])
+  ([...(JLPT_N5_ENGLISH_MEANINGS[item.id] || []), ...(JLPT_N4_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N4_2_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N3_ENGLISH_MEANINGS_BY_KANA[item.kana] || [])])
     .map((value: string) => normalizeRomaji(value))
     .filter(Boolean);
 const getJlptAcceptedAnswers = (item: any, jlptReadingMode: string) => {
@@ -2135,7 +2176,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const [quizMode, setQuizMode] = useState(defaultQuizMode);
   const [jlptReadingMode, setJlptReadingMode] = useState(DEFAULT_JLPT_READING_MODE);
   const [isJlptModeDropdownOpen, setIsJlptModeDropdownOpen] = useState(false);
-  const [isJlptSetDropdownOpen, setIsJlptSetDropdownOpen] = useState(false);
+  const [openJlptSetDropdownBase, setOpenJlptSetDropdownBase] = useState<string | null>(null);
   const [openKanaDropdownBase, setOpenKanaDropdownBase] = useState<string | null>(null);
   const [quizFamily, setQuizFamily] = useState(getQuizModeFamily(defaultQuizMode));
   const [leaderboardScope, setLeaderboardScope] = useState(LEADERBOARD_SCOPE_OPTIONS[0].value);
@@ -2468,7 +2509,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   useEffect(() => {
     if (!shouldShowJlptModeControls) {
       setIsJlptModeDropdownOpen(false);
-      setIsJlptSetDropdownOpen(false);
+      setOpenJlptSetDropdownBase(null);
     }
   }, [shouldShowJlptModeControls]);
 
@@ -4323,15 +4364,47 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const quizPrimaryActionLabel = isRunning ? 'Pause Quiz' : isQuizPaused ? 'Resume Quiz' : 'Play Quiz';
   const endlessPrimaryActionLabel = endlessIsRunning ? 'Pause Endless' : isEndlessPaused ? 'Resume Endless' : 'Play Endless';
   const typemasterPrimaryActionLabel = typemasterIsRunning ? 'Pause TypeMaster' : isTypemasterPaused ? 'Resume TypeMaster' : 'Play TypeMaster';
+  const isTimerAdjustmentLocked =
+    isRunning ||
+    isQuizPaused ||
+    endlessIsRunning ||
+    isEndlessPaused ||
+    typemasterIsRunning ||
+    isTypemasterPaused;
+  const renderTimerAdjuster = (timerDisplay: string, expired: boolean = false) => (
+    <View style={styles.quizTimerControl}>
+      <Pressable
+        style={[styles.quizTimerStepperButton, isTimerAdjustmentLocked && styles.quizTimerStepperButtonDisabled]}
+        onPress={() => adjustCustomMinutes(-1)}
+        disabled={isTimerAdjustmentLocked}
+      >
+        <Text style={styles.quizTimerStepperLabel}>-</Text>
+      </Pressable>
+      <View style={styles.quizTimerReadout}>
+        <Text style={styles.quizStatLabel}>Timer</Text>
+        <Text style={[styles.quizStatValueTimer, expired && styles.quizTimerValueExpired]}>
+          {timerDisplay}
+        </Text>
+      </View>
+      <Pressable
+        style={[styles.quizTimerStepperButton, isTimerAdjustmentLocked && styles.quizTimerStepperButtonDisabled]}
+        onPress={() => adjustCustomMinutes(1)}
+        disabled={isTimerAdjustmentLocked}
+      >
+        <Text style={styles.quizTimerStepperLabel}>+</Text>
+      </Pressable>
+    </View>
+  );
   const activeFamilyModes = getQuizModesForFamily(quizFamily);
   const displayedFamilyModes = quizFamily === 'jlpt'
-    ? activeFamilyModes.filter(option => option.value !== 'jlpt_n4_2')
+    ? activeFamilyModes.filter(option => ![...JLPT_N4_VARIANT_VALUES.slice(1), ...JLPT_N3_VARIANT_VALUES.slice(1)].includes(option.value))
     : quizFamily === 'kana'
       ? engModeEnabled
         ? activeFamilyModes.filter(option => option.value === 'hiragana')
         : activeFamilyModes.filter(option => option.value !== 'hiragana_dakuten' && option.value !== 'katakana_dakuten')
       : activeFamilyModes;
   const activeKanaVariant = quizMode.startsWith('katakana') ? (KANA_VARIANT_OPTIONS.katakana.includes(quizMode) ? quizMode : 'katakana') : (KANA_VARIANT_OPTIONS.hiragana.includes(quizMode) ? quizMode : 'hiragana');
+  const activeJlptN3Variant = JLPT_N3_VARIANT_VALUES.includes(quizMode) ? quizMode : JLPT_N3_VARIANT_VALUES[0];
   const promptColumnLabel = isFocusMode
     ? 'Prompt'
     : isJlptJapaneseInputMode
@@ -4416,7 +4489,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const shouldShowLeaderboardGamepoints = leaderboardScoresEnabled && leaderboardRankMode === 'score';
   const closeQuizDropdownMenus = () => {
     setIsJlptModeDropdownOpen(false);
-    setIsJlptSetDropdownOpen(false);
+    setOpenJlptSetDropdownBase(null);
     setOpenKanaDropdownBase(null);
   };
   const selectQuizMode = (nextMode: string) => {
@@ -4449,7 +4522,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         style={styles.quizScroll}
         contentContainerStyle={styles.quizContent}
         onTouchStart={() => {
-          if (isJlptModeDropdownOpen || isJlptSetDropdownOpen || openKanaDropdownBase) {
+          if (isJlptModeDropdownOpen || openJlptSetDropdownBase || openKanaDropdownBase) {
             closeQuizDropdownMenus();
           }
         }}
@@ -4472,7 +4545,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.23</Text>
+          <Text style={styles.quizNavVersion}>v1.3</Text>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
@@ -4544,7 +4617,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                       onPress={() => {
                         if (isRunning) return;
                         setIsJlptModeDropdownOpen(false);
-                        setIsJlptSetDropdownOpen(false);
+                        setOpenJlptSetDropdownBase(null);
                         setOpenKanaDropdownBase(prev => (prev === value ? null : value));
                       }}
                     >
@@ -4610,7 +4683,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                       onPress={() => {
                         if (isRunning) return;
                         setIsJlptModeDropdownOpen(false);
-                        setIsJlptSetDropdownOpen(prev => !prev);
+                        setOpenJlptSetDropdownBase(prev => (prev === value ? null : value));
                       }}
                     >
                       <Text
@@ -4620,12 +4693,77 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                           isN4Selected && styles.quizSubNavTabTextActive,
                         ]}
                       >
-                        {isJlptSetDropdownOpen ? '▲' : '▼'}
+                        {openJlptSetDropdownBase === value ? '▲' : '▼'}
                       </Text>
                     </Pressable>
-                    {isJlptSetDropdownOpen ? (
+                    {openJlptSetDropdownBase === value ? (
                       <View style={styles.quizSplitTabMenu}>
                         {JLPT_N4_VARIANT_VALUES.map(variantValue => {
+                          const variantOption = QUIZ_MODES.find(mode => mode.value === variantValue);
+                          if (!variantOption) return null;
+                          const variantSelected = quizMode === variantValue;
+                          return (
+                            <Pressable
+                              key={variantValue}
+                              style={[styles.quizDropdownMenuItem, variantSelected && styles.quizDropdownMenuItemActive]}
+                              onPress={() => selectQuizMode(variantValue)}
+                            >
+                              <Text style={[styles.quizDropdownMenuItemText, variantSelected && styles.quizDropdownMenuItemTextActive]}>
+                                {variantOption.tabLabel}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              }
+              if (value === 'jlpt_n3') {
+                const isN3Selected = JLPT_N3_VARIANT_VALUES.includes(quizMode);
+                return (
+                  <View
+                    key="jlpt-n3-split"
+                    style={styles.quizSplitTabGroup}
+                    onTouchStart={event => event.stopPropagation()}
+                  >
+                    <Pressable
+                      style={[
+                        styles.quizSubNavTab,
+                        styles.quizSplitTabMain,
+                        isN3Selected && styles.quizSubNavTabActive,
+                      ]}
+                      onPress={() => selectQuizMode(activeJlptN3Variant)}
+                    >
+                      <Text style={[styles.quizSubNavTabText, isN3Selected && styles.quizSubNavTabTextActive]}>
+                        N3
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.quizSubNavTab,
+                        styles.quizSplitTabToggle,
+                        isN3Selected && styles.quizSplitTabToggleActive,
+                      ]}
+                      onPress={() => {
+                        if (isRunning) return;
+                        setIsJlptModeDropdownOpen(false);
+                        setOpenJlptSetDropdownBase(prev => (prev === value ? null : value));
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.quizSubNavTabText,
+                          styles.quizSplitTabChevron,
+                          isN3Selected && styles.quizSubNavTabTextActive,
+                        ]}
+                      >
+                        {openJlptSetDropdownBase === value ? '▲' : '▼'}
+                      </Text>
+                    </Pressable>
+                    {openJlptSetDropdownBase === value ? (
+                      <View style={styles.quizSplitTabMenu}>
+                        {JLPT_N3_VARIANT_VALUES.map(variantValue => {
                           const variantOption = QUIZ_MODES.find(mode => mode.value === variantValue);
                           if (!variantOption) return null;
                           const variantSelected = quizMode === variantValue;
@@ -4665,7 +4803,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               <Pressable
                 style={styles.quizDropdownTrigger}
                 onPress={() => {
-                  setIsJlptSetDropdownOpen(false);
+                  setOpenJlptSetDropdownBase(null);
                   setIsJlptModeDropdownOpen(prev => !prev);
                 }}
               >
@@ -4712,25 +4850,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
 
         <View style={styles.quizControlsSection}>
           {quizView === 'quiz' ? (
-            <View style={styles.quizTimerControl}>
-              <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
-                <Text style={styles.quizTimerStepperLabel}>-</Text>
-              </Pressable>
-              <TextInput
-                style={styles.quizTimerInput}
-                keyboardType="number-pad"
-                value={customMinutes}
-                onChangeText={text => setCustomMinutes(text.replace(/[^0-9]/g, ''))}
-                onBlur={applyCustomMinutes}
-                onSubmitEditing={applyCustomMinutes}
-                placeholder="1"
-                placeholderTextColor="#94a3b8"
-              />
-              <Text style={styles.quizTimerUnitLabel}>min</Text>
-              <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(1)}>
-                <Text style={styles.quizTimerStepperLabel}>+</Text>
-              </Pressable>
-            </View>
+            renderTimerAdjuster(formatTimer(remainingSeconds), hasFinished || endlessHasFinished || typemasterHasFinished)
           ) : null}
           {quizView === 'typemaster' ? (
             <View style={[styles.quizSubNavTabs, typemasterIsRunning && { opacity: 0.65 }]}>
@@ -4754,25 +4874,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
             </View>
           ) : null}
           {quizView === 'leaderboard' ? (
-            <View style={styles.quizTimerControl}>
-              <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
-                <Text style={styles.quizTimerStepperLabel}>-</Text>
-              </Pressable>
-              <TextInput
-                style={styles.quizTimerInput}
-                keyboardType="number-pad"
-                value={customMinutes}
-                onChangeText={text => setCustomMinutes(text.replace(/[^0-9]/g, ''))}
-                onBlur={applyCustomMinutes}
-                onSubmitEditing={applyCustomMinutes}
-                placeholder="1"
-                placeholderTextColor="#94a3b8"
-              />
-              <Text style={styles.quizTimerUnitLabel}>min</Text>
-              <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(1)}>
-                <Text style={styles.quizTimerStepperLabel}>+</Text>
-              </Pressable>
-            </View>
+            renderTimerAdjuster(formatTimer(timerMinutes * 60))
           ) : (
             <>
               <Pressable
@@ -4798,12 +4900,6 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                           : `${correctCharacterCount}/${totalCharacterCount}`}
                 </Text>
               </Pressable>
-              <View style={styles.quizStatBlock}>
-                <Text style={styles.quizStatLabel}>Timer</Text>
-                <Text style={[styles.quizStatValueTimer, (hasFinished || endlessHasFinished || typemasterHasFinished) && styles.quizTimerValueExpired]}>
-                  {formatTimer(remainingSeconds)}
-                </Text>
-              </View>
               <View style={styles.quizActionButtonsRow}>
                 {quizView === 'endless' ? (
                   <>
@@ -5012,9 +5108,6 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     <Text style={{ color: '#e2e8f0', fontSize: 18, fontWeight: '600' }}>
                       Score: {typemasterScore}
                     </Text>
-                    <Text style={{ color: '#94a3b8', fontSize: 14, marginTop: 4 }}>
-                      Time: {formatTimer(remainingSeconds)}
-                    </Text>
                     <Pressable
                       style={{
                         marginTop: 8,
@@ -5044,25 +5137,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     </Pressable>
                   </View>
                   <View style={styles.typemasterGameHeaderTimerWrap}>
-                    <View style={styles.quizTimerControl}>
-                      <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
-                        <Text style={styles.quizTimerStepperLabel}>-</Text>
-                      </Pressable>
-                      <TextInput
-                        style={styles.quizTimerInput}
-                        keyboardType="number-pad"
-                        value={customMinutes}
-                        onChangeText={text => setCustomMinutes(text.replace(/[^0-9]/g, ''))}
-                        onBlur={applyCustomMinutes}
-                        onSubmitEditing={applyCustomMinutes}
-                        placeholder="1"
-                        placeholderTextColor="#94a3b8"
-                      />
-                      <Text style={styles.quizTimerUnitLabel}>min</Text>
-                      <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(1)}>
-                        <Text style={styles.quizTimerStepperLabel}>+</Text>
-                      </Pressable>
-                    </View>
+                    {renderTimerAdjuster(formatTimer(remainingSeconds))}
                   </View>
                   <View style={styles.typemasterGameHeaderActionWrap}>
                     {!typemasterIsRunning && (
@@ -5262,9 +5337,6 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     <Text style={{ color: '#e2e8f0', fontSize: 18, fontWeight: '600' }}>
                       Score: {endlessScore}
                     </Text>
-                    <Text style={{ color: '#94a3b8', fontSize: 14, marginTop: 4 }}>
-                      Time: {formatTimer(remainingSeconds)}
-                    </Text>
                     <Pressable
                       style={{
                         marginTop: 8,
@@ -5294,25 +5366,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     </Pressable>
                   </View>
                   <View style={styles.quizInlineTimerWrap}>
-                    <View style={styles.quizTimerControl}>
-                      <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(-1)}>
-                        <Text style={styles.quizTimerStepperLabel}>-</Text>
-                      </Pressable>
-                      <TextInput
-                        style={styles.quizTimerInput}
-                        keyboardType="number-pad"
-                        value={customMinutes}
-                        onChangeText={text => setCustomMinutes(text.replace(/[^0-9]/g, ''))}
-                        onBlur={applyCustomMinutes}
-                        onSubmitEditing={applyCustomMinutes}
-                        placeholder="1"
-                        placeholderTextColor="#94a3b8"
-                      />
-                      <Text style={styles.quizTimerUnitLabel}>min</Text>
-                      <Pressable style={styles.quizTimerStepperButton} onPress={() => adjustCustomMinutes(1)}>
-                        <Text style={styles.quizTimerStepperLabel}>+</Text>
-                      </Pressable>
-                    </View>
+                    {renderTimerAdjuster(formatTimer(remainingSeconds))}
                   </View>
                   {!endlessIsRunning && (
                     <Pressable
