@@ -5,6 +5,7 @@ import {
   Alert,
   BackHandler,
   Linking,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -1193,7 +1194,7 @@ export default function App() {
           ) : null}
         </View>
         <View style={styles.quizPageFrame}>
-          <KanaQuizView scoreMode={quizScoreMode} engModeEnabled={engModeEnabled} />
+          <MemoizedKanaQuizView scoreMode={quizScoreMode} engModeEnabled={engModeEnabled} />
         </View>
       </View>
     </View>
@@ -1851,10 +1852,6 @@ const LEADERBOARD_GAME_OPTIONS = [
   { value: 'quiz', label: 'Quiz' },
   { value: 'typemaster', label: 'TypeMaster' },
 ];
-const LEADERBOARD_RANK_OPTIONS = [
-  { value: 'time', label: 'Time' },
-  { value: 'score', label: 'Score' },
-];
 const KANA_VARIANT_OPTIONS = {
   hiragana: ['hiragana', 'hiragana_dakuten'],
   katakana: ['katakana', 'katakana_dakuten'],
@@ -2187,7 +2184,8 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const [quizFamily, setQuizFamily] = useState(getQuizModeFamily(defaultQuizMode));
   const [leaderboardScope, setLeaderboardScope] = useState(LEADERBOARD_SCOPE_OPTIONS[0].value);
   const [leaderboardGameType, setLeaderboardGameType] = useState(LEADERBOARD_GAME_OPTIONS[0].value);
-  const [leaderboardRankMode, setLeaderboardRankMode] = useState(LEADERBOARD_RANK_OPTIONS[0].value);
+  const [leaderboardTimerFilter, setLeaderboardTimerFilter] = useState<'all' | string>('all');
+  const [isLeaderboardTimerDropdownOpen, setIsLeaderboardTimerDropdownOpen] = useState(false);
   const [timerMinutes, setTimerMinutes] = useState(1);
   const [customMinutes, setCustomMinutes] = useState('1');
   const [quizItems, setQuizItems] = useState(() =>
@@ -2527,6 +2525,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   }, [quizFamily]);
 
   useEffect(() => {
+    if (quizView !== 'leaderboard') {
+      setIsLeaderboardTimerDropdownOpen(false);
+    }
+  }, [quizView]);
+
+  useEffect(() => {
     remainingSecondsRef.current = remainingSeconds;
   }, [remainingSeconds]);
 
@@ -2535,13 +2539,6 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       setLeaderboardScope('session');
     }
   }, [leaderboardScope, quizMode]);
-
-  useEffect(() => {
-    if (!leaderboardScoresEnabled && leaderboardRankMode !== 'time') {
-      setLeaderboardRankMode('time');
-    }
-  }, [leaderboardRankMode, leaderboardScoresEnabled]);
-
 
   const focusColumnBuckets = useMemo(() => {
     return buildColumnBuckets(
@@ -4376,27 +4373,55 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     ? (focusSnapshots.find(snapshot => snapshot.id === activeFocusSnapshotId)?.name || 'Unnamed Focus save')
     : null;
   const activeLeaderboardModeLabel = getQuizModeLabel(activeLeaderboardModeKey);
-  const activeLeaderboardDisplayLabel = isTypeMasterModeKey(activeLeaderboardModeKey) || isEndlessModeKey(activeLeaderboardModeKey) || isFocusModeKey(activeLeaderboardModeKey)
-    ? 'Time'
-    : activeQuizLeaderboardLabel;
   const activeLeaderboardIndex = leaderboardScope === 'session' ? sessionLeaderboardIndex : leaderboardIndex;
-  const activeLeaderboard = useMemo(
-    () => {
-      const useModeTimerIndex = isTypeMasterModeKey(activeLeaderboardModeKey) || isEndlessModeKey(activeLeaderboardModeKey) || isFocusModeKey(activeLeaderboardModeKey);
-      const sourceIndex = leaderboardScope === 'all_time' || isFocusModeKey(activeLeaderboardModeKey)
-        ? activeLeaderboardIndex
-        : { ...activeLeaderboardIndex, allByBucket: activeLeaderboardIndex.todayByBucket, allByModeTimer: activeLeaderboardIndex.todayByModeTimer };
-      if (useModeTimerIndex) {
-        const modeTimerKey = createLeaderboardModeTimerKey(activeLeaderboardModeKey, timerMinutes);
-        const entries = sourceIndex.allByModeTimer[modeTimerKey];
-        return (entries ? entries.time : []).slice(0, 10);
-      }
-      const bucketKey = createLeaderboardBucketKey(activeLeaderboardModeKey, timerMinutes, activeQuizLeaderboardScoreType);
-      const entries = sourceIndex.allByBucket[bucketKey];
-      const rankKey = leaderboardScoresEnabled && leaderboardRankMode === 'score' ? 'score' : 'time';
-      return (entries ? entries[rankKey] : []).slice(0, 10);
+  const leaderboardPrimaryRankKey: 'time' | 'score' = leaderboardScoresEnabled ? 'score' : 'time';
+  const getLeaderboardSourceEntries = useCallback(
+    (
+      entries: Array<{ mode: string; timerMinutes?: number; scoreType?: string }>,
+      modeKey: string,
+      useModeTimerIndex: boolean,
+      scoreType?: string,
+    ) =>
+      entries.filter(entry => {
+        if (normalizeStoredQuizModeKey(entry.mode) !== normalizeStoredQuizModeKey(modeKey)) {
+          return false;
+        }
+        if (useModeTimerIndex) {
+          return true;
+        }
+        return normalizeLeaderboardScoreType(entry.scoreType) === normalizeLeaderboardScoreType(scoreType);
+      }),
+    [],
+  );
+  const selectLeaderboardEntries = useCallback(
+    (
+      entries: Array<any>,
+      rankKey: 'time' | 'score',
+      timerFilter: 'all' | string,
+    ) => {
+      const filtered = timerFilter === 'all'
+        ? entries
+        : entries.filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === normalizeLeaderboardTimerMinutes(timerFilter));
+      return [...filtered]
+        .sort(rankKey === 'score' ? compareLeaderboardEntriesByScore : compareLeaderboardEntriesByTime)
+        .slice(0, 10);
     },
-    [activeLeaderboardIndex, activeLeaderboardModeKey, activeQuizLeaderboardScoreType, leaderboardRankMode, leaderboardScope, leaderboardScoresEnabled, timerMinutes],
+    [compareLeaderboardEntriesByScore, compareLeaderboardEntriesByTime],
+  );
+  const scopedLeaderboardEntries = leaderboardScope === 'session' ? sessionLeaderboard : leaderboard;
+  const activeLeaderboardUsesModeTimer = isTypeMasterModeKey(activeLeaderboardModeKey) || isEndlessModeKey(activeLeaderboardModeKey) || isFocusModeKey(activeLeaderboardModeKey);
+  const activeLeaderboardSourceEntries = useMemo(
+    () => getLeaderboardSourceEntries(scopedLeaderboardEntries, activeLeaderboardModeKey, activeLeaderboardUsesModeTimer, activeQuizLeaderboardScoreType),
+    [activeLeaderboardModeKey, activeLeaderboardUsesModeTimer, activeQuizLeaderboardScoreType, getLeaderboardSourceEntries, scopedLeaderboardEntries],
+  );
+  const getLeaderboardTimerOptions = useCallback((entries: Array<{ timerMinutes?: number }>) => {
+    const timers = Array.from(new Set(entries.map(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes)))).sort((a, b) => a - b);
+    return [{ value: 'all', label: 'All' }, ...timers.map(value => ({ value: `${value}`, label: `${value} min` }))];
+  }, []);
+  const activeLeaderboardTimerOptions = useMemo(() => getLeaderboardTimerOptions(activeLeaderboardSourceEntries), [activeLeaderboardSourceEntries, getLeaderboardTimerOptions]);
+  const activeLeaderboard = useMemo(
+    () => selectLeaderboardEntries(activeLeaderboardSourceEntries, leaderboardPrimaryRankKey, leaderboardTimerFilter),
+    [activeLeaderboardSourceEntries, leaderboardPrimaryRankKey, leaderboardTimerFilter, selectLeaderboardEntries],
   );
   const completedModeLabel = getQuizModeLabel(activeModeKey);
   const typemasterModeKey = getTypeMasterModeKey(activeModeKey);
@@ -4496,54 +4521,116 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         : isEnglishAlphabetMode
           ? 'Type letter...'
           : 'Type...';
-  const completedModeLeaderboardIndex = leaderboardScope === 'session' ? sessionLeaderboardIndex : leaderboardIndex;
+  const completedLeaderboardSourceEntries = useMemo(
+    () => getLeaderboardSourceEntries(scopedLeaderboardEntries, activeModeKey, false, activeQuizLeaderboardScoreType),
+    [activeModeKey, activeQuizLeaderboardScoreType, getLeaderboardSourceEntries, scopedLeaderboardEntries],
+  );
+  const completedLeaderboardTimerOptions = useMemo(() => getLeaderboardTimerOptions(completedLeaderboardSourceEntries), [completedLeaderboardSourceEntries, getLeaderboardTimerOptions]);
   const completedModeLeaderboard = useMemo(
-    () => {
-      const sourceIndex = leaderboardScope === 'all_time' || isFocusModeKey(activeModeKey)
-        ? completedModeLeaderboardIndex
-        : { ...completedModeLeaderboardIndex, allByBucket: completedModeLeaderboardIndex.todayByBucket };
-      const bucketKey = createLeaderboardBucketKey(activeModeKey, timerMinutes, activeQuizLeaderboardScoreType);
-      const entries = sourceIndex.allByBucket[bucketKey];
-      const rankKey = leaderboardScoresEnabled && leaderboardRankMode === 'score' ? 'score' : 'time';
-      return (entries ? entries[rankKey] : []).slice(0, 10);
-    },
-    [activeModeKey, activeQuizLeaderboardScoreType, completedModeLeaderboardIndex, leaderboardRankMode, leaderboardScope, leaderboardScoresEnabled, timerMinutes],
+    () => selectLeaderboardEntries(completedLeaderboardSourceEntries, leaderboardPrimaryRankKey, leaderboardTimerFilter),
+    [completedLeaderboardSourceEntries, leaderboardPrimaryRankKey, leaderboardTimerFilter, selectLeaderboardEntries],
   );
+  const typemasterCompletedLeaderboardSourceEntries = useMemo(
+    () => getLeaderboardSourceEntries(scopedLeaderboardEntries, typemasterModeKey, true),
+    [getLeaderboardSourceEntries, scopedLeaderboardEntries, typemasterModeKey],
+  );
+  const typemasterCompletedLeaderboardTimerOptions = useMemo(() => getLeaderboardTimerOptions(typemasterCompletedLeaderboardSourceEntries), [getLeaderboardTimerOptions, typemasterCompletedLeaderboardSourceEntries]);
   const typemasterCompletedModeLeaderboard = useMemo(
-    () => {
-      const sourceIndex = leaderboardScope === 'all_time' || isFocusModeKey(typemasterModeKey)
-        ? completedModeLeaderboardIndex
-        : { ...completedModeLeaderboardIndex, allByModeTimer: completedModeLeaderboardIndex.todayByModeTimer };
-      const modeTimerKey = createLeaderboardModeTimerKey(typemasterModeKey, timerMinutes);
-      const entries = sourceIndex.allByModeTimer[modeTimerKey];
-      const rankKey = leaderboardScoresEnabled && leaderboardRankMode === 'score' ? 'score' : 'time';
-      return (entries ? entries[rankKey] : []).slice(0, 10);
-    },
-    [completedModeLeaderboardIndex, leaderboardRankMode, leaderboardScope, leaderboardScoresEnabled, timerMinutes, typemasterModeKey],
+    () => selectLeaderboardEntries(typemasterCompletedLeaderboardSourceEntries, leaderboardPrimaryRankKey, leaderboardTimerFilter),
+    [leaderboardPrimaryRankKey, leaderboardTimerFilter, selectLeaderboardEntries, typemasterCompletedLeaderboardSourceEntries],
   );
+  const currentLeaderboardTimerOptions = quizView === 'leaderboard'
+    ? activeLeaderboardTimerOptions
+    : quizView === 'typemaster' && typemasterHasFinished
+      ? typemasterCompletedLeaderboardTimerOptions
+      : hasFinished
+        ? completedLeaderboardTimerOptions
+        : activeLeaderboardTimerOptions;
+  useEffect(() => {
+    if (leaderboardTimerFilter === 'all') return;
+    const exists = currentLeaderboardTimerOptions.some(option => option.value === leaderboardTimerFilter);
+    if (!exists) {
+      setLeaderboardTimerFilter('all');
+    }
+  }, [currentLeaderboardTimerOptions, leaderboardTimerFilter]);
   const activeJlptN4Variant = JLPT_N4_VARIANT_VALUES.includes(quizMode) ? quizMode : JLPT_N4_VARIANT_VALUES[0];
-  const renderLeaderboardRankPills = (prefix: string) =>
-    leaderboardScoresEnabled
-      ? LEADERBOARD_RANK_OPTIONS.map(option => {
-          const selected = option.value === leaderboardRankMode;
-          return (
+  const shouldShowLeaderboardGamepoints = leaderboardScoresEnabled;
+  const renderLeaderboardTimerFilter = (options: Array<{ value: string; label: string }>) => {
+    const label = options.find(option => option.value === leaderboardTimerFilter)?.label || 'All';
+    return (
+    <View
+      style={styles.quizDropdownWrap}
+      onTouchStart={event => event.stopPropagation()}
+    >
+      <Text style={styles.quizDropdownLabel}>Leaderboard Timer</Text>
+      <Pressable
+        style={styles.quizDropdownTrigger}
+        onPress={() => setIsLeaderboardTimerDropdownOpen(prev => !prev)}
+      >
+        <Text style={styles.quizDropdownTriggerText}>{label}</Text>
+        <Text style={styles.quizDropdownTriggerChevron}>{isLeaderboardTimerDropdownOpen ? '▲' : '▼'}</Text>
+      </Pressable>
+      {isLeaderboardTimerDropdownOpen ? (
+        <View style={styles.quizDropdownMenu}>
+          {options.map(option => {
+            const selected = option.value === leaderboardTimerFilter;
+            return (
+              <Pressable
+                key={`leaderboard-timer-${option.value}`}
+                style={[styles.quizDropdownMenuItem, selected && styles.quizDropdownMenuItemActive]}
+                onPress={() => {
+                  setLeaderboardTimerFilter(option.value as 'all' | string);
+                  setIsLeaderboardTimerDropdownOpen(false);
+                }}
+              >
+                <Text style={[styles.quizDropdownMenuItemText, selected && styles.quizDropdownMenuItemTextActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+    );
+  };
+  const renderLeaderboardEntries = (entries: any[]) => (
+    <View style={styles.quizLeaderboardList}>
+      {entries.map((entry, index) => (
+        <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
+          <Text style={styles.quizLeaderboardRank}>#{index + 1}</Text>
+          <Text style={styles.quizLeaderboardMode}>
+            {getLeaderboardModeDisplayLabel(entry)} - {getLeaderboardFinishReasonLabel(entry)}
+          </Text>
+          <Text style={[styles.quizLeaderboardTime, isTypeMasterModeKey(entry.mode) && entry.finishReason === 'stopped' && styles.quizLeaderboardTimeStopped]}>
+            {getLeaderboardTimeDisplay(entry)}
+          </Text>
+          <Text style={styles.quizLeaderboardDate}>{formatLeaderboardDateTime(entry.date)}</Text>
+          {leaderboardScoresEnabled ? (
+            <>
+              <Text style={styles.quizLeaderboardScore}>{getLeaderboardTestscoreDisplay(entry)}</Text>
+              {shouldShowLeaderboardGamepoints && getLeaderboardGamepointsDisplay(entry) ? (
+                <Text style={styles.quizLeaderboardScore}>{getLeaderboardGamepointsDisplay(entry)}</Text>
+              ) : null}
+            </>
+          ) : null}
+          {isLeaderboardEditMode ? (
             <Pressable
-              key={`${prefix}-rank-${option.value}`}
-              style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-              onPress={() => setLeaderboardRankMode(option.value)}
+              style={styles.quizLeaderboardDeleteButton}
+              onPress={() => requestDeleteLeaderboardEntry(entry)}
             >
-              <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                {option.label}
-              </Text>
+              <Text style={styles.quizLeaderboardDeleteButtonLabel}>Delete</Text>
             </Pressable>
-          );
-        })
-      : null;
-  const shouldShowLeaderboardGamepoints = leaderboardScoresEnabled && leaderboardRankMode === 'score';
+          ) : null}
+        </View>
+      ))}
+    </View>
+  );
   const closeQuizDropdownMenus = () => {
     setIsJlptModeDropdownOpen(false);
     setOpenJlptSetDropdownBase(null);
     setOpenKanaDropdownBase(null);
+    setIsLeaderboardTimerDropdownOpen(false);
   };
   const selectQuizMode = (nextMode: string) => {
     if (isRunning) return;
@@ -4598,7 +4685,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.31</Text>
+          <Text style={styles.quizNavVersion}>v1.32</Text>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
@@ -5050,106 +5137,42 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     </View>
                   </View>
                   <View style={styles.quizFinishLeaderboardPanelWide}>
-                    {typemasterCompletedModeLeaderboard.length > 0 ? (
-                      <View style={styles.quizLeaderboard}>
-                        <View style={styles.quizLeaderboardHeaderRow}>
-                          <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Top 10 ({timerMinutes} min, {typemasterCompletedScopeLabel})</Text>
-                          <View style={styles.quizLeaderboardScopeTabs}>
-                            {renderLeaderboardRankPills('typemaster-completed-main')}
-                            <Pressable
-                              style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
-                              onPress={() => setIsLeaderboardEditMode(prev => !prev)}
-                            >
-                              <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
-                                {isLeaderboardEditMode ? 'Done' : 'Edit'}
-                              </Text>
-                            </Pressable>
-                            {typemasterCompletedLeaderboardScopeOptions.map(option => {
-                              const selected = option.value === leaderboardScope;
-                              return (
-                                <Pressable
-                                  key={`typemaster-completed-scope-${option.value}`}
-                                  style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-                                  onPress={() => setLeaderboardScope(option.value)}
-                                >
-                                  <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                                    {option.label}
-                                  </Text>
-                                </Pressable>
-                              );
-                            })}
-                          </View>
-                        </View>
-                        {isFocusModeKey(typemasterModeKey) && leaderboardScope === 'session' ? (
-                          <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
-                        ) : null}
-                        <View style={styles.quizLeaderboardList}>
-                          {typemasterCompletedModeLeaderboard.map((entry, index) => (
-                            <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
-                              <Text style={styles.quizLeaderboardRank}>#{index + 1}</Text>
-                              <Text style={styles.quizLeaderboardMode}>
-                                {getLeaderboardModeDisplayLabel(entry)} - {getLeaderboardFinishReasonLabel(entry)}
-                              </Text>
-                              <Text style={[styles.quizLeaderboardTime, isTypeMasterModeKey(entry.mode) && entry.finishReason === 'stopped' && styles.quizLeaderboardTimeStopped]}>
-                                {getLeaderboardTimeDisplay(entry)}
-                              </Text>
-                              <Text style={styles.quizLeaderboardDate}>{formatLeaderboardDateTime(entry.date)}</Text>
-                              {leaderboardScoresEnabled ? (
-                                <>
-                                  <Text style={styles.quizLeaderboardScore}>{getLeaderboardTestscoreDisplay(entry)}</Text>
-                                  {shouldShowLeaderboardGamepoints && getLeaderboardGamepointsDisplay(entry) ? (
-                                    <Text style={styles.quizLeaderboardScore}>{getLeaderboardGamepointsDisplay(entry)}</Text>
-                                  ) : null}
-                                </>
-                              ) : null}
-                              {isLeaderboardEditMode ? (
-                                <Pressable
-                                  style={styles.quizLeaderboardDeleteButton}
-                                  onPress={() => requestDeleteLeaderboardEntry(entry)}
-                                >
-                                  <Text style={styles.quizLeaderboardDeleteButtonLabel}>Delete</Text>
-                                </Pressable>
-                              ) : null}
-                            </View>
-                          ))}
+                    <View style={styles.quizLeaderboard}>
+                      <View style={styles.quizLeaderboardHeaderRow}>
+                        <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Leaderboard ({(typemasterCompletedLeaderboardTimerOptions.find(option => option.value === leaderboardTimerFilter)?.label || 'All')}, {typemasterCompletedScopeLabel})</Text>
+                        <View style={styles.quizLeaderboardScopeTabs}>
+                          {renderLeaderboardTimerFilter(typemasterCompletedLeaderboardTimerOptions)}
+                          <Pressable
+                            style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
+                            onPress={() => setIsLeaderboardEditMode(prev => !prev)}
+                          >
+                            <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
+                              {isLeaderboardEditMode ? 'Done' : 'Edit'}
+                            </Text>
+                          </Pressable>
+                          {typemasterCompletedLeaderboardScopeOptions.map(option => {
+                            const selected = option.value === leaderboardScope;
+                            return (
+                              <Pressable
+                                key={`typemaster-completed-scope-${option.value}`}
+                                style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
+                                onPress={() => setLeaderboardScope(option.value)}
+                              >
+                                <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
+                                  {option.label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
                         </View>
                       </View>
-                    ) : (
-                      <View style={styles.quizLeaderboard}>
-                        <View style={styles.quizLeaderboardHeaderRow}>
-                          <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Top 10 ({timerMinutes} min, {typemasterCompletedScopeLabel})</Text>
-                          <View style={styles.quizLeaderboardScopeTabs}>
-                            {renderLeaderboardRankPills('typemaster-completed-empty')}
-                            <Pressable
-                              style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
-                              onPress={() => setIsLeaderboardEditMode(prev => !prev)}
-                            >
-                              <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
-                                {isLeaderboardEditMode ? 'Done' : 'Edit'}
-                              </Text>
-                            </Pressable>
-                            {typemasterCompletedLeaderboardScopeOptions.map(option => {
-                              const selected = option.value === leaderboardScope;
-                              return (
-                                <Pressable
-                                  key={`typemaster-completed-empty-scope-${option.value}`}
-                                  style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-                                  onPress={() => setLeaderboardScope(option.value)}
-                                >
-                                  <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                                    {option.label}
-                                  </Text>
-                                </Pressable>
-                              );
-                            })}
-                          </View>
-                        </View>
-                        {isFocusModeKey(typemasterModeKey) && leaderboardScope === 'session' ? (
-                          <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
-                        ) : null}
-                        <Text style={styles.quizLeaderboardEmpty}>No {typemasterCompletedScopeLabel.toLowerCase()} scores for this mode.</Text>
-                      </View>
-                    )}
+                      {isFocusModeKey(typemasterModeKey) && leaderboardScope === 'session' ? (
+                        <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
+                      ) : null}
+                      {typemasterCompletedModeLeaderboard.length > 0
+                        ? renderLeaderboardEntries(typemasterCompletedModeLeaderboard)
+                        : <Text style={styles.quizLeaderboardEmpty}>No {typemasterCompletedScopeLabel.toLowerCase()} entries for this mode.</Text>}
+                    </View>
                   </View>
                 </View>
               </View>
@@ -5569,140 +5592,62 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               <View>
                 <Text style={styles.quizFinishTitle}>Leaderboard</Text>
                 <Text style={styles.quizFinishSubtitle}>
-                  {leaderboardScoresEnabled ? 'Browse best times or switch to score ranking.' : 'Browse best times by gamemode.'}
+                  {leaderboardScoresEnabled ? 'Browse best times and scores by gamemode.' : 'Browse best times by gamemode.'}
                 </Text>
               </View>
             </View>
 
             <View style={styles.quizFinishLeaderboardPanel}>
-              {activeLeaderboard.length > 0 ? (
-                <View style={styles.quizLeaderboard}>
-                  <View style={styles.quizLeaderboardHeaderRow}>
-                    <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} {activeLeaderboardDisplayLabel} Top 10 ({timerMinutes} min, {activeScopeLabel})</Text>
-                    <View style={styles.quizLeaderboardScopeTabs}>
-                      {LEADERBOARD_GAME_OPTIONS.map(option => {
-                        const selected = option.value === leaderboardGameType;
-                        return (
-                          <Pressable
-                            key={`leaderboard-game-${option.value}`}
-                            style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-                            onPress={() => setLeaderboardGameType(option.value)}
-                          >
-                            <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                              {option.label}
-                            </Text>
-                          </Pressable>
+              <View style={styles.quizLeaderboard}>
+                <View style={styles.quizLeaderboardHeaderRow}>
+                  <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} Leaderboard ({(activeLeaderboardTimerOptions.find(option => option.value === leaderboardTimerFilter)?.label || 'All')}, {activeScopeLabel})</Text>
+                  <View style={styles.quizLeaderboardScopeTabs}>
+                    {LEADERBOARD_GAME_OPTIONS.map(option => {
+                      const selected = option.value === leaderboardGameType;
+                      return (
+                        <Pressable
+                          key={`leaderboard-game-${option.value}`}
+                          style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
+                          onPress={() => setLeaderboardGameType(option.value)}
+                        >
+                          <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
+                            {option.label}
+                          </Text>
+                        </Pressable>
                         );
                       })}
-                      {renderLeaderboardRankPills('leaderboard-main')}
-                      <Pressable
-                        style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
-                        onPress={() => setIsLeaderboardEditMode(prev => !prev)}
-                      >
-                        <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
-                          {isLeaderboardEditMode ? 'Done' : 'Edit'}
-                        </Text>
-                      </Pressable>
-                      {activeLeaderboardScopeOptions.map(option => {
-                        const selected = option.value === leaderboardScope;
-                        return (
-                          <Pressable
-                            key={`leaderboard-scope-${option.value}`}
-                            style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-                            onPress={() => setLeaderboardScope(option.value)}
-                          >
-                            <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                              {option.label}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-                  {isFocusModeKey(activeLeaderboardModeKey) && leaderboardScope === 'session' ? (
-                    <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
-                  ) : null}
-                  <View style={styles.quizLeaderboardList}>
-                    {activeLeaderboard.map((entry, index) => (
-                      <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
-                        <Text style={styles.quizLeaderboardRank}>#{index + 1}</Text>
-                        <Text style={styles.quizLeaderboardMode}>
-                          {getLeaderboardModeDisplayLabel(entry)} - {getLeaderboardFinishReasonLabel(entry)}
-                        </Text>
-                        <Text style={[styles.quizLeaderboardTime, isTypeMasterModeKey(entry.mode) && entry.finishReason === 'stopped' && styles.quizLeaderboardTimeStopped]}>
-                          {getLeaderboardTimeDisplay(entry)}
-                        </Text>
-                        <Text style={styles.quizLeaderboardDate}>{formatLeaderboardDateTime(entry.date)}</Text>
-                        {leaderboardScoresEnabled ? (
-                          <>
-                            <Text style={styles.quizLeaderboardScore}>{getLeaderboardTestscoreDisplay(entry)}</Text>
-                            {shouldShowLeaderboardGamepoints && getLeaderboardGamepointsDisplay(entry) ? (
-                              <Text style={styles.quizLeaderboardScore}>{getLeaderboardGamepointsDisplay(entry)}</Text>
-                            ) : null}
-                          </>
-                        ) : null}
-                        {isLeaderboardEditMode ? (
-                          <Pressable
-                            style={styles.quizLeaderboardDeleteButton}
-                            onPress={() => requestDeleteLeaderboardEntry(entry)}
-                          >
-                            <Text style={styles.quizLeaderboardDeleteButtonLabel}>Delete</Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-                    ))}
+                    {renderLeaderboardTimerFilter(activeLeaderboardTimerOptions)}
+                    <Pressable
+                      style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
+                      onPress={() => setIsLeaderboardEditMode(prev => !prev)}
+                    >
+                      <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
+                        {isLeaderboardEditMode ? 'Done' : 'Edit'}
+                      </Text>
+                    </Pressable>
+                    {activeLeaderboardScopeOptions.map(option => {
+                      const selected = option.value === leaderboardScope;
+                      return (
+                        <Pressable
+                          key={`leaderboard-scope-${option.value}`}
+                          style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
+                          onPress={() => setLeaderboardScope(option.value)}
+                        >
+                          <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 </View>
-              ) : (
-                <View style={styles.quizLeaderboard}>
-                  <View style={styles.quizLeaderboardHeaderRow}>
-                    <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} {activeLeaderboardDisplayLabel} Top 10 ({timerMinutes} min, {activeScopeLabel})</Text>
-                    <View style={styles.quizLeaderboardScopeTabs}>
-                      {LEADERBOARD_GAME_OPTIONS.map(option => {
-                        const selected = option.value === leaderboardGameType;
-                        return (
-                          <Pressable
-                            key={`leaderboard-game-${option.value}`}
-                            style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-                            onPress={() => setLeaderboardGameType(option.value)}
-                          >
-                            <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                              {option.label}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                      {renderLeaderboardRankPills('leaderboard-empty')}
-                      <Pressable
-                        style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
-                        onPress={() => setIsLeaderboardEditMode(prev => !prev)}
-                      >
-                        <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
-                          {isLeaderboardEditMode ? 'Done' : 'Edit'}
-                        </Text>
-                      </Pressable>
-                      {activeLeaderboardScopeOptions.map(option => {
-                        const selected = option.value === leaderboardScope;
-                        return (
-                          <Pressable
-                            key={`leaderboard-scope-${option.value}`}
-                            style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-                            onPress={() => setLeaderboardScope(option.value)}
-                          >
-                            <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                              {option.label}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-                  {isFocusModeKey(activeLeaderboardModeKey) && leaderboardScope === 'session' ? (
-                    <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
-                  ) : null}
-                  <Text style={styles.quizLeaderboardEmpty}>No {activeScopeLabel.toLowerCase()} {activeLeaderboardDisplayLabel.toLowerCase()} entries for this mode.</Text>
-                </View>
-              )}
+                {isFocusModeKey(activeLeaderboardModeKey) && leaderboardScope === 'session' ? (
+                  <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
+                ) : null}
+                {activeLeaderboard.length > 0
+                  ? renderLeaderboardEntries(activeLeaderboard)
+                  : <Text style={styles.quizLeaderboardEmpty}>No {activeScopeLabel.toLowerCase()} entries for this mode.</Text>}
+              </View>
             </View>
           </View>
         ) : hasFinished ? (
@@ -5764,106 +5709,42 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               </View>
 
               <View style={styles.quizFinishLeaderboardPanelWide}>
-                {completedModeLeaderboard.length > 0 ? (
-                  <View style={styles.quizLeaderboard}>
-                    <View style={styles.quizLeaderboardHeaderRow}>
-                      <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} {activeQuizLeaderboardLabel} Top 10 ({timerMinutes} min, {completedScopeLabel})</Text>
-                      <View style={styles.quizLeaderboardScopeTabs}>
-                        {renderLeaderboardRankPills('completed-main')}
-                        <Pressable
-                          style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
-                          onPress={() => setIsLeaderboardEditMode(prev => !prev)}
-                        >
-                          <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
-                            {isLeaderboardEditMode ? 'Done' : 'Edit'}
-                          </Text>
-                        </Pressable>
-                        {completedLeaderboardScopeOptions.map(option => {
-                          const selected = option.value === leaderboardScope;
-                          return (
-                            <Pressable
-                              key={`completed-scope-${option.value}`}
-                              style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-                              onPress={() => setLeaderboardScope(option.value)}
-                            >
-                              <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                                {option.label}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </View>
-                    {isFocusModeKey(activeModeKey) && leaderboardScope === 'session' ? (
-                      <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
-                    ) : null}
-                    <View style={styles.quizLeaderboardList}>
-                      {completedModeLeaderboard.map((entry, index) => (
-                        <View key={`${entry.date}-${index}`} style={styles.quizLeaderboardEntry}>
-                          <Text style={styles.quizLeaderboardRank}>#{index + 1}</Text>
-                          <Text style={styles.quizLeaderboardMode}>
-                            {getLeaderboardModeDisplayLabel(entry)} - {getLeaderboardFinishReasonLabel(entry)}
-                          </Text>
-                          <Text style={[styles.quizLeaderboardTime, isTypeMasterModeKey(entry.mode) && entry.finishReason === 'stopped' && styles.quizLeaderboardTimeStopped]}>
-                            {getLeaderboardTimeDisplay(entry)}
-                          </Text>
-                          <Text style={styles.quizLeaderboardDate}>{formatLeaderboardDateTime(entry.date)}</Text>
-                          {leaderboardScoresEnabled ? (
-                            <>
-                              <Text style={styles.quizLeaderboardScore}>{getLeaderboardTestscoreDisplay(entry)}</Text>
-                              {shouldShowLeaderboardGamepoints && getLeaderboardGamepointsDisplay(entry) ? (
-                                <Text style={styles.quizLeaderboardScore}>{getLeaderboardGamepointsDisplay(entry)}</Text>
-                              ) : null}
-                            </>
-                          ) : null}
-                          {isLeaderboardEditMode ? (
-                            <Pressable
-                              style={styles.quizLeaderboardDeleteButton}
-                              onPress={() => requestDeleteLeaderboardEntry(entry)}
-                            >
-                              <Text style={styles.quizLeaderboardDeleteButtonLabel}>Delete</Text>
-                            </Pressable>
-                          ) : null}
-                        </View>
-                      ))}
+                <View style={styles.quizLeaderboard}>
+                  <View style={styles.quizLeaderboardHeaderRow}>
+                    <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Leaderboard ({(completedLeaderboardTimerOptions.find(option => option.value === leaderboardTimerFilter)?.label || 'All')}, {completedScopeLabel})</Text>
+                    <View style={styles.quizLeaderboardScopeTabs}>
+                      {renderLeaderboardTimerFilter(completedLeaderboardTimerOptions)}
+                      <Pressable
+                        style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
+                        onPress={() => setIsLeaderboardEditMode(prev => !prev)}
+                      >
+                        <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
+                          {isLeaderboardEditMode ? 'Done' : 'Edit'}
+                        </Text>
+                      </Pressable>
+                      {completedLeaderboardScopeOptions.map(option => {
+                        const selected = option.value === leaderboardScope;
+                        return (
+                          <Pressable
+                            key={`completed-scope-${option.value}`}
+                            style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
+                            onPress={() => setLeaderboardScope(option.value)}
+                          >
+                            <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   </View>
-                ) : (
-                  <View style={styles.quizLeaderboard}>
-                    <View style={styles.quizLeaderboardHeaderRow}>
-                      <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} {activeQuizLeaderboardLabel} Top 10 ({timerMinutes} min, {completedScopeLabel})</Text>
-                      <View style={styles.quizLeaderboardScopeTabs}>
-                        {renderLeaderboardRankPills('completed-empty')}
-                        <Pressable
-                          style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
-                          onPress={() => setIsLeaderboardEditMode(prev => !prev)}
-                        >
-                          <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
-                            {isLeaderboardEditMode ? 'Done' : 'Edit'}
-                          </Text>
-                        </Pressable>
-                        {completedLeaderboardScopeOptions.map(option => {
-                          const selected = option.value === leaderboardScope;
-                          return (
-                            <Pressable
-                              key={`completed-scope-${option.value}`}
-                              style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-                              onPress={() => setLeaderboardScope(option.value)}
-                            >
-                              <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                                {option.label}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </View>
-                    {isFocusModeKey(activeModeKey) && leaderboardScope === 'session' ? (
-                      <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
-                    ) : null}
-                    <Text style={styles.quizLeaderboardEmpty}>No {completedScopeLabel.toLowerCase()} {activeQuizLeaderboardLabel.toLowerCase()} entries for this mode.</Text>
-                  </View>
-                )}
+                  {isFocusModeKey(activeModeKey) && leaderboardScope === 'session' ? (
+                    <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
+                  ) : null}
+                  {completedModeLeaderboard.length > 0
+                    ? renderLeaderboardEntries(completedModeLeaderboard)
+                    : <Text style={styles.quizLeaderboardEmpty}>No {completedScopeLabel.toLowerCase()} entries for this mode.</Text>}
+                </View>
               </View>
             </View>
           </View>
@@ -5958,12 +5839,10 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                           target.scrollLeft = 0;
                         }
                         if (target && typeof target.scrollIntoView === 'function') {
-                          requestAnimationFrame(() => {
-                            target.scrollIntoView({
-                              behavior: 'smooth',
-                              block: 'center',
-                              inline: 'nearest',
-                            });
+                          target.scrollIntoView({
+                            behavior: 'auto',
+                            block: 'center',
+                            inline: 'nearest',
                           });
                         }
                       }}
@@ -5980,7 +5859,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         </View>
       </ScrollView>
 
-      {isSaveManagerOpen ? (
+      <Modal
+        animationType="none"
+        transparent
+        visible={isSaveManagerOpen}
+        onRequestClose={() => setIsSaveManagerOpen(false)}
+      >
         <View style={styles.editModalOverlay}>
           <View style={[styles.editModalPanel, styles.saveManagerModalPanel]}>
             <View style={styles.editModalHeader}>
@@ -6201,10 +6085,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
             </ScrollView>
           </View>
         </View>
-      ) : null}
+      </Modal>
     </View>
   );
 }
+
+const MemoizedKanaQuizView = React.memo(KanaQuizView);
 
 function DashboardView({
   notes,
