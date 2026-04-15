@@ -814,6 +814,7 @@ export const styles = StyleSheet.create({
     minWidth: 240,
     position: 'relative',
     zIndex: 40,
+    elevation: 40,
   },
   quizDropdownLabel: {
     color: '#94a3b8',
@@ -857,6 +858,7 @@ export const styles = StyleSheet.create({
     overflow: 'hidden',
     zIndex: 50,
     elevation: 8,
+    pointerEvents: 'auto',
   },
   quizDropdownMenuItem: {
     paddingHorizontal: 10,
@@ -1281,6 +1283,9 @@ export const styles = StyleSheet.create({
     borderColor: '#1f2937',
     padding: 16,
     gap: 12,
+    overflow: 'visible',
+    position: 'relative',
+    zIndex: 1,
   },
   quizLeaderboardTitle: {
     color: '#f8fafc',
@@ -1296,12 +1301,19 @@ export const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
     marginBottom: 4,
+    overflow: 'visible',
+    position: 'relative',
+    zIndex: 20,
   },
   quizLeaderboardScopeTabs: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginLeft: 'auto',
+    flexWrap: 'wrap',
+    overflow: 'visible',
+    position: 'relative',
+    zIndex: 21,
   },
   quizLeaderboardScopePill: {
     paddingHorizontal: 12,

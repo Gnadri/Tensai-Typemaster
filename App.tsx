@@ -18,6 +18,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { styles } from './mobile/src/styles/appStyles';
 import { JLPT_N3_KANJI_DETAILS, JLPT_N3_KANJI_SOURCE } from './mobile/src/data/jlpt_n3_kanji';
+import {
+  buildSaveProfilePayload,
+  buildSaveProfilesExportPayload,
+  extractSaveProfilesFromImport,
+  normalizeSaveProfilesPayload,
+  SAVE_PROFILES_FILE_EXTENSION,
+} from './mobile/src/utils/saveProfiles';
 // Sentence analyzer wiring is temporarily disabled until backend integration is ready.
 // const AsyncStorage: any = require('@react-native-async-storage/async-storage');
 // import { analyzeSentence } from './mobile/src/services/analyzerClient';
@@ -79,14 +86,10 @@ const QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY = 'tensai-note.quiz-leaderboar
 const QUIZ_SCORE_MODE_STORAGE_KEY = 'tensai-note.quiz-score-mode.v1';
 const QUIZ_ENG_MODE_ENABLED_STORAGE_KEY = 'tensai-note.quiz-eng-mode-enabled.v1';
 const QUIZ_FOCUS_STORAGE_KEY = 'tensai-note.quiz-focus.v1';
+const QUIZ_SAVE_PROFILES_STORAGE_KEY = 'tensai-note.quiz-save-profiles.v2';
 const QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-leaderboard-snapshots.v1';
 const QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-focus-snapshots.v1';
-const QUIZ_ACTIVE_FOCUS_SNAPSHOT_STORAGE_KEY = 'tensai-note.quiz-active-focus-snapshot.v1';
-const QUIZ_LEADERBOARD_EXPORT_EVENT = 'tensai:leaderboard-export';
-const QUIZ_LEADERBOARD_IMPORT_EVENT = 'tensai:leaderboard-import';
 const QUIZ_SAVE_MANAGER_OPEN_EVENT = 'tensai:save-manager-open';
-const SAVE_STATES_FILE_EXTENSION = '.tensai-saves.json';
-const FOCUS_SAVE_STATES_FILE_EXTENSION = '.tensai-focus-saves.json';
 
 const SOURCE_COLORS = {
   study: '#2563eb',
@@ -1136,14 +1139,6 @@ export default function App() {
     });
   }, []);
 
-  const handleExportLeaderboardPress = useCallback(() => {
-    dispatchLeaderboardSettingsEvent(QUIZ_LEADERBOARD_EXPORT_EVENT);
-  }, [dispatchLeaderboardSettingsEvent]);
-
-  const handleImportLeaderboardPress = useCallback(() => {
-    dispatchLeaderboardSettingsEvent(QUIZ_LEADERBOARD_IMPORT_EVENT);
-  }, [dispatchLeaderboardSettingsEvent]);
-
   const handleOpenSaveManagerPress = useCallback(() => {
     dispatchLeaderboardSettingsEvent(QUIZ_SAVE_MANAGER_OPEN_EVENT);
   }, [dispatchLeaderboardSettingsEvent]);
@@ -1165,12 +1160,6 @@ export default function App() {
             <View style={styles.appSettingsMenu}>
               <Pressable style={styles.appSettingsMenuItem} onPress={handleUpdatePress}>
                 <Text style={styles.appSettingsMenuItemLabel}>Update (BuildDist + Reload)</Text>
-              </Pressable>
-              <Pressable style={styles.appSettingsMenuItem} onPress={handleExportLeaderboardPress}>
-                <Text style={styles.appSettingsMenuItemLabel}>Export Leaderboard</Text>
-              </Pressable>
-              <Pressable style={styles.appSettingsMenuItem} onPress={handleImportLeaderboardPress}>
-                <Text style={styles.appSettingsMenuItemLabel}>Import Leaderboard</Text>
               </Pressable>
               <Pressable style={styles.appSettingsMenuItem} onPress={handleOpenSaveManagerPress}>
                 <Text style={styles.appSettingsMenuItemLabel}>Save Manager</Text>
@@ -2237,12 +2226,18 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const typemasterTimerWasArmedRef = React.useRef(false);
   const [focusedItems, setFocusedItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
   const [isSaveManagerOpen, setIsSaveManagerOpen] = useState(false);
-  const [saveManagerTab, setSaveManagerTab] = useState<'focus' | 'leaderboard'>('focus');
-  const [leaderboardSnapshots, setLeaderboardSnapshots] = useState<Array<{ id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }>>([]);
-  const [focusSnapshots, setFocusSnapshots] = useState<Array<{ id: string; name: string; createdAt: number; focusItems: any[]; focusLeaderboard?: any[] }>>([]);
-  const [activeFocusSnapshotId, setActiveFocusSnapshotId] = useState<string | null>(null);
-  const [leaderboardSnapshotName, setLeaderboardSnapshotName] = useState('');
-  const [focusSnapshotName, setFocusSnapshotName] = useState('');
+  const [saveProfiles, setSaveProfiles] = useState<Array<{
+    id: string;
+    name: string;
+    createdAt: number;
+    updatedAt: number;
+    focusItems: any[];
+    focusLeaderboard: any[];
+    leaderboard: any[];
+    sessionLeaderboard: any[];
+  }>>([]);
+  const [loadedSaveProfileId, setLoadedSaveProfileId] = useState<string | null>(null);
+  const [saveProfileName, setSaveProfileName] = useState('');
   const todayKey = formatDateKey(new Date());
 
   const focusDataset = useMemo(
@@ -2400,12 +2395,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         // Focus leaderboard session is tied to the current focus set; reset it whenever the set changes.
         setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
         setLastRecordUpdate(prev => (prev && isFocusModeKey(prev.mode) ? null : prev));
-        void persistActiveFocusSnapshotId(null);
+        setLoadedSaveProfileId(null);
       } catch (err) {
         console.error('Failed to toggle Focus item:', err);
       }
     },
-    [focusedItems, getFocusItemKey, getItemSourceMode, persistActiveFocusSnapshotId, saveFocusedItems],
+    [focusedItems, getFocusItemKey, getItemSourceMode, saveFocusedItems],
   );
 
   const isJlptMode = isJlptQuizMode(quizMode);
@@ -2750,49 +2745,63 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     loadLeaderboard();
   }, [limitLeaderboardPerMode]);
 
+  const normalizeSaveProfiles = useCallback(
+    (rawProfiles: any) =>
+      normalizeSaveProfilesPayload(rawProfiles, {
+        isFocusModeKey,
+        limitLeaderboardPerMode,
+        normalizeStoredFocusItem,
+      }),
+    [limitLeaderboardPerMode],
+  );
+
+  const persistSaveProfiles = useCallback(async (next: any[]) => {
+    setSaveProfiles(next);
+    await AsyncStorage.setItem(QUIZ_SAVE_PROFILES_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
   useEffect(() => {
-    const loadSnapshots = async () => {
+    const loadSaveProfiles = async () => {
       try {
-        const [leaderboardRaw, focusRaw, activeFocusSnapshotRaw] = await Promise.all([
+        const [profilesRaw, legacyLeaderboardRaw, legacyFocusRaw] = await Promise.all([
+          AsyncStorage.getItem(QUIZ_SAVE_PROFILES_STORAGE_KEY),
           AsyncStorage.getItem(QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY),
           AsyncStorage.getItem(QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY),
-          AsyncStorage.getItem(QUIZ_ACTIVE_FOCUS_SNAPSHOT_STORAGE_KEY),
         ]);
-        const parsedLeaderboard = leaderboardRaw ? JSON.parse(leaderboardRaw) : [];
-        const parsedFocus = focusRaw ? JSON.parse(focusRaw) : [];
-        setLeaderboardSnapshots(
-          Array.isArray(parsedLeaderboard)
-            ? parsedLeaderboard
-                .filter(item => item && item.id && item.name)
-                .map(item => ({
-                  id: `${item.id}`,
-                  name: `${item.name}`,
-                  createdAt: Number(item.createdAt) || Date.now(),
-                  leaderboard: Array.isArray(item.leaderboard) ? item.leaderboard : [],
-                  sessionLeaderboard: Array.isArray(item.sessionLeaderboard) ? item.sessionLeaderboard : [],
-                }))
-            : [],
+
+        if (profilesRaw) {
+          const parsed = JSON.parse(profilesRaw);
+          const normalized = normalizeSaveProfiles(parsed);
+          setSaveProfiles(normalized);
+          const normalizedSerialized = JSON.stringify(normalized);
+          if (normalizedSerialized !== profilesRaw) {
+            await AsyncStorage.setItem(QUIZ_SAVE_PROFILES_STORAGE_KEY, normalizedSerialized);
+          }
+          return;
+        }
+
+        const migrated = extractSaveProfilesFromImport(
+          {
+            leaderboardSnapshots: legacyLeaderboardRaw ? JSON.parse(legacyLeaderboardRaw) : [],
+            focusSnapshots: legacyFocusRaw ? JSON.parse(legacyFocusRaw) : [],
+          },
+          {
+            isFocusModeKey,
+            limitLeaderboardPerMode,
+            normalizeStoredFocusItem,
+          },
         );
-        setFocusSnapshots(
-          Array.isArray(parsedFocus)
-            ? parsedFocus
-                .filter(item => item && item.id && item.name)
-                .map(item => ({
-                  id: `${item.id}`,
-                  name: `${item.name}`,
-                  createdAt: Number(item.createdAt) || Date.now(),
-                  focusItems: Array.isArray(item.focusItems) ? item.focusItems : [],
-                  focusLeaderboard: Array.isArray(item.focusLeaderboard) ? item.focusLeaderboard : [],
-                }))
-            : [],
-        );
-        setActiveFocusSnapshotId(activeFocusSnapshotRaw ? `${activeFocusSnapshotRaw}` : null);
+
+        setSaveProfiles(migrated);
+        if (migrated.length > 0) {
+          await AsyncStorage.setItem(QUIZ_SAVE_PROFILES_STORAGE_KEY, JSON.stringify(migrated));
+        }
       } catch (err) {
-        console.error('Failed to load save snapshots:', err);
+        console.error('Failed to load save profiles:', err);
       }
     };
-    void loadSnapshots();
-  }, []);
+    void loadSaveProfiles();
+  }, [limitLeaderboardPerMode, normalizeSaveProfiles]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -2888,44 +2897,6 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     }
   }, [limitLeaderboardPerMode]);
 
-  useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-
-    const handleExport = () => {
-      exportLeaderboardData();
-    };
-    const handleImport = () => {
-      void importLeaderboardData();
-    };
-
-    window.addEventListener(QUIZ_LEADERBOARD_EXPORT_EVENT, handleExport as EventListener);
-    window.addEventListener(QUIZ_LEADERBOARD_IMPORT_EVENT, handleImport as EventListener);
-
-    return () => {
-      window.removeEventListener(QUIZ_LEADERBOARD_EXPORT_EVENT, handleExport as EventListener);
-      window.removeEventListener(QUIZ_LEADERBOARD_IMPORT_EVENT, handleImport as EventListener);
-    };
-  }, [exportLeaderboardData, importLeaderboardData]);
-
-  const persistActiveFocusSnapshotLeaderboard = useCallback(
-    async (focusEntries: any[]) => {
-      if (!activeFocusSnapshotId) return;
-      const nextSnapshots = focusSnapshots.map(snapshot =>
-        snapshot.id === activeFocusSnapshotId
-          ? { ...snapshot, focusLeaderboard: limitLeaderboardPerMode(focusEntries.filter(entry => isFocusModeKey(entry?.mode))) }
-          : snapshot,
-      );
-      await persistFocusSnapshots(nextSnapshots);
-    },
-    [activeFocusSnapshotId, focusSnapshots, limitLeaderboardPerMode, persistFocusSnapshots],
-  );
-
-  useEffect(() => {
-    if (!activeFocusSnapshotId) return;
-    const focusEntries = sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode));
-    void persistActiveFocusSnapshotLeaderboard(focusEntries);
-  }, [activeFocusSnapshotId, persistActiveFocusSnapshotLeaderboard, sessionLeaderboard]);
-
   const saveLeaderboardEntry = useCallback(async (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; timerMinutes?: number; scoreType?: string }) => {
     try {
       const isFocusEntry = isFocusModeKey(entry.mode);
@@ -2935,13 +2906,11 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       };
       const todayKey = formatDateKey(new Date());
       const currentSessionEntries = Array.isArray(sessionLeaderboard) ? sessionLeaderboard : [];
-      let nextFocusSessionEntries: any[] = [];
       let nextSessionLeaderboard: any[] = currentSessionEntries;
       if (isFocusEntry) {
         const nonFocusEntries = currentSessionEntries.filter(item => !isFocusModeKey(item.mode));
         const focusEntries = currentSessionEntries.filter(item => isFocusModeKey(item.mode));
         const nextFocusEntries = limitLeaderboardPerMode([...focusEntries, normalizedEntry]).filter(item => isFocusModeKey(item.mode));
-        nextFocusSessionEntries = nextFocusEntries;
         nextSessionLeaderboard = [...nonFocusEntries, ...nextFocusEntries];
       } else {
         const focusEntries = currentSessionEntries.filter(item => isFocusModeKey(item.mode));
@@ -2949,14 +2918,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         const sessionToday = nonFocusEntries.filter(item => formatDateKey(new Date(item.date)) === todayKey);
         const perModeTop10 = limitLeaderboardPerMode([...sessionToday, normalizedEntry]).filter(item => !isFocusModeKey(item.mode));
         const nextSession = perModeTop10.filter(item => formatDateKey(new Date(item.date)) === todayKey);
-        nextFocusSessionEntries = focusEntries;
         nextSessionLeaderboard = [...focusEntries, ...nextSession];
       }
       setSessionLeaderboard(nextSessionLeaderboard);
 
       // Focus mode participates only in Current Session leaderboard (no persisted all-time storage).
       if (isFocusEntry) {
-        await persistActiveFocusSnapshotLeaderboard(nextFocusSessionEntries);
         return null;
       }
 
@@ -2988,323 +2955,32 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       console.error('Failed to save leaderboard entry:', err);
       return null;
     }
-  }, [compareLeaderboardEntriesByTime, leaderboard, limitLeaderboardPerMode, persistActiveFocusSnapshotLeaderboard, sessionLeaderboard]);
+  }, [compareLeaderboardEntriesByTime, leaderboard, limitLeaderboardPerMode, sessionLeaderboard]);
 
-  const persistLeaderboardSnapshots = useCallback(async (next: Array<{ id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }>) => {
-    setLeaderboardSnapshots(next);
-    await AsyncStorage.setItem(QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY, JSON.stringify(next));
-  }, []);
-
-  const persistFocusSnapshots = useCallback(async (next: Array<{ id: string; name: string; createdAt: number; focusItems: any[]; focusLeaderboard?: any[] }>) => {
-    setFocusSnapshots(next);
-    await AsyncStorage.setItem(QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY, JSON.stringify(next));
-  }, []);
-
-  const persistActiveFocusSnapshotId = useCallback(async (snapshotId: string | null) => {
-    setActiveFocusSnapshotId(snapshotId);
-    if (snapshotId) {
-      await AsyncStorage.setItem(QUIZ_ACTIVE_FOCUS_SNAPSHOT_STORAGE_KEY, snapshotId);
-      return;
-    }
-    await AsyncStorage.removeItem(QUIZ_ACTIVE_FOCUS_SNAPSHOT_STORAGE_KEY);
-  }, []);
-
-  const buildFocusSnapshotPayload = useCallback(
-    (overrides?: Partial<{ id: string; name: string; createdAt: number }>) => ({
-      id: overrides?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: overrides?.name ?? focusSnapshotName.trim(),
-      createdAt: overrides?.createdAt ?? Date.now(),
-      focusItems: focusedItems.map(item => ({
-        key: item.key,
-        sourceMode: item.sourceMode,
-        item: item.item,
-      })),
-      focusLeaderboard: limitLeaderboardPerMode(
-        sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)),
-      ),
-    }),
-    [focusSnapshotName, focusedItems, limitLeaderboardPerMode, sessionLeaderboard],
+  const buildCurrentSaveProfile = useCallback(
+    (overrides?: Partial<{ id: string; name: string; createdAt: number }>) =>
+      buildSaveProfilePayload({
+        id: overrides?.id,
+        name: overrides?.name ?? saveProfileName.trim(),
+        createdAt: overrides?.createdAt ?? Date.now(),
+        updatedAt: Date.now(),
+        focusItems: focusedItems.map(item => ({
+          key: item.key,
+          sourceMode: item.sourceMode,
+          item: item.item,
+        })),
+        focusLeaderboard: limitLeaderboardPerMode(
+          sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)),
+        ),
+        leaderboard: limitLeaderboardPerMode(
+          leaderboard.filter(entry => !isFocusModeKey(entry.mode)),
+        ),
+        sessionLeaderboard: limitLeaderboardPerMode(
+          sessionLeaderboard.filter(entry => !isFocusModeKey(entry.mode)),
+        ),
+      }),
+    [focusedItems, leaderboard, limitLeaderboardPerMode, saveProfileName, sessionLeaderboard],
   );
-
-  const exportSaveStatesData = useCallback(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
-      Alert.alert('Unavailable', 'Save state export is only available in the web/extension view.');
-      return;
-    }
-    try {
-      const payload = {
-        version: 1,
-        type: 'tensai-save-states',
-        exportedAt: new Date().toISOString(),
-        leaderboardSnapshots,
-        focusSnapshots,
-        activeFocusSnapshotId,
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      const stamp = formatDateKey(new Date()).replace(/-/g, '');
-      anchor.href = url;
-      anchor.download = `tensai-save-states-${stamp}${SAVE_STATES_FILE_EXTENSION}`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Failed to export save states:', err);
-      Alert.alert('Export failed', 'Could not export save states.');
-    }
-  }, [activeFocusSnapshotId, focusSnapshots, leaderboardSnapshots]);
-
-  const importSaveStatesData = useCallback(async () => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
-      Alert.alert('Unavailable', 'Save state import is only available in the web/extension view.');
-      return;
-    }
-
-    try {
-      const shouldReplace = window.confirm('Importing save states will replace all Save Manager entries. Continue?');
-      if (!shouldReplace) return;
-
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = `application/json,.json,${SAVE_STATES_FILE_EXTENSION}`;
-      input.style.display = 'none';
-
-      input.onchange = async () => {
-        try {
-          const file = input.files?.[0];
-          if (!file) return;
-          const text = await file.text();
-          const parsed = JSON.parse(text);
-
-          const rawLeaderboardSnapshots = Array.isArray(parsed?.leaderboardSnapshots) ? parsed.leaderboardSnapshots : [];
-          const rawFocusSnapshots = Array.isArray(parsed?.focusSnapshots) ? parsed.focusSnapshots : [];
-
-          const normalizedLeaderboardSnapshots = rawLeaderboardSnapshots
-            .filter(item => item && typeof item === 'object')
-            .map(item => ({
-              id: item.id ? `${item.id}` : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              name: item.name ? `${item.name}` : 'Imported leaderboard save',
-              createdAt: Number(item.createdAt) || Date.now(),
-              leaderboard: limitLeaderboardPerMode(Array.isArray(item.leaderboard) ? item.leaderboard : []),
-              sessionLeaderboard: limitLeaderboardPerMode(Array.isArray(item.sessionLeaderboard) ? item.sessionLeaderboard : []),
-            }))
-            .slice(0, 50);
-
-          const normalizedFocusSnapshots = rawFocusSnapshots
-            .filter(item => item && typeof item === 'object')
-            .map(item => ({
-              id: item.id ? `${item.id}` : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              name: item.name ? `${item.name}` : 'Imported focus save',
-              createdAt: Number(item.createdAt) || Date.now(),
-              focusItems: (Array.isArray(item.focusItems) ? item.focusItems : [])
-                .filter(entry => entry && typeof entry === 'object' && entry.item && entry.sourceMode)
-                .map(entry => {
-                  const sourceMode = `${entry.sourceMode}`;
-                  const rawItem = entry.item && typeof entry.item === 'object' ? entry.item : {};
-                  return {
-                    key: entry.key ? `${entry.key}` : `${sourceMode}:${rawItem.id || rawItem.kana || Math.random().toString(36).slice(2, 8)}`,
-                    sourceMode,
-                    item: {
-                      ...normalizeStoredFocusItem(rawItem, sourceMode),
-                    },
-                  };
-                }),
-              focusLeaderboard: limitLeaderboardPerMode(
-                (Array.isArray(item.focusLeaderboard) ? item.focusLeaderboard : [])
-                  .filter(entry => isFocusModeKey(entry?.mode || '')),
-              ),
-            }))
-            .slice(0, 100);
-
-          const requestedActiveFocusSnapshotId = parsed?.activeFocusSnapshotId ? `${parsed.activeFocusSnapshotId}` : null;
-          const normalizedActiveFocusSnapshotId = requestedActiveFocusSnapshotId &&
-            normalizedFocusSnapshots.some(snapshot => snapshot.id === requestedActiveFocusSnapshotId)
-            ? requestedActiveFocusSnapshotId
-            : null;
-
-          await persistLeaderboardSnapshots(normalizedLeaderboardSnapshots);
-          await persistFocusSnapshots(normalizedFocusSnapshots);
-          await persistActiveFocusSnapshotId(normalizedActiveFocusSnapshotId);
-
-          Alert.alert(
-            'Import complete',
-            `Loaded ${normalizedLeaderboardSnapshots.length} leaderboard saves and ${normalizedFocusSnapshots.length} focus saves.`,
-          );
-        } catch (err) {
-          console.error('Failed to import save states:', err);
-          Alert.alert('Import failed', 'The selected file is not a valid save state export.');
-        } finally {
-          if (input.parentNode) {
-            input.parentNode.removeChild(input);
-          }
-        }
-      };
-
-      document.body.appendChild(input);
-      input.click();
-    } catch (err) {
-      console.error('Failed to open save state import picker:', err);
-      Alert.alert('Import failed', 'Could not open file picker.');
-    }
-  }, [limitLeaderboardPerMode, persistActiveFocusSnapshotId, persistFocusSnapshots, persistLeaderboardSnapshots]);
-
-  const exportFocusSaveStatesData = useCallback(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
-      Alert.alert('Unavailable', 'Focus save export is only available in the web/extension view.');
-      return;
-    }
-    try {
-      const payload = {
-        version: 1,
-        type: 'tensai-focus-save-states',
-        exportedAt: new Date().toISOString(),
-        focusSnapshots,
-        activeFocusSnapshotId,
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      const stamp = formatDateKey(new Date()).replace(/-/g, '');
-      anchor.href = url;
-      anchor.download = `tensai-focus-save-states-${stamp}${FOCUS_SAVE_STATES_FILE_EXTENSION}`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Failed to export focus save states:', err);
-      Alert.alert('Export failed', 'Could not export Focus save states.');
-    }
-  }, [activeFocusSnapshotId, focusSnapshots]);
-
-  const importFocusSaveStatesData = useCallback(async () => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
-      Alert.alert('Unavailable', 'Focus save import is only available in the web/extension view.');
-      return;
-    }
-    try {
-      const shouldReplace = window.confirm('Importing Focus save states will replace all Focus saves. Continue?');
-      if (!shouldReplace) return;
-
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = `application/json,.json,${FOCUS_SAVE_STATES_FILE_EXTENSION},${SAVE_STATES_FILE_EXTENSION}`;
-      input.style.display = 'none';
-
-      input.onchange = async () => {
-        try {
-          const file = input.files?.[0];
-          if (!file) return;
-          const text = await file.text();
-          const parsed = JSON.parse(text);
-
-          const rawFocusSnapshots = Array.isArray(parsed?.focusSnapshots)
-            ? parsed.focusSnapshots
-            : Array.isArray(parsed)
-              ? parsed
-              : [];
-
-          const normalizedFocusSnapshots = rawFocusSnapshots
-            .filter(item => item && typeof item === 'object')
-            .map(item => ({
-              id: item.id ? `${item.id}` : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              name: item.name ? `${item.name}` : 'Imported focus save',
-              createdAt: Number(item.createdAt) || Date.now(),
-              focusItems: (Array.isArray(item.focusItems) ? item.focusItems : [])
-                .filter(entry => entry && typeof entry === 'object' && entry.item && entry.sourceMode)
-                .map(entry => {
-                  const sourceMode = `${entry.sourceMode}`;
-                  const rawItem = entry.item && typeof entry.item === 'object' ? entry.item : {};
-                  return {
-                    key: entry.key ? `${entry.key}` : `${sourceMode}:${rawItem.id || rawItem.kana || Math.random().toString(36).slice(2, 8)}`,
-                    sourceMode,
-                    item: {
-                      ...normalizeStoredFocusItem(rawItem, sourceMode),
-                    },
-                  };
-                }),
-              focusLeaderboard: limitLeaderboardPerMode(
-                (Array.isArray(item.focusLeaderboard) ? item.focusLeaderboard : [])
-                  .filter(entry => isFocusModeKey(entry?.mode || '')),
-              ),
-            }))
-            .slice(0, 100);
-
-          const requestedActiveFocusSnapshotId = parsed?.activeFocusSnapshotId ? `${parsed.activeFocusSnapshotId}` : null;
-          const normalizedActiveFocusSnapshotId = requestedActiveFocusSnapshotId &&
-            normalizedFocusSnapshots.some(snapshot => snapshot.id === requestedActiveFocusSnapshotId)
-            ? requestedActiveFocusSnapshotId
-            : null;
-
-          await persistFocusSnapshots(normalizedFocusSnapshots);
-          await persistActiveFocusSnapshotId(normalizedActiveFocusSnapshotId);
-
-          Alert.alert('Import complete', `Loaded ${normalizedFocusSnapshots.length} Focus saves.`);
-        } catch (err) {
-          console.error('Failed to import focus save states:', err);
-          Alert.alert('Import failed', 'The selected file is not a valid Focus save export.');
-        } finally {
-          if (input.parentNode) {
-            input.parentNode.removeChild(input);
-          }
-        }
-      };
-
-      document.body.appendChild(input);
-      input.click();
-    } catch (err) {
-      console.error('Failed to open focus save state import picker:', err);
-      Alert.alert('Import failed', 'Could not open file picker.');
-    }
-  }, [limitLeaderboardPerMode, persistActiveFocusSnapshotId, persistFocusSnapshots]);
-
-  const createLeaderboardSnapshot = useCallback(async () => {
-    const name = leaderboardSnapshotName.trim();
-    if (!name) {
-      Alert.alert('Name required', 'Enter a name for the leaderboard save.');
-      return;
-    }
-    const snapshot = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      createdAt: Date.now(),
-      leaderboard: [...leaderboard],
-      sessionLeaderboard: [...sessionLeaderboard],
-    };
-    const next = [snapshot, ...leaderboardSnapshots].slice(0, 50);
-    try {
-      await persistLeaderboardSnapshots(next);
-      setLeaderboardSnapshotName('');
-    } catch (err) {
-      console.error('Failed to save leaderboard snapshot:', err);
-      Alert.alert('Save failed', 'Could not save leaderboard snapshot.');
-    }
-  }, [leaderboard, leaderboardSnapshotName, leaderboardSnapshots, persistLeaderboardSnapshots, sessionLeaderboard]);
-
-  const loadLeaderboardSnapshot = useCallback(async (snapshot: { id: string; name: string; createdAt: number; leaderboard: any[]; sessionLeaderboard: any[] }) => {
-    try {
-      const normalizedLeaderboard = limitLeaderboardPerMode(Array.isArray(snapshot.leaderboard) ? snapshot.leaderboard : []);
-      const normalizedSession = limitLeaderboardPerMode(Array.isArray(snapshot.sessionLeaderboard) ? snapshot.sessionLeaderboard : []);
-      setLeaderboard(normalizedLeaderboard);
-      setSessionLeaderboard(normalizedSession);
-      await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, JSON.stringify(normalizedLeaderboard));
-      setIsSaveManagerOpen(false);
-    } catch (err) {
-      console.error('Failed to load leaderboard snapshot:', err);
-      Alert.alert('Load failed', 'Could not load leaderboard snapshot.');
-    }
-  }, [limitLeaderboardPerMode]);
-
-  const deleteLeaderboardSnapshot = useCallback(async (snapshotId: string) => {
-    try {
-      await persistLeaderboardSnapshots(leaderboardSnapshots.filter(item => item.id !== snapshotId));
-    } catch (err) {
-      console.error('Failed to delete leaderboard snapshot:', err);
-      Alert.alert('Delete failed', 'Could not delete leaderboard snapshot.');
-    }
-  }, [leaderboardSnapshots, persistLeaderboardSnapshots]);
 
   const confirmAction = useCallback(
     (title: string, message: string) =>
@@ -3326,76 +3002,172 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     [],
   );
 
-  const createFocusSnapshot = useCallback(async () => {
-    const name = focusSnapshotName.trim();
-    if (!name) {
-      Alert.alert('Name required', 'Enter a name for the Focus save.');
+  const exportSaveProfilesData = useCallback(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+      Alert.alert('Unavailable', 'Save profile export is only available in the web/extension view.');
       return;
     }
-    const snapshot = buildFocusSnapshotPayload({ name });
-    const next = [snapshot, ...focusSnapshots].slice(0, 100);
     try {
-      await persistFocusSnapshots(next);
-      await persistActiveFocusSnapshotId(snapshot.id);
-      setFocusSnapshotName('');
+      const payload = buildSaveProfilesExportPayload(saveProfiles);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      const stamp = formatDateKey(new Date()).replace(/-/g, '');
+      anchor.href = url;
+      anchor.download = `tensai-save-profiles-${stamp}${SAVE_PROFILES_FILE_EXTENSION}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to save focus snapshot:', err);
-      Alert.alert('Save failed', 'Could not save Focus snapshot.');
+      console.error('Failed to export save profiles:', err);
+      Alert.alert('Export failed', 'Could not export save profiles.');
     }
-  }, [focusSnapshotName, focusSnapshots, focusedItems, persistActiveFocusSnapshotId, persistFocusSnapshots, sessionLeaderboard]);
+  }, [saveProfiles]);
 
-  const overwriteFocusSnapshot = useCallback(async (snapshotId: string) => {
-    const targetSnapshot = focusSnapshots.find(item => item.id === snapshotId);
-    if (!targetSnapshot) {
-      Alert.alert('Overwrite failed', 'That Focus save no longer exists.');
+  const importSaveProfilesData = useCallback(async () => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+      Alert.alert('Unavailable', 'Save profile import is only available in the web/extension view.');
+      return;
+    }
+
+    try {
+      const shouldReplace = window.confirm('Importing save profiles will replace all saved profiles. Continue?');
+      if (!shouldReplace) return;
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = `application/json,.json,${SAVE_PROFILES_FILE_EXTENSION}`;
+      input.style.display = 'none';
+
+      input.onchange = async () => {
+        try {
+          const file = input.files?.[0];
+          if (!file) return;
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          const importedProfiles = extractSaveProfilesFromImport(parsed, {
+            isFocusModeKey,
+            limitLeaderboardPerMode,
+            normalizeStoredFocusItem,
+          });
+
+          if (importedProfiles.length === 0) {
+            Alert.alert('Import failed', 'The selected file does not contain any save profiles.');
+            return;
+          }
+
+          await persistSaveProfiles(importedProfiles);
+          setLoadedSaveProfileId(null);
+
+          Alert.alert('Import complete', `Loaded ${importedProfiles.length} save profiles.`);
+        } catch (err) {
+          console.error('Failed to import save profiles:', err);
+          Alert.alert('Import failed', 'The selected file is not a valid save profile export.');
+        } finally {
+          if (input.parentNode) {
+            input.parentNode.removeChild(input);
+          }
+        }
+      };
+
+      document.body.appendChild(input);
+      input.click();
+    } catch (err) {
+      console.error('Failed to open save profile import picker:', err);
+      Alert.alert('Import failed', 'Could not open file picker.');
+    }
+  }, [limitLeaderboardPerMode, persistSaveProfiles]);
+
+  const createSaveProfile = useCallback(async () => {
+    const name = saveProfileName.trim();
+    if (!name) {
+      Alert.alert('Name required', 'Enter a name for the save profile.');
+      return;
+    }
+    const profile = buildCurrentSaveProfile({ name });
+    const next = [profile, ...saveProfiles].slice(0, 200);
+    try {
+      await persistSaveProfiles(next);
+      setLoadedSaveProfileId(profile.id);
+      setSaveProfileName('');
+    } catch (err) {
+      console.error('Failed to save profile:', err);
+      Alert.alert('Save failed', 'Could not save the profile.');
+    }
+  }, [buildCurrentSaveProfile, persistSaveProfiles, saveProfileName, saveProfiles]);
+
+  const updateSaveProfile = useCallback(async (profileId: string) => {
+    const targetProfile = saveProfiles.find(item => item.id === profileId);
+    if (!targetProfile) {
+      Alert.alert('Update failed', 'That save profile no longer exists.');
       return;
     }
 
     const confirmed = await confirmAction(
-      'Overwrite Focus Save',
-      `Overwrite "${targetSnapshot.name}" with the currently loaded Focus items and focus leaderboard? This cannot be undone.`,
+      'Update Save Profile',
+      `Overwrite "${targetProfile.name}" with the current Focus entries and leaderboard data?`,
     );
     if (!confirmed) return;
 
-    const nextSnapshots = focusSnapshots.map(snapshot =>
-      snapshot.id === snapshotId
-        ? buildFocusSnapshotPayload({
-            id: snapshot.id,
-            name: snapshot.name,
+    const nextProfiles = saveProfiles.map(profile =>
+      profile.id === profileId
+        ? buildCurrentSaveProfile({
+            id: profile.id,
+            name: profile.name,
+            createdAt: profile.createdAt,
           })
-        : snapshot,
+        : profile,
     );
 
     try {
-      await persistFocusSnapshots(nextSnapshots);
-      await persistActiveFocusSnapshotId(snapshotId);
+      await persistSaveProfiles(nextProfiles);
+      setLoadedSaveProfileId(profileId);
     } catch (err) {
-      console.error('Failed to overwrite focus snapshot:', err);
-      Alert.alert('Overwrite failed', 'Could not overwrite Focus snapshot.');
+      console.error('Failed to update save profile:', err);
+      Alert.alert('Update failed', 'Could not update the save profile.');
     }
-  }, [buildFocusSnapshotPayload, confirmAction, focusSnapshots, persistActiveFocusSnapshotId, persistFocusSnapshots]);
+  }, [buildCurrentSaveProfile, confirmAction, persistSaveProfiles, saveProfiles]);
 
-  const loadFocusSnapshot = useCallback(async (snapshot: { id: string; name: string; createdAt: number; focusItems: any[]; focusLeaderboard?: any[] }) => {
+  const loadSaveProfile = useCallback(async (profile: {
+    id: string;
+    name: string;
+    createdAt: number;
+    updatedAt: number;
+    focusItems: any[];
+    focusLeaderboard: any[];
+    leaderboard: any[];
+    sessionLeaderboard: any[];
+  }) => {
     try {
-      const cleaned = (Array.isArray(snapshot.focusItems) ? snapshot.focusItems : [])
-        .filter(entry => entry && entry.item && entry.sourceMode)
-        .map(entry => ({
-          key: entry.key || `${entry.sourceMode}:${entry.item?.id || entry.item?.kana || Math.random().toString(36).slice(2, 8)}`,
-          sourceMode: entry.sourceMode,
-          item: {
-            ...normalizeStoredFocusItem(entry.item, entry.sourceMode),
-          },
-        }));
+      const cleanedProfile = normalizeSaveProfiles([profile])[0];
+      if (!cleanedProfile) {
+        Alert.alert('Load failed', 'The selected save profile is invalid.');
+        return;
+      }
+
+      const cleaned = cleanedProfile.focusItems;
       await saveFocusedItems(cleaned);
-      const restoredFocusLeaderboard = limitLeaderboardPerMode(
-        (Array.isArray(snapshot.focusLeaderboard) ? snapshot.focusLeaderboard : [])
-          .filter(entry => isFocusModeKey(entry?.mode)),
+
+      const restoredLeaderboard = limitLeaderboardPerMode(
+        cleanedProfile.leaderboard.filter(entry => !isFocusModeKey(entry?.mode || '')),
       );
-      setSessionLeaderboard(prev => [
-        ...prev.filter(entry => !isFocusModeKey(entry.mode)),
+      const restoredSessionLeaderboard = limitLeaderboardPerMode(
+        cleanedProfile.sessionLeaderboard.filter(entry => !isFocusModeKey(entry?.mode || '')),
+      );
+      const restoredFocusLeaderboard = limitLeaderboardPerMode(
+        cleanedProfile.focusLeaderboard.filter(entry => isFocusModeKey(entry?.mode || '')),
+      );
+
+      setLeaderboard(restoredLeaderboard);
+      setSessionLeaderboard([
         ...restoredFocusLeaderboard,
+        ...restoredSessionLeaderboard,
       ]);
-      await persistActiveFocusSnapshotId(snapshot.id);
+      await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, JSON.stringify(restoredLeaderboard));
+      setLoadedSaveProfileId(cleanedProfile.id);
+      setIsLeaderboardEditMode(false);
+
       if (quizMode === 'focus') {
         setQuizItems(
           shuffleQuiz(
@@ -3416,22 +3188,22 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       }
       setIsSaveManagerOpen(false);
     } catch (err) {
-      console.error('Failed to load focus snapshot:', err);
-      Alert.alert('Load failed', 'Could not load Focus snapshot.');
+      console.error('Failed to load save profile:', err);
+      Alert.alert('Load failed', 'Could not load the save profile.');
     }
-  }, [limitLeaderboardPerMode, persistActiveFocusSnapshotId, quizMode, saveFocusedItems]);
+  }, [limitLeaderboardPerMode, normalizeSaveProfiles, quizMode, saveFocusedItems]);
 
-  const deleteFocusSnapshot = useCallback(async (snapshotId: string) => {
+  const deleteSaveProfile = useCallback(async (profileId: string) => {
     try {
-      await persistFocusSnapshots(focusSnapshots.filter(item => item.id !== snapshotId));
-      if (activeFocusSnapshotId === snapshotId) {
-        await persistActiveFocusSnapshotId(null);
+      await persistSaveProfiles(saveProfiles.filter(item => item.id !== profileId));
+      if (loadedSaveProfileId === profileId) {
+        setLoadedSaveProfileId(null);
       }
     } catch (err) {
-      console.error('Failed to delete focus snapshot:', err);
-      Alert.alert('Delete failed', 'Could not delete Focus snapshot.');
+      console.error('Failed to delete save profile:', err);
+      Alert.alert('Delete failed', 'Could not delete the save profile.');
     }
-  }, [activeFocusSnapshotId, focusSnapshots, persistActiveFocusSnapshotId, persistFocusSnapshots]);
+  }, [loadedSaveProfileId, persistSaveProfiles, saveProfiles]);
 
   const getEntryIdentity = useCallback(
     (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number; typemasterQueueMode?: string; scoreType?: string }) =>
@@ -3443,24 +3215,16 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     async (target: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped' }) => {
       const targetKey = getEntryIdentity(target);
       try {
-        let nextFocusSessionEntries: any[] = [];
         const nextLeaderboard = leaderboard.filter(entry => getEntryIdentity(entry) !== targetKey);
         setLeaderboard(nextLeaderboard);
-        setSessionLeaderboard(prev => {
-          const next = prev.filter(entry => getEntryIdentity(entry) !== targetKey);
-          nextFocusSessionEntries = next.filter(entry => isFocusModeKey(entry.mode));
-          return next;
-        });
-        if (isFocusModeKey(target.mode)) {
-          await persistActiveFocusSnapshotLeaderboard(nextFocusSessionEntries);
-        }
+        setSessionLeaderboard(prev => prev.filter(entry => getEntryIdentity(entry) !== targetKey));
 
         await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, JSON.stringify(nextLeaderboard));
       } catch (err) {
         console.error('Failed to delete leaderboard entry:', err);
       }
     },
-    [getEntryIdentity, leaderboard, persistActiveFocusSnapshotLeaderboard],
+    [getEntryIdentity, leaderboard],
   );
 
   const requestDeleteLeaderboardEntry = useCallback(
@@ -4366,11 +4130,11 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     isFocusModeKey(modeKey) && leaderboardScope === 'session'
       ? 'Current Focus Mode Leaderboard'
       : scopeLabel;
-  const focusLeaderboardSaveNotice = activeFocusSnapshotId
-    ? `Focus leaderboard positions are saved with the active Focus save state.`
-    : 'Focus leaderboard positions save with a Focus save state. Save or load a Focus set in Settings > Save Manager to keep them.';
-  const activeFocusSnapshotName = activeFocusSnapshotId
-    ? (focusSnapshots.find(snapshot => snapshot.id === activeFocusSnapshotId)?.name || 'Unnamed Focus save')
+  const focusLeaderboardSaveNotice = loadedSaveProfileId
+    ? 'Focus leaderboard positions are part of the loaded save profile. Use Update Profile after you change the set or improve times.'
+    : 'Focus leaderboard positions can be stored in a save profile from Settings > Save Manager.';
+  const activeFocusSnapshotName = loadedSaveProfileId
+    ? (saveProfiles.find(profile => profile.id === loadedSaveProfileId)?.name || 'Unnamed save profile')
     : null;
   const activeLeaderboardModeLabel = getQuizModeLabel(activeLeaderboardModeKey);
   const activeLeaderboardIndex = leaderboardScope === 'session' ? sessionLeaderboardIndex : leaderboardIndex;
@@ -5877,202 +5641,117 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               <View style={styles.saveManagerToolbar}>
                 <View style={styles.saveManagerSummaryGrid}>
                   <View style={styles.saveManagerSummaryCard}>
-                    <Text style={styles.saveManagerSummaryValue}>{focusSnapshots.length}</Text>
-                    <Text style={styles.saveManagerSummaryLabel}>Focus saves</Text>
-                  </View>
-                  <View style={styles.saveManagerSummaryCard}>
-                    <Text style={styles.saveManagerSummaryValue}>{leaderboardSnapshots.length}</Text>
-                    <Text style={styles.saveManagerSummaryLabel}>Leaderboard saves</Text>
+                    <Text style={styles.saveManagerSummaryValue}>{saveProfiles.length}</Text>
+                    <Text style={styles.saveManagerSummaryLabel}>Save profiles</Text>
                   </View>
                   <View style={styles.saveManagerSummaryCard}>
                     <Text style={styles.saveManagerSummaryValue}>{focusedItems.length}</Text>
                     <Text style={styles.saveManagerSummaryLabel}>Current Focus items</Text>
                   </View>
+                  <View style={styles.saveManagerSummaryCard}>
+                    <Text style={styles.saveManagerSummaryValue}>{leaderboard.length}</Text>
+                    <Text style={styles.saveManagerSummaryLabel}>All-time leaderboard entries</Text>
+                  </View>
                 </View>
                 <View style={styles.saveManagerActionRow}>
                   <View style={styles.saveManagerActionInfo}>
-                    <Text style={styles.saveManagerSectionEyebrow}>Save Manager backup</Text>
-                    <Text style={styles.calendarNoteSource}>{`Export or import the full Save Manager as *${SAVE_STATES_FILE_EXTENSION}`}</Text>
+                    <Text style={styles.saveManagerSectionEyebrow}>Profiles Backup</Text>
+                    <Text style={styles.calendarNoteSource}>{`Export or import every save profile as *${SAVE_PROFILES_FILE_EXTENSION}`}</Text>
                   </View>
                   <View style={styles.saveManagerButtonRow}>
-                    <Pressable style={[styles.stageSecondaryButton, styles.saveManagerTopActionButton]} onPress={exportSaveStatesData}>
-                      <Text style={styles.stageSecondaryLabel}>Export Save States</Text>
+                    <Pressable style={[styles.stageSecondaryButton, styles.saveManagerTopActionButton]} onPress={exportSaveProfilesData}>
+                      <Text style={styles.stageSecondaryLabel}>Export Profiles</Text>
                     </Pressable>
-                    <Pressable style={[styles.stageSecondaryButton, styles.saveManagerTopActionButton]} onPress={() => void importSaveStatesData()}>
-                      <Text style={styles.stageSecondaryLabel}>Import Save States</Text>
+                    <Pressable style={[styles.stageSecondaryButton, styles.saveManagerTopActionButton]} onPress={() => void importSaveProfilesData()}>
+                      <Text style={styles.stageSecondaryLabel}>Import Profiles</Text>
                     </Pressable>
                   </View>
-                </View>
-                <View style={styles.saveManagerTabRow}>
-                  <Pressable
-                    style={[styles.saveManagerTab, saveManagerTab === 'focus' && styles.saveManagerTabActive]}
-                    onPress={() => setSaveManagerTab('focus')}
-                  >
-                    <Text style={[styles.saveManagerTabLabel, saveManagerTab === 'focus' && styles.saveManagerTabLabelActive]}>
-                      Focus Saves
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.saveManagerTab, saveManagerTab === 'leaderboard' && styles.saveManagerTabActive]}
-                    onPress={() => setSaveManagerTab('leaderboard')}
-                  >
-                    <Text style={[styles.saveManagerTabLabel, saveManagerTab === 'leaderboard' && styles.saveManagerTabLabelActive]}>
-                      Leaderboards
-                    </Text>
-                  </Pressable>
                 </View>
               </View>
 
               <View style={styles.saveManagerBody}>
                 <View style={styles.saveManagerComposePane}>
                   <View style={styles.saveManagerGuideCard}>
-                    <Text style={styles.saveManagerSectionEyebrow}>How to use</Text>
-                    <Text style={styles.saveManagerPaneTitle}>
-                      {saveManagerTab === 'leaderboard' ? 'Save leaderboard snapshots in 3 steps' : 'Save Focus sets in 3 steps'}
-                    </Text>
+                    <Text style={styles.saveManagerSectionEyebrow}>Profile model</Text>
+                    <Text style={styles.saveManagerPaneTitle}>Save one profile for the whole practice setup</Text>
                     <View style={styles.saveManagerGuideList}>
-                      <Text style={styles.saveManagerGuideStep}>
-                        {saveManagerTab === 'leaderboard'
-                          ? '1. Name the snapshot you want to keep.'
-                          : '1. Build or update your current Focus item list.'}
-                      </Text>
-                      <Text style={styles.saveManagerGuideStep}>
-                        {saveManagerTab === 'leaderboard'
-                          ? '2. Click the save button to capture the current all-time and session boards.'
-                          : '2. Enter a save name, then click Save Focus Set to capture the set and its leaderboard.'}
-                      </Text>
-                      <Text style={styles.saveManagerGuideStep}>
-                        {saveManagerTab === 'leaderboard'
-                          ? '3. Load a snapshot later to restore both leaderboard views.'
-                          : '3. Load a saved set later to restore both the Focus items and that set\'s leaderboard.'}
-                      </Text>
+                      <Text style={styles.saveManagerGuideStep}>Each profile stores Focus items, Focus-mode leaderboard times, all-time leaderboard entries, and current session leaderboard entries.</Text>
+                      <Text style={styles.saveManagerGuideStep}>Profiles are only changed when you explicitly create, update, import, or delete them.</Text>
+                      <Text style={styles.saveManagerGuideStep}>Loading a profile restores the saved Focus set and leaderboard state into the app.</Text>
                     </View>
                   </View>
 
-                  {saveManagerTab === 'leaderboard' ? (
-                    <View style={styles.saveManagerPaneCard}>
-                      <Text style={styles.saveManagerSectionEyebrow}>Step 1</Text>
-                      <Text style={styles.saveManagerPaneTitle}>Create leaderboard save</Text>
-                      <Text style={styles.saveManagerPaneSubtitle}>Store the current all-time and session leaderboards as a named snapshot.</Text>
-                      <TextInput
-                        style={styles.calendarInput}
-                        placeholder="Save name (e.g. JLPT practice set A)"
-                        placeholderTextColor="#94A3B8"
-                        value={leaderboardSnapshotName}
-                        onChangeText={setLeaderboardSnapshotName}
-                      />
-                      <Pressable style={[styles.stagePrimaryButton, styles.saveManagerPrimaryButton]} onPress={() => void createLeaderboardSnapshot()}>
-                        <Text style={styles.stagePrimaryLabel}>Save Leaderboard Snapshot</Text>
+                  <View style={styles.saveManagerPaneCard}>
+                    <Text style={styles.saveManagerSectionEyebrow}>Current state</Text>
+                    <Text style={styles.saveManagerPaneTitle}>Create or update a save profile</Text>
+                    <Text style={styles.saveManagerPaneSubtitle}>Capture the current Focus mode entries and leaderboard times in one named profile.</Text>
+                    <TextInput
+                      style={styles.calendarInput}
+                      placeholder="Profile name (e.g. Week 2 JLPT rebuild)"
+                      placeholderTextColor="#94A3B8"
+                      value={saveProfileName}
+                      onChangeText={setSaveProfileName}
+                    />
+                    <Text style={styles.saveManagerMetaText}>Current Focus items: {focusedItems.length}</Text>
+                    <Text style={styles.saveManagerMetaText}>
+                      Current Focus leaderboard entries: {sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)).length}
+                    </Text>
+                    <Text style={styles.saveManagerMetaText}>
+                      Current all-time leaderboard entries: {leaderboard.filter(entry => !isFocusModeKey(entry.mode)).length}
+                    </Text>
+                    <Text style={styles.saveManagerMetaText}>
+                      Current session leaderboard entries: {sessionLeaderboard.filter(entry => !isFocusModeKey(entry.mode)).length}
+                    </Text>
+                    <Text style={styles.saveManagerMetaText}>
+                      {activeFocusSnapshotName ? `Loaded profile: ${activeFocusSnapshotName}` : 'No save profile is currently loaded.'}
+                    </Text>
+                    <Pressable style={[styles.stagePrimaryButton, styles.saveManagerPrimaryButton]} onPress={() => void createSaveProfile()}>
+                      <Text style={styles.stagePrimaryLabel}>Create Save Profile</Text>
+                    </Pressable>
+                    {loadedSaveProfileId ? (
+                      <Pressable style={[styles.stageSecondaryButton, styles.saveManagerPrimaryButton]} onPress={() => void updateSaveProfile(loadedSaveProfileId)}>
+                        <Text style={styles.stageSecondaryLabel}>Update Loaded Profile</Text>
                       </Pressable>
-                    </View>
-                  ) : (
-                    <View style={styles.saveManagerPaneCard}>
-                      <Text style={styles.saveManagerSectionEyebrow}>Step 2</Text>
-                      <Text style={styles.saveManagerPaneTitle}>Create focus save</Text>
-                      <Text style={styles.saveManagerPaneSubtitle}>Save the current Focus set and its leaderboard so both can be restored later.</Text>
-                      <View style={styles.saveManagerPaneUtilityRow}>
-                        <Text style={[styles.calendarNoteSource, styles.saveManagerPaneUtilityNote]}>
-                          {`Focus-only import/export uses *${FOCUS_SAVE_STATES_FILE_EXTENSION}`}
-                        </Text>
-                        <View style={styles.saveManagerPaneUtilityButtons}>
-                          <Pressable
-                            style={[styles.stageSecondaryButton, styles.saveManagerPaneUtilityButton]}
-                            onPress={exportFocusSaveStatesData}
-                          >
-                            <Text style={styles.stageSecondaryLabel}>Export Focus Saves</Text>
-                          </Pressable>
-                          <Pressable
-                            style={[styles.stageSecondaryButton, styles.saveManagerPaneUtilityButton]}
-                            onPress={() => void importFocusSaveStatesData()}
-                          >
-                            <Text style={styles.stageSecondaryLabel}>Import Focus Saves</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                      <TextInput
-                        style={styles.calendarInput}
-                        placeholder="Save name (e.g. Week 2 kanji set)"
-                        placeholderTextColor="#94A3B8"
-                        value={focusSnapshotName}
-                        onChangeText={setFocusSnapshotName}
-                      />
-                      <Text style={styles.saveManagerMetaText}>Current Focus items: {focusedItems.length}</Text>
-                      <Text style={styles.saveManagerMetaText}>
-                        Current Focus leaderboard entries: {sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)).length}
-                      </Text>
-                      <Text style={styles.saveManagerMetaText}>
-                        {activeFocusSnapshotName ? `Loaded save: ${activeFocusSnapshotName}` : 'No Focus save is currently loaded.'}
-                      </Text>
-                      <Pressable style={[styles.stagePrimaryButton, styles.saveManagerPrimaryButton]} onPress={() => void createFocusSnapshot()}>
-                        <Text style={styles.stagePrimaryLabel}>Save Focus Set</Text>
-                      </Pressable>
-                    </View>
-                  )}
+                    ) : null}
+                  </View>
                 </View>
 
                 <View style={styles.saveManagerListPane}>
                   <View style={styles.saveManagerListHeader}>
-                    <Text style={styles.saveManagerPaneTitle}>
-                      {saveManagerTab === 'leaderboard' ? 'Saved leaderboards' : 'Saved Focus sets'}
-                    </Text>
-                    <Text style={styles.saveManagerMetaText}>
-                      {saveManagerTab === 'leaderboard'
-                        ? `${leaderboardSnapshots.length} saved`
-                        : `${focusSnapshots.length} saved`}
-                    </Text>
+                    <Text style={styles.saveManagerPaneTitle}>Saved profiles</Text>
+                    <Text style={styles.saveManagerMetaText}>{`${saveProfiles.length} saved`}</Text>
                   </View>
                   <ScrollView style={styles.saveManagerListScroll} contentContainerStyle={styles.saveManagerListContent}>
-                    {saveManagerTab === 'leaderboard' ? (
-                      leaderboardSnapshots.length === 0 ? (
-                        <Text style={styles.calendarNoteEmpty}>No leaderboard saves yet.</Text>
-                      ) : (
-                        leaderboardSnapshots.map(snapshot => (
-                          <View key={snapshot.id} style={styles.saveManagerEntryCard}>
-                            <View style={styles.saveManagerEntryHeader}>
-                              <View style={styles.saveManagerEntryInfo}>
-                                <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
-                                <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.calendarNoteSource}>
-                              All-time: {snapshot.leaderboard.length} entries | Session: {snapshot.sessionLeaderboard.length} entries
-                            </Text>
-                            <View style={styles.saveManagerEntryActions}>
-                              <Pressable style={[styles.saveManagerEntryButton, styles.saveManagerEntryButtonPrimary]} onPress={() => void loadLeaderboardSnapshot(snapshot)}>
-                                <Text style={styles.saveManagerEntryButtonLabel}>Load Snapshot</Text>
-                              </Pressable>
-                              <Pressable style={styles.saveManagerEntryDeleteButton} onPress={() => void deleteLeaderboardSnapshot(snapshot.id)}>
-                                <Text style={styles.saveManagerEntryDeleteButtonLabel}>Delete</Text>
-                              </Pressable>
-                            </View>
-                          </View>
-                        ))
-                      )
-                    ) : focusSnapshots.length === 0 ? (
-                      <Text style={styles.calendarNoteEmpty}>No focus saves yet.</Text>
+                    {saveProfiles.length === 0 ? (
+                      <Text style={styles.calendarNoteEmpty}>No save profiles yet.</Text>
                     ) : (
-                      focusSnapshots.map(snapshot => (
-                        <View key={snapshot.id} style={styles.saveManagerEntryCard}>
+                      saveProfiles.map(profile => (
+                        <View key={profile.id} style={styles.saveManagerEntryCard}>
                           <View style={styles.saveManagerEntryHeader}>
                             <View style={styles.saveManagerEntryInfo}>
-                              <Text style={styles.calendarNoteBadge}>{snapshot.name}</Text>
-                              <Text style={styles.noteListDate}>{formatLeaderboardDateTime(snapshot.createdAt)}</Text>
+                              <Text style={styles.calendarNoteBadge}>{profile.name}</Text>
+                              <Text style={styles.noteListDate}>
+                                Created {formatLeaderboardDateTime(profile.createdAt)} | Updated {formatLeaderboardDateTime(profile.updatedAt)}
+                              </Text>
                             </View>
-                            {activeFocusSnapshotId === snapshot.id ? (
+                            {loadedSaveProfileId === profile.id ? (
                               <Text style={styles.saveManagerActiveTag}>Loaded</Text>
                             ) : null}
                           </View>
                           <Text style={styles.calendarNoteSource}>
-                            Focus items: {snapshot.focusItems.length} | Leaderboard: {Array.isArray(snapshot.focusLeaderboard) ? snapshot.focusLeaderboard.length : 0} entries
+                            Focus items: {profile.focusItems.length} | Focus times: {profile.focusLeaderboard.length}
+                          </Text>
+                          <Text style={styles.calendarNoteSource}>
+                            All-time leaderboard: {profile.leaderboard.length} | Session leaderboard: {profile.sessionLeaderboard.length}
                           </Text>
                           <View style={styles.saveManagerEntryActions}>
-                            <Pressable style={[styles.saveManagerEntryButton, styles.saveManagerEntryButtonPrimary]} onPress={() => void loadFocusSnapshot(snapshot)}>
-                              <Text style={styles.saveManagerEntryButtonLabel}>Load Set + Board</Text>
+                            <Pressable style={[styles.saveManagerEntryButton, styles.saveManagerEntryButtonPrimary]} onPress={() => void loadSaveProfile(profile)}>
+                              <Text style={styles.saveManagerEntryButtonLabel}>Load Profile</Text>
                             </Pressable>
-                            <Pressable style={styles.saveManagerEntryButton} onPress={() => void overwriteFocusSnapshot(snapshot.id)}>
-                              <Text style={styles.saveManagerEntryButtonLabel}>Overwrite</Text>
+                            <Pressable style={styles.saveManagerEntryButton} onPress={() => void updateSaveProfile(profile.id)}>
+                              <Text style={styles.saveManagerEntryButtonLabel}>Update</Text>
                             </Pressable>
-                            <Pressable style={styles.saveManagerEntryDeleteButton} onPress={() => void deleteFocusSnapshot(snapshot.id)}>
+                            <Pressable style={styles.saveManagerEntryDeleteButton} onPress={() => void deleteSaveProfile(profile.id)}>
                               <Text style={styles.saveManagerEntryDeleteButtonLabel}>Delete</Text>
                             </Pressable>
                           </View>
