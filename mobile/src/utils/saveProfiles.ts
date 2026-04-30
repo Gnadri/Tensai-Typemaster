@@ -129,28 +129,7 @@ export const convertLegacySnapshotsToProfiles = (
     }),
   );
 
-  const leaderboardProfiles = asArray(payload?.leaderboardSnapshots).map(snapshot =>
-    buildSaveProfilePayload({
-      id: snapshot?.id ? `${snapshot.id}` : createSaveProfileId(),
-      name: snapshot?.name ? `Leaderboard: ${snapshot.name}` : 'Migrated leaderboard save',
-      createdAt: Number(snapshot?.createdAt) || Date.now(),
-      updatedAt: Number(snapshot?.createdAt) || Date.now(),
-      focusItems: [],
-      focusLeaderboard: [],
-      leaderboard: normalizeLeaderboardEntriesPayload(
-        snapshot?.leaderboard,
-        helpers.limitLeaderboardPerMode,
-        entry => !helpers.isFocusModeKey(entry?.mode || ''),
-      ),
-      sessionLeaderboard: normalizeLeaderboardEntriesPayload(
-        snapshot?.sessionLeaderboard,
-        helpers.limitLeaderboardPerMode,
-        entry => !helpers.isFocusModeKey(entry?.mode || ''),
-      ),
-    }),
-  );
-
-  return [...focusProfiles, ...leaderboardProfiles].slice(0, 200);
+  return focusProfiles.slice(0, 200);
 };
 
 export const extractSaveProfilesFromImport = (
@@ -181,5 +160,16 @@ export const buildSaveProfilesExportPayload = (profiles: any[]) => ({
   version: 2,
   type: SAVE_PROFILES_EXPORT_TYPE,
   exportedAt: new Date().toISOString(),
-  profiles: asArray(profiles),
+  profiles: asArray(profiles).map(profile =>
+    buildSaveProfilePayload({
+      id: profile?.id,
+      name: profile?.name,
+      createdAt: profile?.createdAt,
+      updatedAt: profile?.updatedAt,
+      focusItems: profile?.focusItems,
+      focusLeaderboard: profile?.focusLeaderboard,
+      leaderboard: [],
+      sessionLeaderboard: [],
+    }),
+  ),
 });

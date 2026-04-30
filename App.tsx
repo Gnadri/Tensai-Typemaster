@@ -90,6 +90,61 @@ const QUIZ_SAVE_PROFILES_STORAGE_KEY = 'tensai-note.quiz-save-profiles.v2';
 const QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-leaderboard-snapshots.v1';
 const QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-focus-snapshots.v1';
 const QUIZ_SAVE_MANAGER_OPEN_EVENT = 'tensai:save-manager-open';
+const LEADERBOARD_EXPORT_TYPE = 'tensai-leaderboard';
+const LEADERBOARD_FILE_EXTENSION = '.tensai-leaderboard.json';
+
+const getExtensionLocalStorage = () => {
+  const storage = (globalThis as any)?.chrome?.storage?.local;
+  if (!storage || typeof storage.get !== 'function' || typeof storage.set !== 'function') {
+    return null;
+  }
+  return storage;
+};
+
+const getExtensionStorageItem = (key: string) =>
+  new Promise<string | null>(resolve => {
+    const storage = getExtensionLocalStorage();
+    if (!storage) {
+      resolve(null);
+      return;
+    }
+    try {
+      storage.get([key], (result: any) => {
+        const runtimeError = (globalThis as any)?.chrome?.runtime?.lastError;
+        if (runtimeError) {
+          console.error('Failed to read extension storage:', runtimeError);
+          resolve(null);
+          return;
+        }
+        const value = result?.[key];
+        resolve(typeof value === 'string' ? value : null);
+      });
+    } catch (err) {
+      console.error('Failed to read extension storage:', err);
+      resolve(null);
+    }
+  });
+
+const setExtensionStorageItem = (key: string, value: string) =>
+  new Promise<void>(resolve => {
+    const storage = getExtensionLocalStorage();
+    if (!storage) {
+      resolve();
+      return;
+    }
+    try {
+      storage.set({ [key]: value }, () => {
+        const runtimeError = (globalThis as any)?.chrome?.runtime?.lastError;
+        if (runtimeError) {
+          console.error('Failed to write extension storage:', runtimeError);
+        }
+        resolve();
+      });
+    } catch (err) {
+      console.error('Failed to write extension storage:', err);
+      resolve();
+    }
+  });
 
 const SOURCE_COLORS = {
   study: '#2563eb',
@@ -1837,6 +1892,10 @@ const LEADERBOARD_SCOPE_OPTIONS = [
   { value: 'all_time', label: 'All time' },
   { value: 'session', label: 'Current Session' },
 ];
+const LEADERBOARD_TIMER_FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'dynamic', label: 'Dynamic' },
+];
 const LEADERBOARD_GAME_OPTIONS = [
   { value: 'quiz', label: 'Quiz' },
   { value: 'typemaster', label: 'TypeMaster' },
@@ -1946,15 +2005,19 @@ const normalizeStoredQuizModeKey = (mode: any) => {
 };
 
 const getQuizModeLabel = (mode: string) => {
+  const getSelectedBaseLabel = (selected: any) =>
+    selected?.value === 'jlpt_n5' ? 'JLPT N5' : selected?.label;
+
   // Handle endless mode: "endless:mode" or "endless:mode:jlptReadingMode"
   if (mode.startsWith('endless:')) {
     const withoutEndless = mode.replace('endless:', '');
     const [baseMode, jlptReadingMode] = withoutEndless.split(':');
     const selected = QUIZ_MODES.find(option => option.value === baseMode);
     if (!selected) return `Endless - ${withoutEndless}`;
-    if (!isJlptQuizMode(baseMode)) return `Endless - ${selected.label}`;
+    const selectedBaseLabel = getSelectedBaseLabel(selected);
+    if (!isJlptQuizMode(baseMode)) return `Endless - ${selectedBaseLabel}`;
     const selectedJlptMode = JLPT_READING_MODES.find(option => option.value === jlptReadingMode);
-    return selectedJlptMode ? `Endless - JLPT N5 - ${selectedJlptMode.label}` : `Endless - ${selected.label}`;
+    return selectedJlptMode ? `Endless - ${selectedBaseLabel} - ${selectedJlptMode.label}` : `Endless - ${selectedBaseLabel}`;
   }
 
   // Handle typemaster mode: "typemaster:mode" or "typemaster:mode:jlptReadingMode"
@@ -1965,19 +2028,21 @@ const getQuizModeLabel = (mode: string) => {
     const selected = QUIZ_MODES.find(option => option.value === baseMode);
     const queueLabel = (TYPEMASTER_QUEUE_OPTIONS.find(option => option.value === parsed.queueMode) || TYPEMASTER_QUEUE_OPTIONS[0]).label;
     if (!selected) return `TypeMaster (${queueLabel}) - ${parsed.quizModeKey}`;
-    if (!isJlptQuizMode(baseMode)) return `TypeMaster (${queueLabel}) - ${selected.label}`;
+    const selectedBaseLabel = getSelectedBaseLabel(selected);
+    if (!isJlptQuizMode(baseMode)) return `TypeMaster (${queueLabel}) - ${selectedBaseLabel}`;
     const selectedJlptMode = JLPT_READING_MODES.find(option => option.value === jlptReadingMode);
     return selectedJlptMode
-      ? `TypeMaster (${queueLabel}) - JLPT N5 - ${selectedJlptMode.label}`
-      : `TypeMaster (${queueLabel}) - ${selected.label}`;
+      ? `TypeMaster (${queueLabel}) - ${selectedBaseLabel} - ${selectedJlptMode.label}`
+      : `TypeMaster (${queueLabel}) - ${selectedBaseLabel}`;
   }
 
   const [baseMode, jlptReadingMode] = mode.split(':');
   const selected = QUIZ_MODES.find(option => option.value === baseMode);
   if (!selected) return mode;
-  if (!isJlptQuizMode(baseMode)) return selected.label;
+  const selectedBaseLabel = getSelectedBaseLabel(selected);
+  if (!isJlptQuizMode(baseMode)) return selectedBaseLabel;
   const selectedJlptMode = JLPT_READING_MODES.find(option => option.value === jlptReadingMode);
-  return selectedJlptMode ? `JLPT N5 - ${selectedJlptMode.label}` : selected.label;
+  return selectedJlptMode ? `${selectedBaseLabel} - ${selectedJlptMode.label}` : selectedBaseLabel;
 };
 
 const getNormalizedJlptReadingGroups = (item: any) => {
@@ -2098,8 +2163,11 @@ const getLeaderboardTimeDisplay = (entry: { mode: string; finishReason?: string;
 const getLeaderboardModeDisplayLabel = (entry: { mode: string; typemasterQueueMode?: string }) => {
   const baseLabel = getQuizModeLabel(entry.mode);
   if (!isTypeMasterModeKey(entry.mode)) return baseLabel;
-  const queueLabel = (TYPEMASTER_QUEUE_OPTIONS.find(option => option.value === entry.typemasterQueueMode) || TYPEMASTER_QUEUE_OPTIONS[0]).label;
-  return `${baseLabel} (${queueLabel})`;
+  const parsed = parseTypeMasterModeKey(entry.mode);
+  if (!parsed) return baseLabel;
+  const queueValue = entry.typemasterQueueMode || parsed.queueMode;
+  const queueLabel = (TYPEMASTER_QUEUE_OPTIONS.find(option => option.value === queueValue) || TYPEMASTER_QUEUE_OPTIONS[0]).label;
+  return `TypeMaster (${queueLabel}) - ${getQuizModeLabel(parsed.quizModeKey)}`;
 };
 
 const getLeaderboardRankScore = (entry: { score: number; gamepoints?: number; scoreType?: string }) => {
@@ -2153,6 +2221,9 @@ const createLeaderboardBucketKey = (mode: string, timerMinutes?: number, scoreTy
 const createLeaderboardModeTimerKey = (mode: string, timerMinutes?: number) =>
   `${normalizeStoredQuizModeKey(mode)}|${normalizeLeaderboardTimerMinutes(timerMinutes)}`;
 
+const createLeaderboardEntryIdentity = (entry: any) =>
+  `${normalizeStoredQuizModeKey(entry?.mode)}|${normalizeLeaderboardTimerMinutes(entry?.timerMinutes)}|${normalizeLeaderboardScoreType(entry?.scoreType)}|${entry?.typemasterQueueMode || ''}|${entry?.date || 0}|${entry?.timeMs || 0}|${entry?.score || 0}|${entry?.total || 0}|${entry?.finishReason || 'complete'}`;
+
 function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode?: QuizScoreMode; engModeEnabled?: boolean }) {
   const leaderboardScoresEnabled = scoreMode !== 'off';
   const isStudyScoreMode = scoreMode === 'study_points';
@@ -2173,7 +2244,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const [quizFamily, setQuizFamily] = useState(getQuizModeFamily(defaultQuizMode));
   const [leaderboardScope, setLeaderboardScope] = useState(LEADERBOARD_SCOPE_OPTIONS[0].value);
   const [leaderboardGameType, setLeaderboardGameType] = useState(LEADERBOARD_GAME_OPTIONS[0].value);
-  const [leaderboardTimerFilter, setLeaderboardTimerFilter] = useState<'all' | string>('all');
+  const [leaderboardTimerFilter, setLeaderboardTimerFilter] = useState<'all' | 'dynamic'>('all');
   const [isLeaderboardTimerDropdownOpen, setIsLeaderboardTimerDropdownOpen] = useState(false);
   const [timerMinutes, setTimerMinutes] = useState(1);
   const [customMinutes, setCustomMinutes] = useState('1');
@@ -2635,43 +2706,32 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
 
   const limitLeaderboardPerMode = useCallback(
     (items: Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number }>) => {
-      const byMode = items.reduce<Record<string, Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number }>>>(
-        (acc, item) => {
-          const normalizedEntry = normalizeLeaderboardEntry(item);
-          const bucketKey = createLeaderboardBucketKey(normalizedEntry.mode, normalizedEntry.timerMinutes, normalizedEntry.scoreType);
-          if (!acc[bucketKey]) acc[bucketKey] = [];
-          acc[bucketKey].push(normalizedEntry);
-          return acc;
-        },
-        {},
-      );
-      return Object.values(byMode).flatMap(modeEntries =>
-        {
-          const normalizedEntries = modeEntries.map(entry => ({ ...entry, finishReason: entry.finishReason || 'complete' }));
-          const topTimeEntries = [...normalizedEntries].sort(compareLeaderboardEntriesByTime).slice(0, 10);
-          const topScoreEntries = [...normalizedEntries].sort(compareLeaderboardEntriesByScore).slice(0, 10);
-          const keptEntries = [...topTimeEntries];
-          topScoreEntries.forEach(entry => {
-            const alreadyIncluded = keptEntries.some(candidate =>
-              candidate.date === entry.date &&
-              candidate.timeMs === entry.timeMs &&
-              candidate.score === entry.score &&
-              candidate.total === entry.total &&
-              candidate.mode === entry.mode &&
-              normalizeLeaderboardTimerMinutes(candidate.timerMinutes) === normalizeLeaderboardTimerMinutes(entry.timerMinutes) &&
-              normalizeLeaderboardScoreType(candidate.scoreType) === normalizeLeaderboardScoreType(entry.scoreType) &&
-              (candidate.finishReason || 'complete') === (entry.finishReason || 'complete') &&
-              (candidate.typemasterQueueMode || '') === (entry.typemasterQueueMode || '')
-            );
-            if (!alreadyIncluded) {
-              keptEntries.push(entry);
-            }
-          });
-          return keptEntries;
-        },
-      );
+      const seen = new Set<string>();
+      return items
+        .filter(item => item && typeof item === 'object' && typeof item.mode === 'string')
+        .map(item => normalizeLeaderboardEntry(item))
+        .filter(item => {
+          const key = createLeaderboardEntryIdentity(item);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
     },
-    [compareLeaderboardEntriesByScore, compareLeaderboardEntriesByTime, normalizeLeaderboardEntry],
+    [normalizeLeaderboardEntry],
+  );
+
+  const persistAllTimeLeaderboard = useCallback(
+    async (entries: any[]) => {
+      const normalized = limitLeaderboardPerMode(entries).filter(item => !isFocusModeKey(item.mode));
+      const serialized = JSON.stringify(normalized);
+      setLeaderboard(normalized);
+      await Promise.all([
+        AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, serialized),
+        setExtensionStorageItem(QUIZ_LEADERBOARD_STORAGE_KEY, serialized),
+      ]);
+      return normalized;
+    },
+    [limitLeaderboardPerMode],
   );
 
   const buildLeaderboardIndex = useCallback(
@@ -2728,22 +2788,38 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   useEffect(() => {
     const loadLeaderboard = async () => {
       try {
-        const stored = await AsyncStorage.getItem(QUIZ_LEADERBOARD_STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          const normalized = Array.isArray(parsed) ? limitLeaderboardPerMode(parsed) : [];
-          setLeaderboard(normalized);
-          const normalizedSerialized = JSON.stringify(normalized);
-          if (normalizedSerialized !== stored) {
-            await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, normalizedSerialized);
-          }
+        const [stored, extensionStored, legacySnapshotsRaw] = await Promise.all([
+          AsyncStorage.getItem(QUIZ_LEADERBOARD_STORAGE_KEY),
+          getExtensionStorageItem(QUIZ_LEADERBOARD_STORAGE_KEY),
+          AsyncStorage.getItem(QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY),
+        ]);
+        const parseEntries = (raw: string | null) => {
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : Array.isArray(parsed?.leaderboard) ? parsed.leaderboard : [];
+        };
+        const parseLegacySnapshotEntries = (raw: string | null) => {
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed)
+            ? parsed.flatMap(snapshot => Array.isArray(snapshot?.leaderboard) ? snapshot.leaderboard : [])
+            : [];
+        };
+        const merged = limitLeaderboardPerMode([
+          ...parseEntries(stored),
+          ...parseEntries(extensionStored),
+          ...parseLegacySnapshotEntries(legacySnapshotsRaw),
+        ]).filter(item => !isFocusModeKey(item.mode));
+
+        if (merged.length > 0 || stored || extensionStored) {
+          await persistAllTimeLeaderboard(merged);
         }
       } catch (err) {
         console.error('Failed to load leaderboard:', err);
       }
     };
     loadLeaderboard();
-  }, [limitLeaderboardPerMode]);
+  }, [limitLeaderboardPerMode, persistAllTimeLeaderboard]);
 
   const normalizeSaveProfiles = useCallback(
     (rawProfiles: any) =>
@@ -2819,18 +2895,19 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     }
     try {
       const payload = {
-        version: 1,
+        version: 2,
+        type: LEADERBOARD_EXPORT_TYPE,
         exportedAt: new Date().toISOString(),
         storageKey: QUIZ_LEADERBOARD_STORAGE_KEY,
-        leaderboard,
-        sessionLeaderboard,
+        leaderboard: limitLeaderboardPerMode(leaderboard).filter(entry => !isFocusModeKey(entry.mode)),
+        sessionLeaderboard: limitLeaderboardPerMode(sessionLeaderboard).filter(entry => !isFocusModeKey(entry.mode)),
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       const stamp = formatDateKey(new Date()).replace(/-/g, '');
       anchor.href = url;
-      anchor.download = `tensai-leaderboard-${stamp}.json`;
+      anchor.download = `tensai-leaderboard-${stamp}${LEADERBOARD_FILE_EXTENSION}`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
@@ -2839,7 +2916,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       console.error('Failed to export leaderboard:', err);
       Alert.alert('Export failed', 'Could not export leaderboard data.');
     }
-  }, [leaderboard, sessionLeaderboard]);
+  }, [leaderboard, limitLeaderboardPerMode, sessionLeaderboard]);
 
   const importLeaderboardData = useCallback(async () => {
     if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
@@ -2853,7 +2930,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
 
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = 'application/json,.json';
+      input.accept = `application/json,.json,${LEADERBOARD_FILE_EXTENSION}`;
       input.style.display = 'none';
 
       input.onchange = async () => {
@@ -2862,21 +2939,42 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
           if (!file) return;
           const text = await file.text();
           const parsed = JSON.parse(text);
+          const entryLike = (entry: any) => entry && typeof entry === 'object' && typeof entry.mode === 'string';
+          const profileLike = (entry: any) => entry && typeof entry === 'object' && (Array.isArray(entry.focusItems) || Array.isArray(entry.leaderboard) || Array.isArray(entry.sessionLeaderboard));
+          const extractFromProfiles = (profiles: any[]) => profiles.flatMap(profile => Array.isArray(profile?.leaderboard) ? profile.leaderboard : []);
+          const extractSessionFromProfiles = (profiles: any[]) => profiles.flatMap(profile => Array.isArray(profile?.sessionLeaderboard) ? profile.sessionLeaderboard : []);
           const rawLeaderboard = Array.isArray(parsed)
-            ? parsed
+            ? parsed.some(entryLike)
+              ? parsed
+              : extractFromProfiles(parsed.filter(profileLike))
             : Array.isArray(parsed?.leaderboard)
               ? parsed.leaderboard
-              : [];
+              : Array.isArray(parsed?.profiles)
+                ? extractFromProfiles(parsed.profiles)
+                : Array.isArray(parsed?.leaderboardSnapshots)
+                  ? parsed.leaderboardSnapshots.flatMap((snapshot: any) => Array.isArray(snapshot?.leaderboard) ? snapshot.leaderboard : [])
+                  : [];
           const rawSessionLeaderboard = Array.isArray(parsed?.sessionLeaderboard)
             ? parsed.sessionLeaderboard
-            : [];
+            : Array.isArray(parsed?.profiles)
+              ? extractSessionFromProfiles(parsed.profiles)
+              : Array.isArray(parsed?.leaderboardSnapshots)
+                ? parsed.leaderboardSnapshots.flatMap((snapshot: any) => Array.isArray(snapshot?.sessionLeaderboard) ? snapshot.sessionLeaderboard : [])
+                : [];
 
           const normalizedLeaderboard = limitLeaderboardPerMode(rawLeaderboard);
           const normalizedSession = limitLeaderboardPerMode(rawSessionLeaderboard);
 
-          await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, JSON.stringify(normalizedLeaderboard));
-          setLeaderboard(normalizedLeaderboard);
-          setSessionLeaderboard(normalizedSession);
+          if (normalizedLeaderboard.length === 0 && normalizedSession.length === 0) {
+            Alert.alert('Import failed', 'The selected file does not contain any leaderboard entries.');
+            return;
+          }
+
+          await persistAllTimeLeaderboard(normalizedLeaderboard);
+          setSessionLeaderboard(prev => [
+            ...prev.filter(entry => isFocusModeKey(entry.mode)),
+            ...normalizedSession.filter(entry => !isFocusModeKey(entry.mode)),
+          ]);
           setIsLeaderboardEditMode(false);
           Alert.alert('Import complete', `Loaded ${normalizedLeaderboard.length} leaderboard entries.`);
         } catch (err) {
@@ -2895,7 +2993,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       console.error('Failed to open leaderboard import picker:', err);
       Alert.alert('Import failed', 'Could not open file picker.');
     }
-  }, [limitLeaderboardPerMode]);
+  }, [limitLeaderboardPerMode, persistAllTimeLeaderboard]);
 
   const saveLeaderboardEntry = useCallback(async (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; timerMinutes?: number; scoreType?: string }) => {
     try {
@@ -2916,8 +3014,8 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         const focusEntries = currentSessionEntries.filter(item => isFocusModeKey(item.mode));
         const nonFocusEntries = currentSessionEntries.filter(item => !isFocusModeKey(item.mode));
         const sessionToday = nonFocusEntries.filter(item => formatDateKey(new Date(item.date)) === todayKey);
-        const perModeTop10 = limitLeaderboardPerMode([...sessionToday, normalizedEntry]).filter(item => !isFocusModeKey(item.mode));
-        const nextSession = perModeTop10.filter(item => formatDateKey(new Date(item.date)) === todayKey);
+        const normalizedSessionEntries = limitLeaderboardPerMode([...sessionToday, normalizedEntry]).filter(item => !isFocusModeKey(item.mode));
+        const nextSession = normalizedSessionEntries.filter(item => formatDateKey(new Date(item.date)) === todayKey);
         nextSessionLeaderboard = [...focusEntries, ...nextSession];
       }
       setSessionLeaderboard(nextSessionLeaderboard);
@@ -2937,10 +3035,8 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         .sort(compareLeaderboardEntriesByTime);
       const previousTop = currentModeEntries.length ? currentModeEntries[0] : null;
       const updated = [...currentEntries, normalizedEntry];
-      const perModeTop10 = limitLeaderboardPerMode(updated);
-      await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, JSON.stringify(perModeTop10));
-      setLeaderboard(perModeTop10);
-      const updatedModeEntries = perModeTop10
+      const nextLeaderboard = await persistAllTimeLeaderboard(updated);
+      const updatedModeEntries = nextLeaderboard
         .filter(item => item?.mode === normalizedEntry.mode)
         .filter(item => normalizeLeaderboardTimerMinutes(item?.timerMinutes) === normalizedEntry.timerMinutes)
         .filter(item => normalizeLeaderboardScoreType(item?.scoreType) === normalizedScoreType)
@@ -2955,7 +3051,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       console.error('Failed to save leaderboard entry:', err);
       return null;
     }
-  }, [compareLeaderboardEntriesByTime, leaderboard, limitLeaderboardPerMode, sessionLeaderboard]);
+  }, [compareLeaderboardEntriesByTime, leaderboard, limitLeaderboardPerMode, persistAllTimeLeaderboard, sessionLeaderboard]);
 
   const buildCurrentSaveProfile = useCallback(
     (overrides?: Partial<{ id: string; name: string; createdAt: number }>) =>
@@ -2972,14 +3068,10 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         focusLeaderboard: limitLeaderboardPerMode(
           sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)),
         ),
-        leaderboard: limitLeaderboardPerMode(
-          leaderboard.filter(entry => !isFocusModeKey(entry.mode)),
-        ),
-        sessionLeaderboard: limitLeaderboardPerMode(
-          sessionLeaderboard.filter(entry => !isFocusModeKey(entry.mode)),
-        ),
+        leaderboard: [],
+        sessionLeaderboard: [],
       }),
-    [focusedItems, leaderboard, limitLeaderboardPerMode, saveProfileName, sessionLeaderboard],
+    [focusedItems, limitLeaderboardPerMode, saveProfileName, sessionLeaderboard],
   );
 
   const confirmAction = useCallback(
@@ -3004,7 +3096,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
 
   const exportSaveProfilesData = useCallback(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
-      Alert.alert('Unavailable', 'Save profile export is only available in the web/extension view.');
+      Alert.alert('Unavailable', 'Focus profile export is only available in the web/extension view.');
       return;
     }
     try {
@@ -3014,25 +3106,25 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       const anchor = document.createElement('a');
       const stamp = formatDateKey(new Date()).replace(/-/g, '');
       anchor.href = url;
-      anchor.download = `tensai-save-profiles-${stamp}${SAVE_PROFILES_FILE_EXTENSION}`;
+      anchor.download = `tensai-focus-profiles-${stamp}${SAVE_PROFILES_FILE_EXTENSION}`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error('Failed to export save profiles:', err);
-      Alert.alert('Export failed', 'Could not export save profiles.');
+      console.error('Failed to export focus profiles:', err);
+      Alert.alert('Export failed', 'Could not export Focus profiles.');
     }
   }, [saveProfiles]);
 
   const importSaveProfilesData = useCallback(async () => {
     if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
-      Alert.alert('Unavailable', 'Save profile import is only available in the web/extension view.');
+      Alert.alert('Unavailable', 'Focus profile import is only available in the web/extension view.');
       return;
     }
 
     try {
-      const shouldReplace = window.confirm('Importing save profiles will replace all saved profiles. Continue?');
+      const shouldReplace = window.confirm('Importing Focus profiles will replace all saved Focus profiles. Continue?');
       if (!shouldReplace) return;
 
       const input = document.createElement('input');
@@ -3053,17 +3145,28 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
           });
 
           if (importedProfiles.length === 0) {
-            Alert.alert('Import failed', 'The selected file does not contain any save profiles.');
+            Alert.alert('Import failed', 'The selected file does not contain any Focus profiles.');
             return;
           }
 
-          await persistSaveProfiles(importedProfiles);
+          const focusOnlyProfiles = importedProfiles.map(profile => buildSaveProfilePayload({
+            id: profile.id,
+            name: profile.name,
+            createdAt: profile.createdAt,
+            updatedAt: profile.updatedAt,
+            focusItems: profile.focusItems,
+            focusLeaderboard: profile.focusLeaderboard,
+            leaderboard: [],
+            sessionLeaderboard: [],
+          }));
+
+          await persistSaveProfiles(focusOnlyProfiles);
           setLoadedSaveProfileId(null);
 
-          Alert.alert('Import complete', `Loaded ${importedProfiles.length} save profiles.`);
+          Alert.alert('Import complete', `Loaded ${focusOnlyProfiles.length} focus profiles.`);
         } catch (err) {
-          console.error('Failed to import save profiles:', err);
-          Alert.alert('Import failed', 'The selected file is not a valid save profile export.');
+          console.error('Failed to import focus profiles:', err);
+          Alert.alert('Import failed', 'The selected file is not a valid Focus profile export.');
         } finally {
           if (input.parentNode) {
             input.parentNode.removeChild(input);
@@ -3074,7 +3177,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       document.body.appendChild(input);
       input.click();
     } catch (err) {
-      console.error('Failed to open save profile import picker:', err);
+      console.error('Failed to open focus profile import picker:', err);
       Alert.alert('Import failed', 'Could not open file picker.');
     }
   }, [limitLeaderboardPerMode, persistSaveProfiles]);
@@ -3082,7 +3185,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const createSaveProfile = useCallback(async () => {
     const name = saveProfileName.trim();
     if (!name) {
-      Alert.alert('Name required', 'Enter a name for the save profile.');
+      Alert.alert('Name required', 'Enter a name for the Focus profile.');
       return;
     }
     const profile = buildCurrentSaveProfile({ name });
@@ -3092,21 +3195,21 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       setLoadedSaveProfileId(profile.id);
       setSaveProfileName('');
     } catch (err) {
-      console.error('Failed to save profile:', err);
-      Alert.alert('Save failed', 'Could not save the profile.');
+      console.error('Failed to save Focus profile:', err);
+      Alert.alert('Save failed', 'Could not save the Focus profile.');
     }
   }, [buildCurrentSaveProfile, persistSaveProfiles, saveProfileName, saveProfiles]);
 
   const updateSaveProfile = useCallback(async (profileId: string) => {
     const targetProfile = saveProfiles.find(item => item.id === profileId);
     if (!targetProfile) {
-      Alert.alert('Update failed', 'That save profile no longer exists.');
+      Alert.alert('Update failed', 'That Focus profile no longer exists.');
       return;
     }
 
     const confirmed = await confirmAction(
-      'Update Save Profile',
-      `Overwrite "${targetProfile.name}" with the current Focus entries and leaderboard data?`,
+      'Update Focus Profile',
+      `Overwrite "${targetProfile.name}" with the current Focus entries and Focus leaderboard times?`,
     );
     if (!confirmed) return;
 
@@ -3124,8 +3227,8 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       await persistSaveProfiles(nextProfiles);
       setLoadedSaveProfileId(profileId);
     } catch (err) {
-      console.error('Failed to update save profile:', err);
-      Alert.alert('Update failed', 'Could not update the save profile.');
+      console.error('Failed to update Focus profile:', err);
+      Alert.alert('Update failed', 'Could not update the Focus profile.');
     }
   }, [buildCurrentSaveProfile, confirmAction, persistSaveProfiles, saveProfiles]);
 
@@ -3142,29 +3245,21 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     try {
       const cleanedProfile = normalizeSaveProfiles([profile])[0];
       if (!cleanedProfile) {
-        Alert.alert('Load failed', 'The selected save profile is invalid.');
+        Alert.alert('Load failed', 'The selected Focus profile is invalid.');
         return;
       }
 
       const cleaned = cleanedProfile.focusItems;
       await saveFocusedItems(cleaned);
 
-      const restoredLeaderboard = limitLeaderboardPerMode(
-        cleanedProfile.leaderboard.filter(entry => !isFocusModeKey(entry?.mode || '')),
-      );
-      const restoredSessionLeaderboard = limitLeaderboardPerMode(
-        cleanedProfile.sessionLeaderboard.filter(entry => !isFocusModeKey(entry?.mode || '')),
-      );
       const restoredFocusLeaderboard = limitLeaderboardPerMode(
         cleanedProfile.focusLeaderboard.filter(entry => isFocusModeKey(entry?.mode || '')),
       );
 
-      setLeaderboard(restoredLeaderboard);
-      setSessionLeaderboard([
+      setSessionLeaderboard(prev => [
+        ...prev.filter(entry => !isFocusModeKey(entry.mode)),
         ...restoredFocusLeaderboard,
-        ...restoredSessionLeaderboard,
       ]);
-      await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, JSON.stringify(restoredLeaderboard));
       setLoadedSaveProfileId(cleanedProfile.id);
       setIsLeaderboardEditMode(false);
 
@@ -3188,8 +3283,8 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       }
       setIsSaveManagerOpen(false);
     } catch (err) {
-      console.error('Failed to load save profile:', err);
-      Alert.alert('Load failed', 'Could not load the save profile.');
+      console.error('Failed to load Focus profile:', err);
+      Alert.alert('Load failed', 'Could not load the Focus profile.');
     }
   }, [limitLeaderboardPerMode, normalizeSaveProfiles, quizMode, saveFocusedItems]);
 
@@ -3200,14 +3295,14 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         setLoadedSaveProfileId(null);
       }
     } catch (err) {
-      console.error('Failed to delete save profile:', err);
-      Alert.alert('Delete failed', 'Could not delete the save profile.');
+      console.error('Failed to delete Focus profile:', err);
+      Alert.alert('Delete failed', 'Could not delete the Focus profile.');
     }
   }, [loadedSaveProfileId, persistSaveProfiles, saveProfiles]);
 
   const getEntryIdentity = useCallback(
     (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number; typemasterQueueMode?: string; scoreType?: string }) =>
-      `${entry.mode}|${normalizeLeaderboardTimerMinutes(entry.timerMinutes)}|${normalizeLeaderboardScoreType(entry.scoreType)}|${entry.typemasterQueueMode || ''}|${entry.date}|${entry.timeMs}|${entry.score}|${entry.total}|${entry.finishReason || 'complete'}`,
+      createLeaderboardEntryIdentity(entry),
     [],
   );
 
@@ -3216,15 +3311,13 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       const targetKey = getEntryIdentity(target);
       try {
         const nextLeaderboard = leaderboard.filter(entry => getEntryIdentity(entry) !== targetKey);
-        setLeaderboard(nextLeaderboard);
+        await persistAllTimeLeaderboard(nextLeaderboard);
         setSessionLeaderboard(prev => prev.filter(entry => getEntryIdentity(entry) !== targetKey));
-
-        await AsyncStorage.setItem(QUIZ_LEADERBOARD_STORAGE_KEY, JSON.stringify(nextLeaderboard));
       } catch (err) {
         console.error('Failed to delete leaderboard entry:', err);
       }
     },
-    [getEntryIdentity, leaderboard],
+    [getEntryIdentity, leaderboard, persistAllTimeLeaderboard],
   );
 
   const requestDeleteLeaderboardEntry = useCallback(
@@ -4131,8 +4224,8 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       ? 'Current Focus Mode Leaderboard'
       : scopeLabel;
   const focusLeaderboardSaveNotice = loadedSaveProfileId
-    ? 'Focus leaderboard positions are part of the loaded save profile. Use Update Profile after you change the set or improve times.'
-    : 'Focus leaderboard positions can be stored in a save profile from Settings > Save Manager.';
+    ? 'Focus leaderboard positions are part of the loaded Focus profile. Use Update Loaded Focus Profile after you change the set or improve times.'
+    : 'Focus leaderboard positions can be stored in a Focus profile from Settings > Save Manager.';
   const activeFocusSnapshotName = loadedSaveProfileId
     ? (saveProfiles.find(profile => profile.id === loadedSaveProfileId)?.name || 'Unnamed save profile')
     : null;
@@ -4161,16 +4254,16 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     (
       entries: Array<any>,
       rankKey: 'time' | 'score',
-      timerFilter: 'all' | string,
+      timerFilter: 'all' | 'dynamic',
     ) => {
       const filtered = timerFilter === 'all'
         ? entries
-        : entries.filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === normalizeLeaderboardTimerMinutes(timerFilter));
+        : entries.filter(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes) === normalizeLeaderboardTimerMinutes(timerMinutes));
       return [...filtered]
         .sort(rankKey === 'score' ? compareLeaderboardEntriesByScore : compareLeaderboardEntriesByTime)
         .slice(0, 10);
     },
-    [compareLeaderboardEntriesByScore, compareLeaderboardEntriesByTime],
+    [compareLeaderboardEntriesByScore, compareLeaderboardEntriesByTime, timerMinutes],
   );
   const scopedLeaderboardEntries = leaderboardScope === 'session' ? sessionLeaderboard : leaderboard;
   const activeLeaderboardUsesModeTimer = isTypeMasterModeKey(activeLeaderboardModeKey) || isEndlessModeKey(activeLeaderboardModeKey) || isFocusModeKey(activeLeaderboardModeKey);
@@ -4178,10 +4271,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     () => getLeaderboardSourceEntries(scopedLeaderboardEntries, activeLeaderboardModeKey, activeLeaderboardUsesModeTimer, activeQuizLeaderboardScoreType),
     [activeLeaderboardModeKey, activeLeaderboardUsesModeTimer, activeQuizLeaderboardScoreType, getLeaderboardSourceEntries, scopedLeaderboardEntries],
   );
-  const getLeaderboardTimerOptions = useCallback((entries: Array<{ timerMinutes?: number }>) => {
-    const timers = Array.from(new Set(entries.map(entry => normalizeLeaderboardTimerMinutes(entry.timerMinutes)))).sort((a, b) => a - b);
-    return [{ value: 'all', label: 'All' }, ...timers.map(value => ({ value: `${value}`, label: `${value} min` }))];
-  }, []);
+  const getLeaderboardTimerOptions = useCallback((_entries: Array<{ timerMinutes?: number }>) => LEADERBOARD_TIMER_FILTER_OPTIONS, []);
   const activeLeaderboardTimerOptions = useMemo(() => getLeaderboardTimerOptions(activeLeaderboardSourceEntries), [activeLeaderboardSourceEntries, getLeaderboardTimerOptions]);
   const activeLeaderboard = useMemo(
     () => selectLeaderboardEntries(activeLeaderboardSourceEntries, leaderboardPrimaryRankKey, leaderboardTimerFilter),
@@ -4303,6 +4393,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     () => selectLeaderboardEntries(typemasterCompletedLeaderboardSourceEntries, leaderboardPrimaryRankKey, leaderboardTimerFilter),
     [leaderboardPrimaryRankKey, leaderboardTimerFilter, selectLeaderboardEntries, typemasterCompletedLeaderboardSourceEntries],
   );
+  const getLeaderboardTimerFilterDisplay = (options: Array<{ value: string; label: string }>) =>
+    options.find(option => option.value === leaderboardTimerFilter)?.label || 'All';
+  const activeLeaderboardGameLabel = (LEADERBOARD_GAME_OPTIONS.find(option => option.value === leaderboardGameType) || LEADERBOARD_GAME_OPTIONS[0]).label;
+  const activeLeaderboardTimerDisplay = getLeaderboardTimerFilterDisplay(activeLeaderboardTimerOptions);
+  const completedLeaderboardTimerDisplay = getLeaderboardTimerFilterDisplay(completedLeaderboardTimerOptions);
+  const typemasterCompletedLeaderboardTimerDisplay = getLeaderboardTimerFilterDisplay(typemasterCompletedLeaderboardTimerOptions);
   const currentLeaderboardTimerOptions = quizView === 'leaderboard'
     ? activeLeaderboardTimerOptions
     : quizView === 'typemaster' && typemasterHasFinished
@@ -4311,7 +4407,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         ? completedLeaderboardTimerOptions
         : activeLeaderboardTimerOptions;
   useEffect(() => {
-    if (leaderboardTimerFilter === 'all') return;
+    if (leaderboardTimerFilter === 'all' || leaderboardTimerFilter === 'dynamic') return;
     const exists = currentLeaderboardTimerOptions.some(option => option.value === leaderboardTimerFilter);
     if (!exists) {
       setLeaderboardTimerFilter('all');
@@ -4319,16 +4415,16 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   }, [currentLeaderboardTimerOptions, leaderboardTimerFilter]);
   const activeJlptN4Variant = JLPT_N4_VARIANT_VALUES.includes(quizMode) ? quizMode : JLPT_N4_VARIANT_VALUES[0];
   const shouldShowLeaderboardGamepoints = leaderboardScoresEnabled;
-  const renderLeaderboardTimerFilter = (options: Array<{ value: string; label: string }>) => {
+  const renderLeaderboardTimerFilter = (options: Array<{ value: string; label: string }>, compact = false) => {
     const label = options.find(option => option.value === leaderboardTimerFilter)?.label || 'All';
     return (
     <View
-      style={styles.quizDropdownWrap}
+      style={[styles.quizDropdownWrap, compact && styles.quizLeaderboardTimerDropdown]}
       onTouchStart={event => event.stopPropagation()}
     >
-      <Text style={styles.quizDropdownLabel}>Leaderboard Timer</Text>
+      {compact ? null : <Text style={styles.quizDropdownLabel}>Leaderboard Timer</Text>}
       <Pressable
-        style={styles.quizDropdownTrigger}
+        style={[styles.quizDropdownTrigger, compact && styles.quizLeaderboardToolbarSelect]}
         onPress={() => setIsLeaderboardTimerDropdownOpen(prev => !prev)}
       >
         <Text style={styles.quizDropdownTriggerText}>{label}</Text>
@@ -4343,7 +4439,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                 key={`leaderboard-timer-${option.value}`}
                 style={[styles.quizDropdownMenuItem, selected && styles.quizDropdownMenuItemActive]}
                 onPress={() => {
-                  setLeaderboardTimerFilter(option.value as 'all' | string);
+                  setLeaderboardTimerFilter(option.value as 'all' | 'dynamic');
                   setIsLeaderboardTimerDropdownOpen(false);
                 }}
               >
@@ -4358,6 +4454,66 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     </View>
     );
   };
+  const renderLeaderboardToolbarButton = (
+    key: string,
+    label: string,
+    selected: boolean,
+    onPress: () => void,
+  ) => (
+    <Pressable
+      key={key}
+      style={[styles.quizLeaderboardToolbarButton, selected && styles.quizLeaderboardToolbarButtonActive]}
+      onPress={onPress}
+    >
+      <Text style={[styles.quizLeaderboardToolbarButtonLabel, selected && styles.quizLeaderboardToolbarButtonLabelActive]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+  const renderLeaderboardToolbar = (
+    timerOptions: Array<{ value: string; label: string }>,
+    scopeOptions: Array<{ value: string; label: string }>,
+    showGameType: boolean,
+  ) => (
+    <View
+      style={styles.quizLeaderboardHeaderToolbar}
+      onTouchStart={event => event.stopPropagation()}
+    >
+      {showGameType ? (
+        <View style={styles.quizLeaderboardToolbarGroup}>
+          {LEADERBOARD_GAME_OPTIONS.map(option =>
+            renderLeaderboardToolbarButton(
+              `leaderboard-game-${option.value}`,
+              option.label,
+              option.value === leaderboardGameType,
+              () => setLeaderboardGameType(option.value),
+            ),
+          )}
+        </View>
+      ) : null}
+      <View style={styles.quizLeaderboardToolbarGroup}>
+        {renderLeaderboardTimerFilter(timerOptions, true)}
+      </View>
+      <View style={styles.quizLeaderboardToolbarGroup}>
+        {scopeOptions.map(option =>
+          renderLeaderboardToolbarButton(
+            `leaderboard-scope-${option.value}`,
+            option.label,
+            option.value === leaderboardScope,
+            () => setLeaderboardScope(option.value),
+          ),
+        )}
+      </View>
+      <Pressable
+        style={[styles.quizLeaderboardToolbarButton, styles.quizLeaderboardToolbarEditButton, isLeaderboardEditMode && styles.quizLeaderboardToolbarButtonActive]}
+        onPress={() => setIsLeaderboardEditMode(prev => !prev)}
+      >
+        <Text style={[styles.quizLeaderboardToolbarButtonLabel, isLeaderboardEditMode && styles.quizLeaderboardToolbarButtonLabelActive]}>
+          {isLeaderboardEditMode ? 'Done' : 'Edit'}
+        </Text>
+      </Pressable>
+    </View>
+  );
   const renderLeaderboardEntries = (entries: any[]) => (
     <View style={styles.quizLeaderboardList}>
       {entries.map((entry, index) => (
@@ -4903,9 +5059,9 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                   <View style={styles.quizFinishLeaderboardPanelWide}>
                     <View style={styles.quizLeaderboard}>
                       <View style={styles.quizLeaderboardHeaderRow}>
-                        <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Leaderboard ({(typemasterCompletedLeaderboardTimerOptions.find(option => option.value === leaderboardTimerFilter)?.label || 'All')}, {typemasterCompletedScopeLabel})</Text>
+                        <Text style={styles.quizLeaderboardTitle}>{typemasterCompletedModeLabel} Leaderboard ({typemasterCompletedLeaderboardTimerDisplay}, {typemasterCompletedScopeLabel})</Text>
                         <View style={styles.quizLeaderboardScopeTabs}>
-                          {renderLeaderboardTimerFilter(typemasterCompletedLeaderboardTimerOptions)}
+                          {renderLeaderboardTimerFilter(typemasterCompletedLeaderboardTimerOptions, true)}
                           <Pressable
                             style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
                             onPress={() => setIsLeaderboardEditMode(prev => !prev)}
@@ -5352,58 +5508,20 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
           </View>
         ) : quizView === 'leaderboard' ? (
           <View style={styles.quizFinishCard}>
-            <View style={styles.quizFinishHeader}>
-              <View>
-                <Text style={styles.quizFinishTitle}>Leaderboard</Text>
+            <View style={[styles.quizFinishHeader, styles.quizLeaderboardTopHeader]}>
+              <View style={styles.quizLeaderboardHeaderText}>
+                <Text style={styles.quizFinishTitle}>{activeLeaderboardModeLabel} Leaderboard</Text>
                 <Text style={styles.quizFinishSubtitle}>
-                  {leaderboardScoresEnabled ? 'Browse best times and scores by gamemode.' : 'Browse best times by gamemode.'}
+                  {activeLeaderboardGameLabel} / {activeLeaderboardTimerDisplay} / {activeScopeLabel}
                 </Text>
               </View>
+              {renderLeaderboardToolbar(activeLeaderboardTimerOptions, activeLeaderboardScopeOptions, true)}
             </View>
 
             <View style={styles.quizFinishLeaderboardPanel}>
               <View style={styles.quizLeaderboard}>
                 <View style={styles.quizLeaderboardHeaderRow}>
-                  <Text style={styles.quizLeaderboardTitle}>{activeLeaderboardModeLabel} Leaderboard ({(activeLeaderboardTimerOptions.find(option => option.value === leaderboardTimerFilter)?.label || 'All')}, {activeScopeLabel})</Text>
-                  <View style={styles.quizLeaderboardScopeTabs}>
-                    {LEADERBOARD_GAME_OPTIONS.map(option => {
-                      const selected = option.value === leaderboardGameType;
-                      return (
-                        <Pressable
-                          key={`leaderboard-game-${option.value}`}
-                          style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-                          onPress={() => setLeaderboardGameType(option.value)}
-                        >
-                          <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                            {option.label}
-                          </Text>
-                        </Pressable>
-                        );
-                      })}
-                    {renderLeaderboardTimerFilter(activeLeaderboardTimerOptions)}
-                    <Pressable
-                      style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
-                      onPress={() => setIsLeaderboardEditMode(prev => !prev)}
-                    >
-                      <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
-                        {isLeaderboardEditMode ? 'Done' : 'Edit'}
-                      </Text>
-                    </Pressable>
-                    {activeLeaderboardScopeOptions.map(option => {
-                      const selected = option.value === leaderboardScope;
-                      return (
-                        <Pressable
-                          key={`leaderboard-scope-${option.value}`}
-                          style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
-                          onPress={() => setLeaderboardScope(option.value)}
-                        >
-                          <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
-                            {option.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                  <Text style={styles.quizLeaderboardTitle}>Entries ({activeLeaderboardTimerDisplay}, {activeScopeLabel})</Text>
                 </View>
                 {isFocusModeKey(activeLeaderboardModeKey) && leaderboardScope === 'session' ? (
                   <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
@@ -5475,9 +5593,9 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               <View style={styles.quizFinishLeaderboardPanelWide}>
                 <View style={styles.quizLeaderboard}>
                   <View style={styles.quizLeaderboardHeaderRow}>
-                    <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Leaderboard ({(completedLeaderboardTimerOptions.find(option => option.value === leaderboardTimerFilter)?.label || 'All')}, {completedScopeLabel})</Text>
+                    <Text style={styles.quizLeaderboardTitle}>{completedModeLabel} Leaderboard ({completedLeaderboardTimerDisplay}, {completedScopeLabel})</Text>
                     <View style={styles.quizLeaderboardScopeTabs}>
-                      {renderLeaderboardTimerFilter(completedLeaderboardTimerOptions)}
+                      {renderLeaderboardTimerFilter(completedLeaderboardTimerOptions, true)}
                       <Pressable
                         style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
                         onPress={() => setIsLeaderboardEditMode(prev => !prev)}
@@ -5642,7 +5760,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                 <View style={styles.saveManagerSummaryGrid}>
                   <View style={styles.saveManagerSummaryCard}>
                     <Text style={styles.saveManagerSummaryValue}>{saveProfiles.length}</Text>
-                    <Text style={styles.saveManagerSummaryLabel}>Save profiles</Text>
+                    <Text style={styles.saveManagerSummaryLabel}>Focus profiles</Text>
                   </View>
                   <View style={styles.saveManagerSummaryCard}>
                     <Text style={styles.saveManagerSummaryValue}>{focusedItems.length}</Text>
@@ -5655,15 +5773,29 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                 </View>
                 <View style={styles.saveManagerActionRow}>
                   <View style={styles.saveManagerActionInfo}>
-                    <Text style={styles.saveManagerSectionEyebrow}>Profiles Backup</Text>
-                    <Text style={styles.calendarNoteSource}>{`Export or import every save profile as *${SAVE_PROFILES_FILE_EXTENSION}`}</Text>
+                    <Text style={styles.saveManagerSectionEyebrow}>Focus Backup</Text>
+                    <Text style={styles.calendarNoteSource}>{`Export or import Focus profiles as *${SAVE_PROFILES_FILE_EXTENSION}`}</Text>
                   </View>
                   <View style={styles.saveManagerButtonRow}>
                     <Pressable style={[styles.stageSecondaryButton, styles.saveManagerTopActionButton]} onPress={exportSaveProfilesData}>
-                      <Text style={styles.stageSecondaryLabel}>Export Profiles</Text>
+                      <Text style={styles.stageSecondaryLabel}>Export Focus</Text>
                     </Pressable>
                     <Pressable style={[styles.stageSecondaryButton, styles.saveManagerTopActionButton]} onPress={() => void importSaveProfilesData()}>
-                      <Text style={styles.stageSecondaryLabel}>Import Profiles</Text>
+                      <Text style={styles.stageSecondaryLabel}>Import Focus</Text>
+                    </Pressable>
+                  </View>
+                </View>
+                <View style={styles.saveManagerActionRow}>
+                  <View style={styles.saveManagerActionInfo}>
+                    <Text style={styles.saveManagerSectionEyebrow}>Leaderboard Backup</Text>
+                    <Text style={styles.calendarNoteSource}>{`Export or import all-time leaderboard data as *${LEADERBOARD_FILE_EXTENSION}`}</Text>
+                  </View>
+                  <View style={styles.saveManagerButtonRow}>
+                    <Pressable style={[styles.stageSecondaryButton, styles.saveManagerTopActionButton]} onPress={exportLeaderboardData}>
+                      <Text style={styles.stageSecondaryLabel}>Export Leaderboard</Text>
+                    </Pressable>
+                    <Pressable style={[styles.stageSecondaryButton, styles.saveManagerTopActionButton]} onPress={() => void importLeaderboardData()}>
+                      <Text style={styles.stageSecondaryLabel}>Import Leaderboard</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -5673,18 +5805,18 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                 <View style={styles.saveManagerComposePane}>
                   <View style={styles.saveManagerGuideCard}>
                     <Text style={styles.saveManagerSectionEyebrow}>Profile model</Text>
-                    <Text style={styles.saveManagerPaneTitle}>Save one profile for the whole practice setup</Text>
+                    <Text style={styles.saveManagerPaneTitle}>Save Focus profiles separately</Text>
                     <View style={styles.saveManagerGuideList}>
-                      <Text style={styles.saveManagerGuideStep}>Each profile stores Focus items, Focus-mode leaderboard times, all-time leaderboard entries, and current session leaderboard entries.</Text>
+                      <Text style={styles.saveManagerGuideStep}>Each Focus profile stores Focus items and Focus-mode leaderboard times only.</Text>
                       <Text style={styles.saveManagerGuideStep}>Profiles are only changed when you explicitly create, update, import, or delete them.</Text>
-                      <Text style={styles.saveManagerGuideStep}>Loading a profile restores the saved Focus set and leaderboard state into the app.</Text>
+                      <Text style={styles.saveManagerGuideStep}>Leaderboard backups are exported, imported, and persisted separately.</Text>
                     </View>
                   </View>
 
                   <View style={styles.saveManagerPaneCard}>
                     <Text style={styles.saveManagerSectionEyebrow}>Current state</Text>
-                    <Text style={styles.saveManagerPaneTitle}>Create or update a save profile</Text>
-                    <Text style={styles.saveManagerPaneSubtitle}>Capture the current Focus mode entries and leaderboard times in one named profile.</Text>
+                    <Text style={styles.saveManagerPaneTitle}>Create or update a Focus profile</Text>
+                    <Text style={styles.saveManagerPaneSubtitle}>Capture the current Focus items and Focus-mode times in one named profile.</Text>
                     <TextInput
                       style={styles.calendarInput}
                       placeholder="Profile name (e.g. Week 2 JLPT rebuild)"
@@ -5697,20 +5829,17 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                       Current Focus leaderboard entries: {sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)).length}
                     </Text>
                     <Text style={styles.saveManagerMetaText}>
-                      Current all-time leaderboard entries: {leaderboard.filter(entry => !isFocusModeKey(entry.mode)).length}
+                      Persistent leaderboard entries: {leaderboard.filter(entry => !isFocusModeKey(entry.mode)).length}
                     </Text>
                     <Text style={styles.saveManagerMetaText}>
-                      Current session leaderboard entries: {sessionLeaderboard.filter(entry => !isFocusModeKey(entry.mode)).length}
-                    </Text>
-                    <Text style={styles.saveManagerMetaText}>
-                      {activeFocusSnapshotName ? `Loaded profile: ${activeFocusSnapshotName}` : 'No save profile is currently loaded.'}
+                      {activeFocusSnapshotName ? `Loaded Focus profile: ${activeFocusSnapshotName}` : 'No Focus profile is currently loaded.'}
                     </Text>
                     <Pressable style={[styles.stagePrimaryButton, styles.saveManagerPrimaryButton]} onPress={() => void createSaveProfile()}>
-                      <Text style={styles.stagePrimaryLabel}>Create Save Profile</Text>
+                      <Text style={styles.stagePrimaryLabel}>Create Focus Profile</Text>
                     </Pressable>
                     {loadedSaveProfileId ? (
                       <Pressable style={[styles.stageSecondaryButton, styles.saveManagerPrimaryButton]} onPress={() => void updateSaveProfile(loadedSaveProfileId)}>
-                        <Text style={styles.stageSecondaryLabel}>Update Loaded Profile</Text>
+                        <Text style={styles.stageSecondaryLabel}>Update Loaded Focus Profile</Text>
                       </Pressable>
                     ) : null}
                   </View>
@@ -5718,12 +5847,12 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
 
                 <View style={styles.saveManagerListPane}>
                   <View style={styles.saveManagerListHeader}>
-                    <Text style={styles.saveManagerPaneTitle}>Saved profiles</Text>
+                    <Text style={styles.saveManagerPaneTitle}>Focus profiles</Text>
                     <Text style={styles.saveManagerMetaText}>{`${saveProfiles.length} saved`}</Text>
                   </View>
                   <ScrollView style={styles.saveManagerListScroll} contentContainerStyle={styles.saveManagerListContent}>
                     {saveProfiles.length === 0 ? (
-                      <Text style={styles.calendarNoteEmpty}>No save profiles yet.</Text>
+                      <Text style={styles.calendarNoteEmpty}>No Focus profiles yet.</Text>
                     ) : (
                       saveProfiles.map(profile => (
                         <View key={profile.id} style={styles.saveManagerEntryCard}>
@@ -5741,12 +5870,9 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                           <Text style={styles.calendarNoteSource}>
                             Focus items: {profile.focusItems.length} | Focus times: {profile.focusLeaderboard.length}
                           </Text>
-                          <Text style={styles.calendarNoteSource}>
-                            All-time leaderboard: {profile.leaderboard.length} | Session leaderboard: {profile.sessionLeaderboard.length}
-                          </Text>
                           <View style={styles.saveManagerEntryActions}>
                             <Pressable style={[styles.saveManagerEntryButton, styles.saveManagerEntryButtonPrimary]} onPress={() => void loadSaveProfile(profile)}>
-                              <Text style={styles.saveManagerEntryButtonLabel}>Load Profile</Text>
+                              <Text style={styles.saveManagerEntryButtonLabel}>Load Focus</Text>
                             </Pressable>
                             <Pressable style={styles.saveManagerEntryButton} onPress={() => void updateSaveProfile(profile.id)}>
                               <Text style={styles.saveManagerEntryButtonLabel}>Update</Text>
