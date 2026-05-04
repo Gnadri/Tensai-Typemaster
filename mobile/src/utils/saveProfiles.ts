@@ -40,6 +40,7 @@ export const buildSaveProfilePayload = ({
   createdAt,
   updatedAt,
   focusItems,
+  bottleneckItems,
   focusLeaderboard,
   leaderboard,
   sessionLeaderboard,
@@ -49,6 +50,7 @@ export const buildSaveProfilePayload = ({
   createdAt?: number;
   updatedAt?: number;
   focusItems?: any[];
+  bottleneckItems?: any[];
   focusLeaderboard?: any[];
   leaderboard?: any[];
   sessionLeaderboard?: any[];
@@ -58,6 +60,7 @@ export const buildSaveProfilePayload = ({
   createdAt: Number(createdAt) || Date.now(),
   updatedAt: Number(updatedAt) || Date.now(),
   focusItems: asArray(focusItems),
+  bottleneckItems: asArray(bottleneckItems),
   focusLeaderboard: asArray(focusLeaderboard),
   leaderboard: asArray(leaderboard),
   sessionLeaderboard: asArray(sessionLeaderboard),
@@ -75,6 +78,7 @@ export const normalizeSaveProfilesPayload = (
     .filter(profile => profile && typeof profile === 'object')
     .map(profile => {
       const focusItems = normalizeFocusItemsPayload(profile.focusItems, helpers.normalizeStoredFocusItem);
+      const bottleneckItems = normalizeFocusItemsPayload(profile.bottleneckItems, helpers.normalizeStoredFocusItem);
       const focusLeaderboard = normalizeLeaderboardEntriesPayload(
         profile.focusLeaderboard,
         helpers.limitLeaderboardPerMode,
@@ -97,6 +101,7 @@ export const normalizeSaveProfilesPayload = (
         createdAt: Number(profile.createdAt) || Date.now(),
         updatedAt: Number(profile.updatedAt) || Number(profile.createdAt) || Date.now(),
         focusItems,
+        bottleneckItems,
         focusLeaderboard,
         leaderboard,
         sessionLeaderboard,
@@ -119,6 +124,7 @@ export const convertLegacySnapshotsToProfiles = (
       createdAt: Number(snapshot?.createdAt) || Date.now(),
       updatedAt: Number(snapshot?.createdAt) || Date.now(),
       focusItems: normalizeFocusItemsPayload(snapshot?.focusItems, helpers.normalizeStoredFocusItem),
+      bottleneckItems: normalizeFocusItemsPayload(snapshot?.bottleneckItems, helpers.normalizeStoredFocusItem),
       focusLeaderboard: normalizeLeaderboardEntriesPayload(
         snapshot?.focusLeaderboard,
         helpers.limitLeaderboardPerMode,
@@ -167,6 +173,7 @@ export const buildSaveProfilesExportPayload = (profiles: any[]) => ({
       createdAt: profile?.createdAt,
       updatedAt: profile?.updatedAt,
       focusItems: profile?.focusItems,
+      bottleneckItems: profile?.bottleneckItems,
       focusLeaderboard: profile?.focusLeaderboard,
       leaderboard: [],
       sessionLeaderboard: [],

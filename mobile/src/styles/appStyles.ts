@@ -1115,6 +1115,9 @@ export const styles = StyleSheet.create({
   quizKanaCellFocused: {
     backgroundColor: '#223558',
   },
+  quizKanaCellBottleneck: {
+    backgroundColor: '#eff6ff',
+  },
   quizKanaCellContent: {
     width: '100%',
     alignItems: 'center',
@@ -1126,6 +1129,9 @@ export const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   quizKanaText: { color: '#ffffff', fontWeight: '700', fontSize: 18 },
+  quizKanaTextBottleneck: {
+    color: '#020617',
+  },
   quizKanaTextEnglish: {
     fontSize: 16,
     lineHeight: 20,
