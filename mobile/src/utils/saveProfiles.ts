@@ -2,8 +2,59 @@ export const SAVE_PROFILES_FILE_EXTENSION = '.tensai-save-profiles.json';
 export const SAVE_PROFILES_EXPORT_TYPE = 'tensai-save-profiles';
 
 const asArray = (value: any) => (Array.isArray(value) ? value : []);
+const normalizeProfileNotesPayload = (value: any) => (typeof value === 'string' ? value.slice(0, 50000) : '');
 
 export const createSaveProfileId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+export const createFocusNoteFolderId = () => `folder-${createSaveProfileId()}`;
+
+export const buildFocusNoteFolderPayload = ({
+  id,
+  title,
+  notes,
+  createdAt,
+  updatedAt,
+}: {
+  id?: string;
+  title?: string;
+  notes?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}) => {
+  const now = Date.now();
+  return {
+    id: id ? `${id}` : createFocusNoteFolderId(),
+    title: (title || '').trim().slice(0, 80) || 'General',
+    notes: normalizeProfileNotesPayload(notes),
+    createdAt: Number(createdAt) || now,
+    updatedAt: Number(updatedAt) || Number(createdAt) || now,
+  };
+};
+
+export const normalizeFocusNoteFoldersPayload = (rawFolders: any, legacyNotes?: any) => {
+  const folders = asArray(rawFolders)
+    .filter(folder => folder && typeof folder === 'object')
+    .map(folder =>
+      buildFocusNoteFolderPayload({
+        id: folder.id,
+        title: folder.title || folder.name,
+        notes: folder.notes,
+        createdAt: folder.createdAt,
+        updatedAt: folder.updatedAt,
+      }),
+    )
+    .slice(0, 60);
+
+  if (folders.length > 0) {
+    return folders;
+  }
+
+  return [
+    buildFocusNoteFolderPayload({
+      title: 'General',
+      notes: legacyNotes,
+    }),
+  ];
+};
 
 export const normalizeFocusItemsPayload = (
   rawItems: any,
@@ -44,6 +95,8 @@ export const buildSaveProfilePayload = ({
   focusLeaderboard,
   leaderboard,
   sessionLeaderboard,
+  notes,
+  noteFolders,
 }: {
   id?: string;
   name?: string;
@@ -54,17 +107,26 @@ export const buildSaveProfilePayload = ({
   focusLeaderboard?: any[];
   leaderboard?: any[];
   sessionLeaderboard?: any[];
-}) => ({
-  id: id || createSaveProfileId(),
-  name: (name || '').trim() || 'Untitled save profile',
-  createdAt: Number(createdAt) || Date.now(),
-  updatedAt: Number(updatedAt) || Date.now(),
-  focusItems: asArray(focusItems),
-  bottleneckItems: asArray(bottleneckItems),
-  focusLeaderboard: asArray(focusLeaderboard),
-  leaderboard: asArray(leaderboard),
-  sessionLeaderboard: asArray(sessionLeaderboard),
-});
+  notes?: string;
+  noteFolders?: any[];
+}) => {
+  const normalizedNoteFolders = normalizeFocusNoteFoldersPayload(noteFolders, notes);
+  const legacyNotes = typeof notes === 'string' ? notes : normalizedNoteFolders[0]?.notes;
+
+  return {
+    id: id || createSaveProfileId(),
+    name: (name || '').trim() || 'Untitled save profile',
+    createdAt: Number(createdAt) || Date.now(),
+    updatedAt: Number(updatedAt) || Date.now(),
+    focusItems: asArray(focusItems),
+    bottleneckItems: asArray(bottleneckItems),
+    focusLeaderboard: asArray(focusLeaderboard),
+    leaderboard: asArray(leaderboard),
+    sessionLeaderboard: asArray(sessionLeaderboard),
+    notes: normalizeProfileNotesPayload(legacyNotes),
+    noteFolders: normalizedNoteFolders,
+  };
+};
 
 export const normalizeSaveProfilesPayload = (
   rawProfiles: any,
@@ -105,6 +167,8 @@ export const normalizeSaveProfilesPayload = (
         focusLeaderboard,
         leaderboard,
         sessionLeaderboard,
+        notes: profile.notes,
+        noteFolders: profile.noteFolders,
       });
     })
     .slice(0, 200);
@@ -132,6 +196,8 @@ export const convertLegacySnapshotsToProfiles = (
       ),
       leaderboard: [],
       sessionLeaderboard: [],
+      notes: '',
+      noteFolders: [],
     }),
   );
 
@@ -163,7 +229,7 @@ export const extractSaveProfilesFromImport = (
 };
 
 export const buildSaveProfilesExportPayload = (profiles: any[]) => ({
-  version: 2,
+  version: 3,
   type: SAVE_PROFILES_EXPORT_TYPE,
   exportedAt: new Date().toISOString(),
   profiles: asArray(profiles).map(profile =>
@@ -177,6 +243,8 @@ export const buildSaveProfilesExportPayload = (profiles: any[]) => ({
       focusLeaderboard: profile?.focusLeaderboard,
       leaderboard: [],
       sessionLeaderboard: [],
+      notes: profile?.notes,
+      noteFolders: profile?.noteFolders,
     }),
   ),
 });

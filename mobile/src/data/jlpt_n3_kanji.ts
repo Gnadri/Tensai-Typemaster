@@ -68,7 +68,7 @@ export const JLPT_N3_KANJI_DETAILS: Record<string, { readings: string[]; meaning
   際: { readings: ['sai', 'kiwa'], meanings: ['occasion'] },
   勝: { readings: ['shou', 'ka'], meanings: ['win'] },
   面: { readings: ['men', 'omo', 'omote'], meanings: ['face', 'surface'] },
-  告: { readings: ['koku', 'tsu'], meanings: ['announce'] },
+  告: { readings: ['koku', 'tsugeru'], meanings: ['announce'] },
   反: { readings: ['han'], meanings: ['anti'] },
   判: { readings: ['han'], meanings: ['judge'] },
   認: { readings: ['nin', 'mito'], meanings: ['recognize', 'acknowledge'] },

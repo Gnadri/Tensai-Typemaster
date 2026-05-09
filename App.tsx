@@ -1,86 +1,29 @@
 // @ts-nocheck
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  BackHandler,
+  Animated,
   Linking,
   Modal,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { styles } from './mobile/src/styles/appStyles';
 import { JLPT_N3_KANJI_DETAILS, JLPT_N3_KANJI_SOURCE } from './mobile/src/data/jlpt_n3_kanji';
 import {
+  buildFocusNoteFolderPayload,
   buildSaveProfilePayload,
   buildSaveProfilesExportPayload,
   extractSaveProfilesFromImport,
   normalizeSaveProfilesPayload,
   SAVE_PROFILES_FILE_EXTENSION,
 } from './mobile/src/utils/saveProfiles';
-// Sentence analyzer wiring is temporarily disabled until backend integration is ready.
-// const AsyncStorage: any = require('@react-native-async-storage/async-storage');
-// import { analyzeSentence } from './mobile/src/services/analyzerClient';
-// API clients are disabled while the app runs fully offline.
-// import { PROMPTS } from './mobile/src/data/prompts';
-// import { KANJI_BY_LEVEL } from './mobile/src/data/kanji';
-
-// const TAB_OPTIONS = [
-//   { key: 'study', label: 'Study Tool' },
-//   { key: 'kanji', label: 'Kanji Explorer' },
-//   { key: 'calendar', label: 'Practice Calendar' },
-// ];
-//
-// const LEVEL_OPTIONS = ['N5', 'N4', 'N3', 'N2', 'N1'];
-//
-// const MODE_OPTIONS = [
-//   { value: 'sentence', label: 'Sentence' },
-//   { value: 'story', label: 'Story' },
-// ];
-//
-// const HISTORY_STORAGE_KEY = 'tensai-note.history.v1';
-// const HISTORY_LIMIT = 20;
-
-const CALENDAR_LANG_OPTIONS = [
-  { value: 'japanese', label: 'Japanese' },
-  { value: 'spanish', label: 'Spanish' },
-  { value: 'portuguese', label: 'Portuguese' },
-  { value: 'russian', label: 'Russian' },
-  { value: 'german', label: 'German' },
-  { value: 'italian', label: 'Italian' },
-  { value: 'chinese', label: 'Chinese' },
-];
-
-const CALENDAR_SOURCE_OPTIONS = [
-  { value: 'study', label: 'Study session' },
-  { value: 'friends', label: 'Friends' },
-  { value: 'media', label: 'Media' },
-  { value: 'reading', label: 'Reading' },
-  { value: 'websearch', label: 'Web search' },
-  { value: 'environment', label: 'Environment' },
-];
-
-const SOURCE_LABELS = {
-  study: 'Study session',
-  friends: 'Friends',
-  media: 'Media',
-  reading: 'Reading',
-  websearch: 'Web search',
-  environment: 'Environment',
-  other: 'Other',
-};
-
-const DEFAULT_LANG = CALENDAR_LANG_OPTIONS[0].value;
-const DEFAULT_SOURCE = CALENDAR_SOURCE_OPTIONS[0].value;
-
-const CALENDAR_NOTES_STORAGE_KEY = 'tensai-note.calendar.local';
 const QUIZ_LEADERBOARD_STORAGE_KEY = 'tensai-note.quiz-leaderboard.v1';
 const QUIZ_LEADERBOARD_BACKUP_STORAGE_KEY = 'tensai-note.quiz-leaderboard-backup.v1';
 const QUIZ_LEADERBOARD_SCORES_ENABLED_STORAGE_KEY = 'tensai-note.quiz-leaderboard-scores-enabled.v1';
@@ -94,6 +37,13 @@ const QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-focus-snapshots.v1';
 const QUIZ_SAVE_MANAGER_OPEN_EVENT = 'tensai:save-manager-open';
 const LEADERBOARD_EXPORT_TYPE = 'tensai-leaderboard';
 const LEADERBOARD_FILE_EXTENSION = '.tensai-leaderboard.json';
+const FOCUS_NOTES_PANEL_GAP = 12;
+const FOCUS_NOTES_DEFAULT_WIDTH = 300;
+const FOCUS_NOTES_MIN_WIDTH = 240;
+const FOCUS_NOTES_MAX_WIDTH = 520;
+
+const clampFocusNotesWidth = (width: number) =>
+  Math.max(FOCUS_NOTES_MIN_WIDTH, Math.min(FOCUS_NOTES_MAX_WIDTH, Math.round(width)));
 
 const getExtensionLocalStorage = () => {
   const storage = (globalThis as any)?.chrome?.storage?.local;
@@ -160,19 +110,6 @@ const parseLeaderboardStoragePayload = (raw: string | null) => {
   }
 };
 
-const SOURCE_COLORS = {
-  study: '#2563eb',
-  friends: '#ec4899',
-  media: '#f59e0b',
-  reading: '#a855f7',
-  websearch: '#10b981',
-  environment: '#06b6d4',
-  other: '#94a3b8',
-};
-
-const TAU = Math.PI * 2;
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 type QuizScoreMode = 'off' | 'speedrun_points' | 'study_points';
 
 const QUIZ_TIMER_MIN_MINUTES = 1;
@@ -888,64 +825,6 @@ const JLPT_N3_4_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N3_4_KANJI_SOURCE, JLPT_N3_
 const JLPT_N3_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
   Object.entries(JLPT_N3_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
 );
-const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
-
-const addMonths = (date: Date, amount: number) => {
-  const next = new Date(date);
-  next.setMonth(next.getMonth() + amount, 1);
-  return startOfMonth(next);
-};
-
-const buildCalendarCells = (monthStart: Date) => {
-  const firstDay = startOfMonth(monthStart);
-  const startOffset = firstDay.getDay();
-  const gridStart = new Date(firstDay);
-  gridStart.setDate(firstDay.getDate() - startOffset);
-
-  const cells = [];
-  for (let i = 0; i < 42; i += 1) {
-    const cellDate = new Date(gridStart);
-    cellDate.setDate(gridStart.getDate() + i);
-    cells.push({
-      key: formatDateKey(cellDate),
-      date: cellDate,
-      isCurrentMonth:
-        cellDate.getMonth() === monthStart.getMonth() &&
-        cellDate.getFullYear() === monthStart.getFullYear(),
-    });
-  }
-  return cells;
-};
-
-function useNativeCalendarCells(monthStart: Date) {
-  const [cells, setCells] = useState(() => buildCalendarCells(monthStart));
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadCells = async () => {
-      if (!cancelled) {
-        setCells(buildCalendarCells(monthStart));
-      }
-    };
-
-    loadCells();
-    return () => {
-      cancelled = true;
-    };
-  }, [monthStart.getFullYear(), monthStart.getMonth()]);
-
-  return cells;
-}
-
-// const emptyResult = {
-//   score: 0,
-//   grade: '',
-//   particleBonus: 0,
-//   clauseJoins: 0,
-//   complexity: 0,
-//   hits: [],
-//   penalties: [],
-// };
 
 function formatDateKey(date: any): string {
   if (!(date instanceof Date)) return '';
@@ -953,21 +832,6 @@ function formatDateKey(date: any): string {
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function parseDateKey(dateKey: string) {
-  if (dateKey instanceof Date) return new Date(dateKey);
-  if (typeof dateKey !== 'string') {
-    const fallback = new Date(dateKey);
-    return Number.isNaN(fallback.getTime()) ? new Date() : fallback;
-  }
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
-  if (!match) {
-    const fallback = new Date(dateKey);
-    return Number.isNaN(fallback.getTime()) ? new Date() : fallback;
-  }
-  const [, y, m, d] = match;
-  return new Date(Number(y), Number(m) - 1, Number(d), 12, 0, 0);
 }
 
 const normalizeRomaji = (value: string) =>
@@ -1072,20 +936,45 @@ const formatLeaderboardDateTime = (timestamp: number) => {
   });
 };
 
-const initialCalendarForm = () => ({
-  dateKey: formatDateKey(new Date()),
-  language: DEFAULT_LANG,
-  sourceType: DEFAULT_SOURCE,
-  sourceOrigin: '',
-  additionalDetails: '',
-  text: '',
-});
-
 export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [quizScoreMode, setQuizScoreMode] = useState<QuizScoreMode>('off');
   const [engModeEnabled, setEngModeEnabled] = useState(false);
+  const [isFocusNotesOpen, setIsFocusNotesOpen] = useState(false);
+  const [focusNotesPanelWidth, setFocusNotesPanelWidth] = useState(FOCUS_NOTES_DEFAULT_WIDTH);
+  const focusNotesAnimation = React.useRef(new Animated.Value(0)).current;
+  const focusNotesShellOffset = React.useRef(new Animated.Value(0)).current;
   const leaderboardScoresEnabled = quizScoreMode !== 'off';
+
+  useEffect(() => {
+    Animated.timing(focusNotesAnimation, {
+      toValue: isFocusNotesOpen ? 1 : 0,
+      duration: 240,
+      useNativeDriver: false,
+    }).start();
+  }, [focusNotesAnimation, isFocusNotesOpen]);
+
+  const animateFocusNotesShell = useCallback(
+    (width: number, open: boolean) => {
+      Animated.timing(focusNotesShellOffset, {
+        toValue: open ? -((clampFocusNotesWidth(width) + FOCUS_NOTES_PANEL_GAP) / 2) : 0,
+        duration: 220,
+        useNativeDriver: false,
+      }).start();
+    },
+    [focusNotesShellOffset],
+  );
+
+  useEffect(() => {
+    animateFocusNotesShell(focusNotesPanelWidth, isFocusNotesOpen);
+  }, [animateFocusNotesShell, isFocusNotesOpen]);
+
+  const handleFocusNotesResizeEnd = useCallback(
+    (width: number) => {
+      animateFocusNotesShell(width, true);
+    },
+    [animateFocusNotesShell],
+  );
 
   const dispatchLeaderboardSettingsEvent = useCallback((eventName: string) => {
     setIsSettingsOpen(false);
@@ -1214,7 +1103,7 @@ export default function App() {
 
   return (
     <View style={styles.appShell}>
-      <View style={styles.mainContent}>
+      <Animated.View style={[styles.mainContent, { transform: [{ translateX: focusNotesShellOffset }] }]}>
         <View style={styles.appTitleBar}>
           <View style={styles.appTitleBarRow}>
             <Text style={styles.appTitleText}>Tensai TypeMaster</Text>
@@ -1252,613 +1141,18 @@ export default function App() {
           ) : null}
         </View>
         <View style={styles.quizPageFrame}>
-          <MemoizedKanaQuizView scoreMode={quizScoreMode} engModeEnabled={engModeEnabled} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-/* Analyzer and kanji views are temporarily disabled until backend work resumes. */
-
-
-function CalendarView({
-  notes,
-  loading,
-  refreshing,
-  currentMonth,
-  selectedDateKey,
-  todayKey,
-  onMonthChange,
-  onSelectDate,
-  onJumpToday,
-  onRefresh,
-  onDelete,
-  onAddNote,
-  onEditNote,
-  embedded = false,
-}) {
-  const Container = embedded ? View : ScrollView;
-  const containerProps = embedded
-    ? { style: styles.dashboardSection }
-    : { contentContainerStyle: styles.featureContent };
-  const monthLabel = useMemo(() => {
-    try {
-      return currentMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-    } catch (_err) {
-      return `${currentMonth.getFullYear()}-${currentMonth.getMonth() + 1}`;
-    }
-  }, [currentMonth]);
-
-  const calendarCells = useNativeCalendarCells(currentMonth);
-  const noteKeySet = useMemo(() => new Set(notes.map(note => note.dateKey)), [notes]);
-  const calendarWeeks = useMemo(() => {
-    const weeks: typeof calendarCells[] = [];
-    for (let i = 0; i < calendarCells.length; i += 7) {
-      weeks.push(calendarCells.slice(i, i + 7));
-    }
-    return weeks;
-  }, [calendarCells]);
-  const selectedNotes = useMemo(
-    () => notes.filter(note => note.dateKey === selectedDateKey),
-    [notes, selectedDateKey],
-  );
-
-  return (
-    <Container
-      {...containerProps}
-      refreshControl={
-        embedded ? undefined : <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      <Text style={styles.featureHeadline}>Practice calendar</Text>
-      <View style={styles.calendarLayout}>
-        <View style={styles.calendarSplit}>
-          <View style={[styles.featureCard, styles.calendarWrapper, styles.calendarPane]}>
-            <View style={styles.calendarBoard}>
-              <View style={styles.calendarBoardHeader}>
-                <Pressable
-                  accessibilityLabel="Previous month"
-                  onPress={() => onMonthChange(-1)}
-                  style={styles.calendarHeaderButton}
-                >
-                  <Text style={styles.calendarHeaderButtonLabel}>{'<'}</Text>
-                </Pressable>
-                <Text style={styles.calendarBoardTitle}>{monthLabel}</Text>
-                <Pressable
-                  accessibilityLabel="Next month"
-                  onPress={() => onMonthChange(1)}
-                  style={styles.calendarHeaderButton}
-                >
-                  <Text style={styles.calendarHeaderButtonLabel}>{'>'}</Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.calendarWeekdays}>
-                {WEEKDAYS.map(day => (
-                  <Text key={day} style={styles.calendarWeekdayLabel}>
-                    {day}
-                  </Text>
-                ))}
-              </View>
-
-              <View style={styles.calendarGrid}>
-                {calendarWeeks.map((week, index) => (
-                  <View key={`${week[0]?.key || index}-${index}`} style={styles.calendarWeekRow}>
-                    {week.map(cell => {
-                      const cellKey = formatDateKey(cell.date);
-                      const isSelected = cellKey === selectedDateKey;
-                      const isToday = cellKey === todayKey;
-                      const hasNotes = noteKeySet.has(cellKey);
-                      return (
-                        <Pressable
-                          key={cell.key}
-                          style={[
-                            styles.calendarDay,
-                            !cell.isCurrentMonth && styles.calendarDayMuted,
-                            isSelected && styles.calendarDaySelected,
-                            isToday && styles.calendarDayToday,
-                          ]}
-                          onPress={() => onSelectDate(cell.date)}
-                        >
-                          <Text
-                            style={[
-                              styles.calendarDayLabel,
-                              !cell.isCurrentMonth && styles.calendarDayLabelMuted,
-                              isSelected && styles.calendarDayLabelSelected,
-                            ]}
-                          >
-                            {cell.date.getDate()}
-                          </Text>
-                          {hasNotes ? <View style={styles.calendarDayDot} /> : null}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                ))}
-              </View>
-
-              <View style={styles.calendarSelectedActions}>
-                <Text style={styles.calendarSelectedLabel}>
-                  Selected: {formatDisplayDate(selectedDateKey)}
-                </Text>
-                <Pressable onPress={onJumpToday} style={styles.calendarTodayButton}>
-                  <Text style={styles.calendarTodayLabel}>Today</Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-
-          <View style={[styles.featureCard, styles.calendarNotePane, styles.calendarNotesPane]}>
-            <View style={styles.calendarNotePaneHeader}>
-              <View>
-                <Text style={styles.calendarNotePaneTitle}>{formatDisplayDate(selectedDateKey)}</Text>
-                <Text style={styles.calendarNotePaneCount}>
-                  {selectedNotes.length
-                    ? `${selectedNotes.length} note${selectedNotes.length === 1 ? '' : 's'} saved`
-                    : 'No notes saved yet'}
-                </Text>
-              </View>
-              <Pressable
-                style={styles.calendarAddButton}
-                onPress={() => onAddNote(selectedDateKey)}
-              >
-                <Text style={styles.calendarAddButtonLabel}>Add note</Text>
-              </Pressable>
-            </View>
-
-            <ScrollView style={styles.calendarNoteScrollArea} contentContainerStyle={styles.calendarNoteScrollContent}>
-              {loading ? (
-                <ActivityIndicator style={styles.calendarNoteLoading} />
-              ) : selectedNotes.length === 0 ? (
-                <Text style={styles.calendarNoteEmpty}>No notes for this day. Capture one from the form.</Text>
-              ) : (
-                <NoteList notes={selectedNotes} onEdit={onEditNote} onDelete={onDelete} />
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </View>
-    </Container>
-  );
-}
-
-
-function NoteComposer({
-  form,
-  noteStage,
-  submitting,
-  error,
-  onChangeForm,
-  onAdvanceStage,
-  onBackStage,
-  onSubmit,
-}) {
-  const isTextStage = noteStage === 'text';
-  const canAdvance = Boolean(form.text.trim());
-
-  return (
-    <View style={[styles.featureCard, styles.calendarWrapper]}>
-      {isTextStage ? (
-        <>
-          <Text style={styles.noteStageTitle}>Stage 1 - Write your note</Text>
-          <TextInput
-            style={styles.calendarNoteEditor}
-            multiline
-            placeholder="Describe what you practiced or noticed..."
-            placeholderTextColor="#94A3B8"
-            value={form.text}
-            onChangeText={value => onChangeForm('text', value)}
-            textAlignVertical="top"
+          <MemoizedKanaQuizView
+            scoreMode={quizScoreMode}
+            engModeEnabled={engModeEnabled}
+            isFocusNotesOpen={isFocusNotesOpen}
+            setIsFocusNotesOpen={setIsFocusNotesOpen}
+            focusNotesPanelWidth={focusNotesPanelWidth}
+            setFocusNotesPanelWidth={setFocusNotesPanelWidth}
+            onFocusNotesResizeEnd={handleFocusNotesResizeEnd}
+            focusNotesAnimation={focusNotesAnimation}
           />
-          <View style={styles.stageActionsSingle}>
-            <Pressable
-              style={[styles.stagePrimaryButton, !canAdvance && styles.primaryButtonDisabled]}
-              onPress={onAdvanceStage}
-              disabled={!canAdvance}
-            >
-              <Text style={styles.stagePrimaryLabel}>Next: Source</Text>
-            </Pressable>
-          </View>
-        </>
-      ) : (
-        <>
-          <Text style={styles.noteStageTitle}>Stage 2 - Add source context</Text>
-          <Text style={styles.notePreviewLabel}>Note</Text>
-          <Text style={styles.notePreviewText}>{form.text}</Text>
-
-          <OptionPillGroup
-            label="Language"
-            options={CALENDAR_LANG_OPTIONS}
-            value={form.language}
-            onChange={value => onChangeForm('language', value)}
-          />
-
-          <OptionPillGroup
-            label="Source"
-            options={CALENDAR_SOURCE_OPTIONS}
-            value={form.sourceType}
-            onChange={value => onChangeForm('sourceType', value)}
-          />
-
-          <TextInput
-            style={styles.calendarInput}
-            placeholder="Date (YYYY-MM-DD)"
-            placeholderTextColor="#94A3B8"
-            value={form.dateKey}
-            onChangeText={value => onChangeForm('dateKey', value)}
-          />
-
-          <TextInput
-            style={styles.calendarInput}
-            placeholder="Source origin (sign, friend name, show, etc.)"
-            placeholderTextColor="#94A3B8"
-            value={form.sourceOrigin}
-            onChangeText={value => onChangeForm('sourceOrigin', value)}
-          />
-
-          <TextInput
-            style={styles.calendarInput}
-            placeholder="Additional details"
-            placeholderTextColor="#94A3B8"
-            value={form.additionalDetails}
-            onChangeText={value => onChangeForm('additionalDetails', value)}
-          />
-
-          <View style={styles.stageActions}>
-            <Pressable style={styles.stageSecondaryButton} onPress={onBackStage}>
-              <Text style={styles.stageSecondaryLabel}>Back</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.stagePrimaryButton, submitting && styles.primaryButtonDisabled]}
-              onPress={onSubmit}
-              disabled={submitting}
-            >
-              {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.stagePrimaryLabel}>Save note</Text>}
-            </Pressable>
-          </View>
-        </>
-      )}
-
-      {error ? (
-        <View style={[styles.errorBox, styles.calendarNoteAlert]}>
-          <Text style={styles.errorText}>{error}</Text>
         </View>
-      ) : null}
-    </View>
-  );
-}
-
-function SourceDistributionChart({ slices }: { slices: Array<{ source: string; label: string; color: string; fraction: number; count: number; startAngle: number; endAngle: number }> }) {
-  const size = 160;
-  const radius = size / 2;
-
-  if (!slices.length) {
-    return (
-      <View style={styles.calendarSourceSummaryEmpty}>
-        <Text style={styles.calendarSourceSummaryTitle}>Source breakdown</Text>
-        <Text style={styles.calendarNoteEmpty}>Log a note to see how your sources stack up.</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.calendarSourceSummary}>
-      <Text style={styles.calendarSourceSummaryTitle}>Source breakdown</Text>
-      <Svg width={size} height={size}>
-        {slices.length === 1 ? (
-          <Circle cx={radius} cy={radius} r={radius - 6} fill={slices[0].color} />
-        ) : (
-          slices.map(slice => (
-            <Path
-              key={slice.source}
-              d={describeSlice(radius, radius, radius - 6, slice.startAngle, slice.endAngle)}
-              fill={slice.color}
-            />
-          ))
-        )}
-      </Svg>
-
-      <View style={styles.calendarSourceLegend}>
-        {slices.map(slice => (
-          <View key={slice.source} style={styles.calendarSourceLegendRow}>
-            <View style={[styles.calendarSourceLegendSwatch, { backgroundColor: slice.color }]} />
-            <Text style={styles.calendarSourceLegendLabel}>{slice.label}</Text>
-            <Text style={styles.calendarSourceLegendValue}>
-              {slice.count} | {Math.round(slice.fraction * 100)}%
-            </Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function NotesView({
-  form,
-  onChangeForm,
-  onSubmit,
-  submitting,
-  notes,
-  onDelete,
-  onEdit,
-  error,
-  noteStage,
-  onAdvanceStage,
-  onBackStage,
-  embedded = false,
-}) {
-  const Container = embedded ? View : ScrollView;
-  const containerProps = embedded
-    ? { style: styles.dashboardSection }
-    : { contentContainerStyle: styles.featureContent };
-  const orderedNotes = useMemo(
-    () => [...notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)),
-    [notes],
-  );
-
-  return (
-    <Container {...containerProps}>
-      <Text style={styles.featureHeadline}>Note composer</Text>
-      <NoteComposer
-        form={form}
-        noteStage={noteStage}
-        submitting={submitting}
-        error={error}
-        onChangeForm={onChangeForm}
-        onAdvanceStage={onAdvanceStage}
-        onBackStage={onBackStage}
-        onSubmit={onSubmit}
-      />
-
-      <NoteDateSelector
-        selectedDateKey={form.dateKey}
-        onSelectDate={value => onChangeForm('dateKey', value)}
-      />
-
-      <View style={[styles.featureCard, styles.calendarNotePane]}>
-        <View style={styles.calendarNotePaneHeader}>
-          <View>
-            <Text style={styles.calendarNotePaneTitle}>All notes</Text>
-            <Text style={styles.calendarNotePaneCount}>
-              {orderedNotes.length
-                ? `${orderedNotes.length} saved`
-                : 'No notes saved yet'}
-            </Text>
-          </View>
-        </View>
-
-      <NoteList notes={orderedNotes} onDelete={onDelete} onEdit={onEdit} showDate />
-      </View>
-    </Container>
-  );
-}
-
-function NoteComposerPanel({
-  form,
-  onChangeForm,
-  onSubmit,
-  submitting,
-  error,
-  noteStage,
-  onAdvanceStage,
-  onBackStage,
-}) {
-  return (
-    <View style={styles.dashboardSection}>
-      <Text style={styles.featureHeadline}>Note composer</Text>
-      <NoteComposer
-        form={form}
-        noteStage={noteStage}
-        submitting={submitting}
-        error={error}
-        onChangeForm={onChangeForm}
-        onAdvanceStage={onAdvanceStage}
-        onBackStage={onBackStage}
-        onSubmit={onSubmit}
-      />
-
-      <NoteDateSelector
-        selectedDateKey={form.dateKey}
-        onSelectDate={value => onChangeForm('dateKey', value)}
-      />
-    </View>
-  );
-}
-
-function NoteDateSelector({ selectedDateKey, onSelectDate }) {
-  const initialDate = useMemo(() => {
-    const parsed = parseDateKey(selectedDateKey);
-    if (Number.isNaN(parsed.getTime())) return new Date();
-    return parsed;
-  }, [selectedDateKey]);
-  const [pickerMonth, setPickerMonth] = useState(() => startOfMonth(initialDate));
-  const [isOpen, setIsOpen] = useState(false);
-
-  const monthLabel = useMemo(() => {
-    try {
-      return pickerMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-    } catch {
-      return `${pickerMonth.getFullYear()}-${pickerMonth.getMonth() + 1}`;
-    }
-  }, [pickerMonth]);
-
-  const pickerCells = useNativeCalendarCells(pickerMonth);
-  const pickerWeeks = useMemo(() => {
-    const weeks: typeof pickerCells[] = [];
-    for (let i = 0; i < pickerCells.length; i += 7) {
-      weeks.push(pickerCells.slice(i, i + 7));
-    }
-    return weeks;
-  }, [pickerCells]);
-
-  return (
-    <View style={[styles.featureCard, styles.noteDateCard]}>
-      <Pressable style={styles.noteDateToggle} onPress={() => setIsOpen(prev => !prev)}>
-        <View>
-          <Text style={styles.noteStageTitle}>Note date</Text>
-          <Text style={styles.notePreviewLabel}>{formatDisplayDate(selectedDateKey)}</Text>
-        </View>
-        <Text style={styles.noteDateToggleLabel}>{isOpen ? 'Close' : 'Select'}</Text>
-      </Pressable>
-
-      {isOpen ? (
-        <View style={styles.noteDateCalendar}>
-          <View style={styles.noteDateCalendarHeader}>
-            <Pressable onPress={() => setPickerMonth(prev => addMonths(prev, -1))} style={styles.noteDateCalendarButton}>
-              <Text style={styles.noteDateCalendarButtonLabel}>{'<'}</Text>
-            </Pressable>
-            <Text style={styles.noteDateCalendarTitle}>{monthLabel}</Text>
-            <Pressable onPress={() => setPickerMonth(prev => addMonths(prev, 1))} style={styles.noteDateCalendarButton}>
-              <Text style={styles.noteDateCalendarButtonLabel}>{'>'}</Text>
-            </Pressable>
-          </View>
-          <View style={styles.noteDateWeekdays}>
-            {WEEKDAYS.map(day => (
-              <Text key={day} style={styles.noteDateWeekdayLabel}>
-                {day}
-              </Text>
-            ))}
-          </View>
-          <View style={styles.noteDateGrid}>
-            {pickerWeeks.map((week, index) => (
-              <View key={`${week[0]?.key || index}-${index}`} style={styles.calendarWeekRow}>
-                {week.map(cell => {
-                  const key = formatDateKey(cell.date);
-                  const active = key === selectedDateKey;
-                  return (
-                    <Pressable
-                      key={cell.key}
-                      style={[
-                        styles.noteDateDay,
-                        !cell.isCurrentMonth && styles.noteDateDayMuted,
-                        active && styles.noteDateDayActive,
-                      ]}
-                      onPress={() => {
-                        onSelectDate(key);
-                        setPickerMonth(startOfMonth(cell.date));
-                        setIsOpen(false);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.noteDateDayLabel,
-                          !cell.isCurrentMonth && styles.noteDateDayLabelMuted,
-                          active && styles.noteDateDayLabelActive,
-                        ]}
-                      >
-                        {cell.date.getDate()}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ))}
-          </View>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-function EditNoteModal({ draft, onChange, onCancel, onSave }) {
-  return (
-    <View style={styles.editModalOverlay}>
-      <View style={styles.editModalPanel}>
-        <View style={styles.editModalHeader}>
-          <Text style={styles.editModalTitle}>Edit note</Text>
-          <Pressable onPress={onCancel}>
-            <Text style={styles.editModalClose}>×</Text>
-          </Pressable>
-        </View>
-
-        <TextInput
-          style={styles.calendarNoteEditor}
-          multiline
-          placeholder="Update your note..."
-          placeholderTextColor="#94A3B8"
-          value={draft.text}
-          onChangeText={value => onChange('text', value)}
-          textAlignVertical="top"
-        />
-
-        <OptionPillGroup
-          label="Source"
-          options={CALENDAR_SOURCE_OPTIONS}
-          value={draft.sourceType}
-          onChange={value => onChange('sourceType', value)}
-        />
-
-        <TextInput
-          style={styles.calendarInput}
-          placeholder="Source origin (e.g. Sign, Podcast...)"
-          placeholderTextColor="#94A3B8"
-          value={draft.sourceOrigin}
-          onChangeText={value => onChange('sourceOrigin', value)}
-        />
-
-        <TextInput
-          style={styles.calendarNoteEditor}
-          multiline
-          placeholder="Additional details"
-          placeholderTextColor="#94A3B8"
-          value={draft.additionalDetails}
-          onChangeText={value => onChange('additionalDetails', value)}
-          textAlignVertical="top"
-        />
-
-        <TextInput
-          style={styles.calendarInput}
-          placeholder="Date (YYYY-MM-DD)"
-          placeholderTextColor="#94A3B8"
-          value={draft.dateKey}
-          onChangeText={value => onChange('dateKey', value)}
-        />
-
-        <View style={styles.editModalActions}>
-          <Pressable style={styles.stageSecondaryButton} onPress={onCancel}>
-            <Text style={styles.stageSecondaryLabel}>Cancel</Text>
-          </Pressable>
-          <Pressable style={styles.stagePrimaryButton} onPress={onSave}>
-            <Text style={styles.stagePrimaryLabel}>Save changes</Text>
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function InsightsView({ notes, sourceSlices, onDelete, loading, onEdit }) {
-  const orderedNotes = useMemo(
-    () => [...notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)),
-    [notes],
-  );
-
-  return (
-    <View style={styles.dashboardSection}>
-      <Text style={styles.featureHeadline}>Insights</Text>
-      <View style={[styles.featureCard, styles.calendarWrapper]}>
-        <SourceDistributionChart slices={sourceSlices} />
-      </View>
-
-      <View style={[styles.featureCard, styles.calendarNotePane]}>
-        <View style={styles.calendarNotePaneHeader}>
-          <View>
-            <Text style={styles.calendarNotePaneTitle}>Note browser</Text>
-            <Text style={styles.calendarNotePaneCount}>
-              {orderedNotes.length
-                ? `${orderedNotes.length} saved`
-                : 'No notes saved yet'}
-            </Text>
-          </View>
-        </View>
-
-        {loading ? (
-          <ActivityIndicator style={styles.calendarNoteLoading} />
-        ) : (
-          <NoteList notes={orderedNotes} onEdit={onEdit} onDelete={onDelete} showDate />
-        )}
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -2244,7 +1538,67 @@ const createLeaderboardModeTimerKey = (mode: string, timerMinutes?: number) =>
 const createLeaderboardEntryIdentity = (entry: any) =>
   `${normalizeStoredQuizModeKey(entry?.mode)}|${normalizeLeaderboardTimerMinutes(entry?.timerMinutes)}|${normalizeLeaderboardScoreType(entry?.scoreType)}|${entry?.typemasterQueueMode || ''}|${entry?.date || 0}|${entry?.timeMs || 0}|${entry?.score || 0}|${entry?.total || 0}|${entry?.finishReason || 'complete'}`;
 
-function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode?: QuizScoreMode; engModeEnabled?: boolean }) {
+function PencilNoteIcon({ active = false }: { active?: boolean }) {
+  const pageFill = active ? '#dbeafe' : '#162338';
+  const pageStroke = active ? '#bfdbfe' : '#60a5fa';
+  const pencilStroke = active ? '#0b162b' : '#93c5fd';
+  const accent = active ? '#1e40af' : '#38bdf8';
+
+  return (
+    <Svg width={18} height={18} viewBox="0 0 18 18">
+      <Path
+        d="M4.25 2.75h6.2l3.3 3.3v8.2c0 .55-.45 1-1 1h-8.5c-.55 0-1-.45-1-1V3.75c0-.55.45-1 1-1Z"
+        fill={pageFill}
+        stroke={pageStroke}
+        strokeWidth={1.25}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M10.45 2.9v3.15h3.15"
+        fill="none"
+        stroke={pageStroke}
+        strokeWidth={1.15}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M6 11.95l.55-2.25 4.95-4.95 1.7 1.7-4.95 4.95L6 11.95Z"
+        fill={accent}
+        stroke={pencilStroke}
+        strokeWidth={1}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M10.7 5.55l1.7 1.7"
+        fill="none"
+        stroke={pencilStroke}
+        strokeWidth={1}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+function KanaQuizView({
+  scoreMode = 'off',
+  engModeEnabled = false,
+  isFocusNotesOpen = false,
+  setIsFocusNotesOpen = () => {},
+  focusNotesPanelWidth = FOCUS_NOTES_DEFAULT_WIDTH,
+  setFocusNotesPanelWidth = () => {},
+  onFocusNotesResizeEnd = () => {},
+  focusNotesAnimation,
+}: {
+  scoreMode?: QuizScoreMode;
+  engModeEnabled?: boolean;
+  isFocusNotesOpen?: boolean;
+  setIsFocusNotesOpen?: (next: boolean | ((prev: boolean) => boolean)) => void;
+  focusNotesPanelWidth?: number;
+  setFocusNotesPanelWidth?: (next: number) => void;
+  onFocusNotesResizeEnd?: (next: number) => void;
+  focusNotesAnimation?: any;
+}) {
   const leaderboardScoresEnabled = scoreMode !== 'off';
   const isStudyScoreMode = scoreMode === 'study_points';
   const activeQuizLeaderboardScoreType = isStudyScoreMode ? 'study_points' : leaderboardScoresEnabled ? 'speedrun_points' : 'off';
@@ -2319,6 +1673,13 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const [focusedItems, setFocusedItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
   const [bottleneckItems, setBottleneckItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
   const [isSaveManagerOpen, setIsSaveManagerOpen] = useState(false);
+  const [focusNoteFolders, setFocusNoteFolders] = useState(() => {
+    const folder = buildFocusNoteFolderPayload({ title: 'General' });
+    return [folder];
+  });
+  const [activeFocusNoteFolderId, setActiveFocusNoteFolderId] = useState('');
+  const fallbackFocusNotesAnimation = React.useRef(new Animated.Value(0)).current;
+  const resolvedFocusNotesAnimation = focusNotesAnimation || fallbackFocusNotesAnimation;
   const [saveProfiles, setSaveProfiles] = useState<Array<{
     id: string;
     name: string;
@@ -2329,10 +1690,33 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     focusLeaderboard: any[];
     leaderboard: any[];
     sessionLeaderboard: any[];
+    notes: string;
+    noteFolders: any[];
   }>>([]);
   const [loadedSaveProfileId, setLoadedSaveProfileId] = useState<string | null>(null);
   const [saveProfileName, setSaveProfileName] = useState('');
   const todayKey = formatDateKey(new Date());
+  const activeFocusNoteFolder = useMemo(
+    () => focusNoteFolders.find(folder => folder.id === activeFocusNoteFolderId) || focusNoteFolders[0] || null,
+    [activeFocusNoteFolderId, focusNoteFolders],
+  );
+  const focusProfileNotes = activeFocusNoteFolder?.notes || '';
+  const focusNotesTotalChars = useMemo(
+    () => focusNoteFolders.reduce((total, folder) => total + (folder.notes || '').length, 0),
+    [focusNoteFolders],
+  );
+
+  useEffect(() => {
+    if (!focusNoteFolders.length) {
+      const folder = buildFocusNoteFolderPayload({ title: 'General' });
+      setFocusNoteFolders([folder]);
+      setActiveFocusNoteFolderId(folder.id);
+      return;
+    }
+    if (!activeFocusNoteFolderId || !focusNoteFolders.some(folder => folder.id === activeFocusNoteFolderId)) {
+      setActiveFocusNoteFolderId(focusNoteFolders[0].id);
+    }
+  }, [activeFocusNoteFolderId, focusNoteFolders]);
 
   const focusDataset = useMemo(
     () =>
@@ -2947,6 +2331,61 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     await AsyncStorage.setItem(QUIZ_SAVE_PROFILES_STORAGE_KEY, JSON.stringify(next));
   }, []);
 
+  const resetFocusNoteFolders = useCallback((folders: any[], preferredId?: string) => {
+    const nextFolders = Array.isArray(folders) && folders.length > 0
+      ? folders
+      : [buildFocusNoteFolderPayload({ title: 'General' })];
+    const nextActiveId = preferredId && nextFolders.some(folder => folder.id === preferredId)
+      ? preferredId
+      : nextFolders[0].id;
+    setFocusNoteFolders(nextFolders);
+    setActiveFocusNoteFolderId(nextActiveId);
+  }, []);
+
+  const updateActiveFocusNoteText = useCallback((notes: string) => {
+    const targetId = activeFocusNoteFolder?.id || focusNoteFolders[0]?.id;
+    setFocusNoteFolders(prev => {
+      if (!targetId) {
+        return [buildFocusNoteFolderPayload({ title: 'General', notes })];
+      }
+      return prev.map(folder =>
+        folder.id === targetId
+          ? { ...folder, notes, updatedAt: Date.now() }
+          : folder,
+      );
+    });
+  }, [activeFocusNoteFolder?.id, focusNoteFolders]);
+
+  const updateActiveFocusNoteFolderTitle = useCallback((title: string) => {
+    const targetId = activeFocusNoteFolder?.id || focusNoteFolders[0]?.id;
+    setFocusNoteFolders(prev =>
+      prev.map(folder =>
+        folder.id === targetId
+          ? { ...folder, title: title.slice(0, 80), updatedAt: Date.now() }
+          : folder,
+      ),
+    );
+  }, [activeFocusNoteFolder?.id, focusNoteFolders]);
+
+  const addFocusNoteFolder = useCallback(() => {
+    const folder = buildFocusNoteFolderPayload({ title: `Folder ${focusNoteFolders.length + 1}` });
+    setFocusNoteFolders(prev => [...prev, folder].slice(0, 60));
+    setActiveFocusNoteFolderId(folder.id);
+  }, [focusNoteFolders.length]);
+
+  const deleteActiveFocusNoteFolder = useCallback(() => {
+    const targetId = activeFocusNoteFolder?.id;
+    if (!targetId) return;
+    if (focusNoteFolders.length <= 1) {
+      const folder = buildFocusNoteFolderPayload({ title: 'General' });
+      resetFocusNoteFolders([folder], folder.id);
+      return;
+    }
+
+    const nextFolders = focusNoteFolders.filter(folder => folder.id !== targetId);
+    resetFocusNoteFolders(nextFolders, nextFolders[0]?.id);
+  }, [activeFocusNoteFolder?.id, focusNoteFolders, resetFocusNoteFolders]);
+
   useEffect(() => {
     const loadSaveProfiles = async () => {
       try {
@@ -3195,8 +2634,10 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         ),
         leaderboard: [],
         sessionLeaderboard: [],
+        notes: focusProfileNotes,
+        noteFolders: focusNoteFolders,
       }),
-    [bottleneckItems, focusedItems, limitLeaderboardPerMode, saveProfileName, sessionLeaderboard],
+    [bottleneckItems, focusNoteFolders, focusProfileNotes, focusedItems, limitLeaderboardPerMode, saveProfileName, sessionLeaderboard],
   );
 
   const confirmAction = useCallback(
@@ -3284,10 +2725,13 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
             focusLeaderboard: profile.focusLeaderboard,
             leaderboard: [],
             sessionLeaderboard: [],
+            notes: profile.notes,
+            noteFolders: profile.noteFolders,
           }));
 
           await persistSaveProfiles(focusOnlyProfiles);
           setLoadedSaveProfileId(null);
+          resetFocusNoteFolders([], undefined);
 
           Alert.alert('Import complete', `Loaded ${focusOnlyProfiles.length} Focus profiles.`);
         } catch (err) {
@@ -3306,7 +2750,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       console.error('Failed to open focus profile import picker:', err);
       Alert.alert('Import failed', 'Could not open file picker.');
     }
-  }, [limitLeaderboardPerMode, persistSaveProfiles]);
+  }, [limitLeaderboardPerMode, persistSaveProfiles, resetFocusNoteFolders]);
 
   const createSaveProfile = useCallback(async () => {
     const name = saveProfileName.trim();
@@ -3368,6 +2812,8 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     focusLeaderboard: any[];
     leaderboard: any[];
     sessionLeaderboard: any[];
+    notes: string;
+    noteFolders: any[];
   }) => {
     try {
       const cleanedProfile = normalizeSaveProfiles([profile])[0];
@@ -3390,6 +2836,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         ...restoredFocusLeaderboard,
       ]);
       setLoadedSaveProfileId(cleanedProfile.id);
+      resetFocusNoteFolders(cleanedProfile.noteFolders || [], cleanedProfile.noteFolders?.[0]?.id);
       setIsLeaderboardEditMode(false);
 
       if (quizMode === 'focus' || quizMode === 'bottleneck') {
@@ -3416,19 +2863,45 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
       console.error('Failed to load Focus profile:', err);
       Alert.alert('Load failed', 'Could not load the Focus profile.');
     }
-  }, [limitLeaderboardPerMode, normalizeSaveProfiles, quizMode, saveBottleneckItems, saveFocusedItems]);
+  }, [limitLeaderboardPerMode, normalizeSaveProfiles, quizMode, resetFocusNoteFolders, saveBottleneckItems, saveFocusedItems]);
 
   const deleteSaveProfile = useCallback(async (profileId: string) => {
     try {
       await persistSaveProfiles(saveProfiles.filter(item => item.id !== profileId));
       if (loadedSaveProfileId === profileId) {
         setLoadedSaveProfileId(null);
+        resetFocusNoteFolders([], undefined);
       }
     } catch (err) {
       console.error('Failed to delete Focus profile:', err);
       Alert.alert('Delete failed', 'Could not delete the Focus profile.');
     }
-  }, [loadedSaveProfileId, persistSaveProfiles, saveProfiles]);
+  }, [loadedSaveProfileId, persistSaveProfiles, resetFocusNoteFolders, saveProfiles]);
+
+  const saveFocusNotesToLoadedProfile = useCallback(async () => {
+    if (!loadedSaveProfileId) {
+      Alert.alert('No Focus profile loaded', 'Create or load a Focus profile before saving notes.');
+      return;
+    }
+
+    const nextProfiles = saveProfiles.map(profile =>
+      profile.id === loadedSaveProfileId
+        ? buildSaveProfilePayload({
+            ...profile,
+            updatedAt: Date.now(),
+            notes: focusProfileNotes,
+            noteFolders: focusNoteFolders,
+          })
+        : profile,
+    );
+
+    try {
+      await persistSaveProfiles(nextProfiles);
+    } catch (err) {
+      console.error('Failed to save Focus profile notes:', err);
+      Alert.alert('Save failed', 'Could not save notes to the loaded Focus profile.');
+    }
+  }, [focusNoteFolders, focusProfileNotes, loadedSaveProfileId, persistSaveProfiles, saveProfiles]);
 
   const getEntryIdentity = useCallback(
     (entry: { mode: string; timeMs: number; score: number; total: number; date: number; finishReason?: 'complete' | 'time' | 'stopped'; timerMinutes?: number; typemasterQueueMode?: string; scoreType?: string }) =>
@@ -4422,6 +3895,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
   const activeFocusSnapshotName = loadedSaveProfileId
     ? (saveProfiles.find(profile => profile.id === loadedSaveProfileId)?.name || 'Unnamed save profile')
     : null;
+  const focusNotesDraftTitle = activeFocusSnapshotName || saveProfileName.trim() || `${getQuizModeLabel(activeModeKey)} Focus Draft`;
   const activeLeaderboardModeLabel = getQuizModeLabel(activeLeaderboardModeKey);
   const activeLeaderboardIndex = leaderboardScope === 'session' ? sessionLeaderboardIndex : leaderboardIndex;
   const leaderboardPrimaryRankKey: 'time' | 'score' = leaderboardScoresEnabled ? 'score' : 'time';
@@ -4772,8 +4246,42 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
     typemasterTimerWasArmedRef.current = false;
   };
 
+  const focusNotesPanelTranslateX = resolvedFocusNotesAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [28, 0],
+  });
+  const focusNotesPanelOpacity = resolvedFocusNotesAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const handleFocusNotesResizeStart = useCallback(
+    (event: any) => {
+      if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+
+      const startX = Number(event?.clientX ?? event?.nativeEvent?.clientX ?? 0);
+      const startWidth = clampFocusNotesWidth(focusNotesPanelWidth);
+      let latestWidth = startWidth;
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        latestWidth = clampFocusNotesWidth(startWidth + moveEvent.clientX - startX);
+        setFocusNotesPanelWidth(latestWidth);
+      };
+      const handleMouseUp = () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        onFocusNotesResizeEnd(latestWidth);
+      };
+
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    },
+    [focusNotesPanelWidth, onFocusNotesResizeEnd, setFocusNotesPanelWidth],
+  );
+
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.quizNotesStage}>
       <ScrollView
         style={styles.quizScroll}
         contentContainerStyle={styles.quizContent}
@@ -4801,7 +4309,17 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
               );
             })}
           </View>
-          <Text style={styles.quizNavVersion}>v1.33</Text>
+          <View style={styles.quizNavMeta}>
+            <Pressable
+              accessibilityLabel="Toggle Focus notes"
+              accessibilityRole="button"
+              style={[styles.quizNotesToggle, isFocusNotesOpen && styles.quizNotesToggleActive]}
+              onPress={() => setIsFocusNotesOpen(prev => !prev)}
+            >
+              <PencilNoteIcon active={isFocusNotesOpen} />
+            </Pressable>
+            <Text style={styles.quizNavVersion}>v1.35</Text>
+          </View>
         </View>
 
       {/* Sub Nav Tabs - Mode and Tab selection */}
@@ -5962,6 +5480,94 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
         </View>
       </ScrollView>
 
+      <Animated.View
+        pointerEvents={isFocusNotesOpen ? 'auto' : 'none'}
+        style={[
+          styles.focusNotesPanel,
+          { width: focusNotesPanelWidth },
+          {
+            opacity: focusNotesPanelOpacity,
+            transform: [{ translateX: focusNotesPanelTranslateX }],
+          },
+        ]}
+      >
+        <View style={styles.focusNotesHeader}>
+          <View style={styles.focusNotesTitleGroup}>
+            <Text style={styles.focusNotesTitle}>Notes</Text>
+            <Text style={styles.focusNotesProfileLabel} numberOfLines={1}>
+              {focusNotesDraftTitle}
+            </Text>
+          </View>
+          <Pressable style={styles.focusNotesCloseButton} onPress={() => setIsFocusNotesOpen(false)}>
+            <Text style={styles.focusNotesCloseLabel}>x</Text>
+          </Pressable>
+        </View>
+        <View style={styles.focusNotesFolderBar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.focusNotesFolderScroll}
+            contentContainerStyle={styles.focusNotesFolderList}
+          >
+            {focusNoteFolders.map(folder => {
+              const selected = activeFocusNoteFolder?.id === folder.id;
+              return (
+                <Pressable
+                  key={folder.id}
+                  style={[styles.focusNotesFolderChip, selected && styles.focusNotesFolderChipActive]}
+                  onPress={() => setActiveFocusNoteFolderId(folder.id)}
+                >
+                  <Text
+                    style={[styles.focusNotesFolderChipLabel, selected && styles.focusNotesFolderChipLabelActive]}
+                    numberOfLines={1}
+                  >
+                    {(folder.title || '').trim() || 'Untitled'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <Pressable style={styles.focusNotesFolderAddButton} onPress={addFocusNoteFolder}>
+            <Text style={styles.focusNotesFolderAddLabel}>+</Text>
+          </Pressable>
+        </View>
+        <View style={styles.focusNotesFolderTitleRow}>
+          <TextInput
+            style={styles.focusNotesFolderTitleInput}
+            value={activeFocusNoteFolder?.title || ''}
+            onChangeText={updateActiveFocusNoteFolderTitle}
+            placeholder="Folder title"
+            placeholderTextColor="#64748b"
+          />
+          <Pressable style={styles.focusNotesFolderDeleteButton} onPress={deleteActiveFocusNoteFolder}>
+            <Text style={styles.focusNotesFolderDeleteLabel}>Delete</Text>
+          </Pressable>
+        </View>
+        <TextInput
+          style={styles.focusNotesInput}
+          value={focusProfileNotes}
+          onChangeText={updateActiveFocusNoteText}
+          multiline
+          textAlignVertical="top"
+          placeholder="Write notes for this folder..."
+          placeholderTextColor="#64748b"
+        />
+        <View style={styles.focusNotesFooter}>
+          <Text style={styles.focusNotesMeta}>
+            {focusNoteFolders.length} folders | {focusNotesTotalChars} chars
+          </Text>
+          <Pressable style={styles.focusNotesSaveButton} onPress={() => void saveFocusNotesToLoadedProfile()}>
+            <Text style={styles.focusNotesSaveButtonLabel}>Save</Text>
+          </Pressable>
+        </View>
+        <View
+          style={styles.focusNotesResizeHandle}
+          onMouseDown={handleFocusNotesResizeStart}
+        >
+          <View style={styles.focusNotesResizeHandleRail} />
+        </View>
+      </Animated.View>
+
       <Modal
         animationType="none"
         transparent
@@ -6032,8 +5638,8 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     <Text style={styles.saveManagerSectionEyebrow}>Profile model</Text>
                     <Text style={styles.saveManagerPaneTitle}>Save Focus profiles separately</Text>
                     <View style={styles.saveManagerGuideList}>
-                      <Text style={styles.saveManagerGuideStep}>Each Focus profile stores Focus items, Bottleneck items, and Focus-mode leaderboard times only.</Text>
-                      <Text style={styles.saveManagerGuideStep}>Profiles are only changed when you explicitly create, update, import, or delete them.</Text>
+                      <Text style={styles.saveManagerGuideStep}>Each Focus profile stores Focus items, Bottleneck items, notes, and Focus-mode leaderboard times.</Text>
+                      <Text style={styles.saveManagerGuideStep}>Profiles are only changed when you explicitly create, update, import, delete, or save notes.</Text>
                       <Text style={styles.saveManagerGuideStep}>Leaderboard backups are exported, imported, and persisted separately.</Text>
                     </View>
                   </View>
@@ -6041,7 +5647,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                   <View style={styles.saveManagerPaneCard}>
                     <Text style={styles.saveManagerSectionEyebrow}>Current state</Text>
                     <Text style={styles.saveManagerPaneTitle}>Create or update a Focus profile</Text>
-                    <Text style={styles.saveManagerPaneSubtitle}>Capture the current Focus, Bottleneck, and Focus-mode times in one named profile.</Text>
+                    <Text style={styles.saveManagerPaneSubtitle}>Capture the current Focus, Bottleneck, notes, and Focus-mode times in one named profile.</Text>
                     <TextInput
                       style={styles.calendarInput}
                       placeholder="Profile name (e.g. Week 2 JLPT rebuild)"
@@ -6053,6 +5659,9 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                     <Text style={styles.saveManagerMetaText}>Current Bottleneck items: {bottleneckItems.length}</Text>
                     <Text style={styles.saveManagerMetaText}>
                       Current Focus leaderboard entries: {sessionLeaderboard.filter(entry => isFocusModeKey(entry.mode)).length}
+                    </Text>
+                    <Text style={styles.saveManagerMetaText}>
+                      Current note folders: {focusNoteFolders.length} | Notes: {focusNotesTotalChars} chars
                     </Text>
                     <Text style={styles.saveManagerMetaText}>
                       Persistent leaderboard entries: {leaderboard.filter(entry => !isFocusModeKey(entry.mode) && !isBottleneckModeKey(entry.mode)).length}
@@ -6094,7 +5703,7 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
                             ) : null}
                           </View>
                           <Text style={styles.calendarNoteSource}>
-                            Focus items: {profile.focusItems.length} | Bottleneck items: {(profile.bottleneckItems || []).length} | Focus times: {profile.focusLeaderboard.length}
+                            Focus items: {profile.focusItems.length} | Bottleneck items: {(profile.bottleneckItems || []).length} | Focus times: {profile.focusLeaderboard.length} | Note folders: {(profile.noteFolders || []).length} | Notes: {(profile.noteFolders || []).reduce((total, folder) => total + (folder.notes || '').length, 0)} chars
                           </Text>
                           <View style={styles.saveManagerEntryActions}>
                             <Pressable style={[styles.saveManagerEntryButton, styles.saveManagerEntryButtonPrimary]} onPress={() => void loadSaveProfile(profile)}>
@@ -6122,396 +5731,4 @@ function KanaQuizView({ scoreMode = 'off', engModeEnabled = false }: { scoreMode
 }
 
 const MemoizedKanaQuizView = React.memo(KanaQuizView);
-
-function DashboardView({
-  notes,
-  loading,
-  error,
-  refreshing,
-  currentMonth,
-  selectedDateKey,
-  todayKey,
-  onMonthChange,
-  onSelectDate,
-  onJumpToday,
-  onRefresh,
-  onDelete,
-  onAddNote,
-  onEditNote,
-  onExitApp,
-  form,
-  onChangeForm,
-  onSubmit,
-  submitting,
-  noteStage,
-  onAdvanceStage,
-  onBackStage,
-  sourceSlices,
-  onEdit,
-}) {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [historyViewMode, setHistoryViewMode] = useState<'list' | 'grid'>('list');
-  const monthKey = useMemo(() => {
-    const month = `${currentMonth.getMonth() + 1}`.padStart(2, '0');
-    return `${currentMonth.getFullYear()}-${month}`;
-  }, [currentMonth]);
-  const monthlyNotes = useMemo(
-    () =>
-      notes.filter(
-        note => typeof note.dateKey === 'string' && note.dateKey.startsWith(monthKey),
-      ).length,
-    [notes, monthKey],
-  );
-  const orderedNotes = useMemo(
-    () => [...notes].sort((a, b) => (b.ts || 0) - (a.ts || 0)),
-    [notes],
-  );
-
-  const tabs = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'calendar', label: 'Calendar' },
-    { key: 'compose', label: 'Compose' },
-    { key: 'history', label: 'Note history' },
-    { key: 'insights', label: 'Insights' },
-    { key: 'quiz', label: 'Quiz' },
-  ];
-
-  return (
-    <View style={styles.dashboardContent}>
-      <View style={styles.dashboardHeader}>
-        <View>
-          <Text style={styles.dashboardTitle}>Tensai Note</Text>
-        </View>
-        <Pressable style={styles.dashboardExitButton} onPress={onExitApp}>
-          <Text style={styles.dashboardExitLabel}>Exit</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.dashboardTabs}>
-        {tabs.map(tab => {
-          const isActive = tab.key === activeTab;
-          return (
-            <Pressable
-              key={tab.key}
-              onPress={() => setActiveTab(tab.key)}
-              style={[styles.dashboardTab, isActive && styles.dashboardTabActive]}
-            >
-              <Text style={[styles.dashboardTabLabel, isActive && styles.dashboardTabLabelActive]}>
-                {tab.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <View style={styles.dashboardPanel}>
-        {activeTab === 'overview' ? (
-          <>
-            <View style={styles.dashboardStats}>
-              <View style={styles.dashboardStatCard}>
-                <Text style={styles.dashboardStatValue}>{notes.length}</Text>
-                <Text style={styles.dashboardStatLabel}>Total notes</Text>
-              </View>
-              <View style={styles.dashboardStatCard}>
-                <Text style={styles.dashboardStatValue}>{monthlyNotes}</Text>
-                <Text style={styles.dashboardStatLabel}>This month</Text>
-              </View>
-              <View style={styles.dashboardStatCard}>
-                <Text style={styles.dashboardStatValue}>{sourceSlices.length}</Text>
-                <Text style={styles.dashboardStatLabel}>Sources tracked</Text>
-              </View>
-            </View>
-
-            <CalendarView
-              notes={notes}
-              loading={loading}
-              refreshing={refreshing}
-              currentMonth={currentMonth}
-              selectedDateKey={selectedDateKey}
-              todayKey={todayKey}
-              onMonthChange={onMonthChange}
-              onSelectDate={onSelectDate}
-              onJumpToday={onJumpToday}
-              onRefresh={onRefresh}
-              onDelete={onDelete}
-              onAddNote={onAddNote}
-              onEditNote={onEditNote}
-              embedded
-            />
-          </>
-        ) : null}
-
-        {activeTab === 'calendar' ? (
-          <CalendarView
-            notes={notes}
-            loading={loading}
-            refreshing={refreshing}
-            currentMonth={currentMonth}
-            selectedDateKey={selectedDateKey}
-            todayKey={todayKey}
-            onMonthChange={onMonthChange}
-            onSelectDate={onSelectDate}
-            onJumpToday={onJumpToday}
-            onRefresh={onRefresh}
-            onDelete={onDelete}
-            onAddNote={onAddNote}
-            onEditNote={onEditNote}
-            embedded
-          />
-        ) : null}
-
-        {activeTab === 'compose' ? (
-          <NoteComposerPanel
-            form={form}
-            onChangeForm={onChangeForm}
-            onSubmit={onSubmit}
-            submitting={submitting}
-            error={error}
-            noteStage={noteStage}
-            onAdvanceStage={onAdvanceStage}
-            onBackStage={onBackStage}
-          />
-        ) : null}
-
-        {activeTab === 'history' ? (
-          <ScrollView style={styles.historyScroll} contentContainerStyle={styles.historyContent}>
-            <Text style={styles.featureHeadline}>Note history</Text>
-            <View style={[styles.featureCard, styles.calendarNotePane]}>
-              <View style={styles.calendarNotePaneHeader}>
-                <View>
-                  <Text style={styles.calendarNotePaneTitle}>All notes</Text>
-                  <Text style={styles.calendarNotePaneCount}>
-                    {orderedNotes.length ? `${orderedNotes.length} saved` : 'No notes saved yet'}
-                  </Text>
-                </View>
-                <View style={styles.viewToggleContainer}>
-                  <Pressable
-                    style={[styles.viewToggleButton, historyViewMode === 'list' && styles.viewToggleButtonActive]}
-                    onPress={() => setHistoryViewMode('list')}
-                  >
-                    <Text style={[styles.viewToggleLabel, historyViewMode === 'list' && styles.viewToggleLabelActive]}>List</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.viewToggleButton, historyViewMode === 'grid' && styles.viewToggleButtonActive]}
-                    onPress={() => setHistoryViewMode('grid')}
-                  >
-                    <Text style={[styles.viewToggleLabel, historyViewMode === 'grid' && styles.viewToggleLabelActive]}>Grid</Text>
-                  </Pressable>
-                </View>
-              </View>
-              {historyViewMode === 'list' ? (
-                <NoteList notes={orderedNotes} onDelete={onDelete} onEdit={onEdit} showDate />
-              ) : (
-                <NoteGrid notes={orderedNotes} onDelete={onDelete} onEdit={onEdit} />
-              )}
-            </View>
-          </ScrollView>
-        ) : null}
-
-        {activeTab === 'insights' ? (
-          <InsightsView
-            notes={notes}
-            sourceSlices={sourceSlices}
-            onDelete={onDelete}
-            loading={loading}
-            onEdit={onEdit}
-          />
-        ) : null}
-
-        {activeTab === 'quiz' ? <KanaQuizView /> : null}
-      </View>
-    </View>
-  );
-}
-
-function OptionPillGroup({ label, options, value, onChange, compact = false }) {
-  return (
-    <View style={[styles.pillGroup, compact && styles.quizPillGroup]}>
-      <Text style={[styles.pillLabel, compact && styles.quizPillLabel]}>{label}</Text>
-      <View style={styles.pillRow}>
-        {options.map(option => {
-          const selected = option.value === value;
-          return (
-            <Pressable key={option.value} style={[styles.pill, selected && styles.pillActive]} onPress={() => onChange(option.value)}>
-              <Text style={[styles.pillText, selected && styles.pillTextActive]}>{option.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-function insertOrUpdateNote(list, note) {
-  const next = list.filter(item => item.id !== note.id);
-  next.push(note);
-  next.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-  return next;
-}
-
-function NoteList({ notes, onEdit, onDelete, showDate = false }) {
-  if (!notes.length) {
-    return <Text style={styles.calendarNoteEmpty}>Nothing logged yet.</Text>;
-  }
-
-  return (
-    <View style={styles.calendarNoteList}>
-      {notes.map(note => {
-        const sourceLabel = SOURCE_LABELS[note.sourceType] || 'Other';
-        const sourceDisplay = note.sourceOrigin ? `${sourceLabel}:${note.sourceOrigin}` : sourceLabel;
-
-        return (
-          <View key={note.id} style={[styles.featureCard, styles.calendarNoteCard]}>
-            <View style={styles.calendarNoteMeta}>
-              <View>
-                {showDate ? (
-                  <Text style={styles.noteListDate}>{formatDisplayDate(note.dateKey)}</Text>
-                ) : null}
-                <Text style={styles.calendarNoteBadge}>{note.language}</Text>
-                <Text style={styles.calendarNoteSource}>{sourceDisplay}</Text>
-              </View>
-            <View style={styles.noteActions}>
-              <Pressable onPress={() => onEdit && onEdit(note)}>
-                <Text style={styles.calendarNoteEdit}>Edit</Text>
-              </Pressable>
-              <Pressable onPress={() => onDelete(note.id)}>
-                <Text style={styles.calendarNoteDelete}>Delete</Text>
-              </Pressable>
-            </View>
-          </View>
-            <Text style={styles.calendarNoteText}>{note.text}</Text>
-            {note.additionalDetails ? (
-              <Text style={styles.calendarNoteDetail}>Details: {note.additionalDetails}</Text>
-            ) : null}
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-function NoteGrid({ notes, onEdit, onDelete }) {
-  const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
-
-  if (!notes.length) {
-    return <Text style={styles.calendarNoteEmpty}>Nothing logged yet.</Text>;
-  }
-
-  const toggleExpand = (noteId: string) => {
-    setExpandedNoteId(prev => prev === noteId ? null : noteId);
-  };
-
-  return (
-    <View style={styles.noteGrid}>
-      {notes.map(note => {
-        const sourceLabel = SOURCE_LABELS[note.sourceType] || 'Other';
-        const sourceDisplay = note.sourceOrigin ? `${sourceLabel}: ${note.sourceOrigin}` : sourceLabel;
-        const isExpanded = expandedNoteId === note.id;
-        const truncatedText = note.text.length > 60 ? note.text.slice(0, 60) + '...' : note.text;
-
-        return (
-          <Pressable
-            key={note.id}
-            style={[styles.noteGridItem, isExpanded && styles.noteGridItemExpanded]}
-            onPress={() => toggleExpand(note.id)}
-          >
-            <View style={styles.noteGridHeader}>
-              <Text style={styles.noteGridDate}>{formatDisplayDate(note.dateKey)}</Text>
-              <View style={styles.noteGridBadge}>
-                <Text style={styles.noteGridBadgeText}>{note.language}</Text>
-              </View>
-            </View>
-            
-            <Text style={styles.noteGridText}>
-              {isExpanded ? note.text : truncatedText}
-            </Text>
-            
-            {isExpanded && (
-              <>
-                <View style={styles.noteGridMeta}>
-                  <Text style={styles.noteGridMetaLabel}>Source:</Text>
-                  <Text style={styles.noteGridMetaValue}>{sourceDisplay}</Text>
-                </View>
-                {note.additionalDetails ? (
-                  <View style={styles.noteGridMeta}>
-                    <Text style={styles.noteGridMetaLabel}>Details:</Text>
-                    <Text style={styles.noteGridMetaValue}>{note.additionalDetails}</Text>
-                  </View>
-                ) : null}
-                <View style={styles.noteGridActions}>
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      onEdit && onEdit(note);
-                    }}
-                    style={styles.noteGridActionButton}
-                  >
-                    <Text style={styles.noteGridEditText}>Edit</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      onDelete(note.id);
-                    }}
-                    style={styles.noteGridActionButton}
-                  >
-                    <Text style={styles.noteGridDeleteText}>Delete</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
-            
-            {!isExpanded && (
-              <Text style={styles.noteGridExpandHint}>Tap to expand</Text>
-            )}
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-function sanitizeNote(note) {
-  return {
-    id: note.id || note._id || `${note.dateKey}-${note.ts}`,
-    dateKey: note.dateKey,
-    language: note.language,
-    text: note.text || note.content || '',
-    ts: note.ts || Date.now(),
-    sourceType: note.sourceType || DEFAULT_SOURCE,
-    sourceOrigin: note.sourceOrigin || note.sourceDetail || '',
-    additionalDetails: note.additionalDetails || note.extra || '',
-  };
-}
-
-function formatDisplayDate(dateKey) {
-  const date = parseDateKey(dateKey);
-  if (Number.isNaN(date.getTime())) return dateKey;
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatRelative(ts) {
-  if (!ts) return '';
-  const seconds = Math.floor((Date.now() - ts) / 1000);
-  if (seconds < 60) return 'Just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
-  const days = Math.floor(seconds / 86400);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
-}
-
-function describeSlice(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
-  const start = polarToCartesian(cx, cy, r, startAngle);
-  const end = polarToCartesian(cx, cy, r, endAngle);
-  const largeArcFlag = endAngle - startAngle > Math.PI ? 1 : 0;
-
-  return `M ${cx} ${cy} L ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x} ${end.y} Z`;
-}
-
-function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
-  return {
-    x: cx + r * Math.cos(angle - Math.PI / 2),
-    y: cy + r * Math.sin(angle - Math.PI / 2),
-  };
-}
 
