@@ -13,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Circle, Line, Path, Polyline, Text as SvgText } from 'react-native-svg';
 import { styles } from './mobile/src/styles/appStyles';
 import { JLPT_N3_KANJI_DETAILS, JLPT_N3_KANJI_SOURCE } from './mobile/src/data/jlpt_n3_kanji';
 import {
@@ -34,6 +34,7 @@ const QUIZ_BOTTLENECK_STORAGE_KEY = 'tensai-note.quiz-bottleneck.v1';
 const QUIZ_SAVE_PROFILES_STORAGE_KEY = 'tensai-note.quiz-save-profiles.v2';
 const QUIZ_LEADERBOARD_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-leaderboard-snapshots.v1';
 const QUIZ_FOCUS_SNAPSHOTS_STORAGE_KEY = 'tensai-note.quiz-focus-snapshots.v1';
+const QUIZ_ANALYSIS_STORAGE_KEY = 'tensai-note.quiz-analysis.v1';
 const QUIZ_SAVE_MANAGER_OPEN_EVENT = 'tensai:save-manager-open';
 const LEADERBOARD_EXPORT_TYPE = 'tensai-leaderboard';
 const LEADERBOARD_FILE_EXTENSION = '.tensai-leaderboard.json';
@@ -723,7 +724,7 @@ const JLPT_N4_2_KANJI_DETAILS: Record<string, { readings: string[]; meanings: st
   買: { readings: ['bai', 'ka'], meanings: ['buy'] },
   払: { readings: ['futsu', 'hara'], meanings: ['pay'] },
   洗: { readings: ['sen', 'ara'], meanings: ['wash'] },
-  選: { readings: ['sen', 'era'], meanings: ['choose'] },
+  選: { readings: ['sen', 'era', 'erabu'], meanings: ['choose'] },
   遊: { readings: ['yuu', 'aso'], meanings: ['play'] },
   待: { readings: ['tai', 'ma'], meanings: ['wait'] },
   降: { readings: ['kou', 'oriru', 'fu'], meanings: ['descend', 'fall'] },
@@ -1191,6 +1192,7 @@ const QUIZ_VIEW_OPTIONS = [
   { value: 'endless', label: 'Endless' },
   { value: 'typemaster', label: 'TypeMaster' },
   { value: 'leaderboard', label: 'Leaderboard' },
+  { value: 'analysis', label: 'Analysis' },
 ];
 const TYPEMASTER_QUEUE_OPTIONS = [
   { value: 'rapidfire', label: 'Rapidfire' },
@@ -1250,12 +1252,14 @@ const getDefaultQuizViewForWeb = () => {
   return QUIZ_VIEW_OPTIONS[0].value;
 };
 
+const getQuizModeOption = (mode: string) => QUIZ_MODES.find(option => option.value === mode);
+const getExactQuizDataset = (mode: string) => getQuizModeOption(mode)?.dataset || [];
 const getQuizDataset = (mode: string) => {
-  const selected = QUIZ_MODES.find(option => option.value === mode) || QUIZ_MODES[0];
+  const selected = getQuizModeOption(mode) || QUIZ_MODES[0];
   return selected.dataset;
 };
 const getQuizModeFamily = (mode: string) => {
-  const selected = QUIZ_MODES.find(option => option.value === mode) || QUIZ_MODES[0];
+  const selected = getQuizModeOption(mode) || QUIZ_MODES[0];
   return selected.family;
 };
 const getQuizModesForFamily = (family: string) => QUIZ_MODES.filter(option => option.family === family);
@@ -1264,6 +1268,29 @@ const getQuizModeKey = (mode: string, jlptReadingMode: string = DEFAULT_JLPT_REA
   isJlptQuizMode(mode) || mode === 'focus' ? `${mode}:${jlptReadingMode}` : mode;
 
 const getTypeMasterModeKey = (quizModeKey: string) => `typemaster:${quizModeKey}`;
+const getBaseFocusSourceMode = (sourceMode: string | undefined) => {
+  if (!sourceMode) return '';
+  const withoutModePrefix = sourceMode.startsWith('endless:')
+    ? sourceMode.replace('endless:', '')
+    : sourceMode;
+  const parsedTypeMaster = withoutModePrefix.startsWith('typemaster:')
+    ? parseTypeMasterModeKey(withoutModePrefix)
+    : null;
+  return (parsedTypeMaster?.quizModeKey || withoutModePrefix).split(':')[0];
+};
+const getSourceModeFromCanonicalItemId = (id: any) => {
+  const safeId = `${id || ''}`;
+  if (safeId.startsWith('n5_')) return 'jlpt_n5';
+  if (safeId.startsWith('n4_2_')) return 'jlpt_n4_2';
+  if (safeId.startsWith('n4_')) return 'jlpt_n4';
+  if (safeId.startsWith('n3_1_')) return 'jlpt_n3';
+  if (safeId.startsWith('n3_2_')) return 'jlpt_n3_2';
+  if (safeId.startsWith('n3_3_')) return 'jlpt_n3_3';
+  if (safeId.startsWith('n3_4_')) return 'jlpt_n3_4';
+  return '';
+};
+const normalizeFocusSourceModeForItem = (sourceMode: string | undefined, item: any) =>
+  getSourceModeFromCanonicalItemId(item?.id) || getBaseFocusSourceMode(sourceMode) || `${sourceMode || ''}`;
 const isFocusModeKey = (mode: string) =>
   mode === 'focus' ||
   mode.startsWith('focus:') ||
@@ -1426,23 +1453,40 @@ const getJlptPromptText = (item: any, jlptReadingMode: string) => {
   return item.kana;
 };
 const getCanonicalFocusItem = (sourceMode: string | undefined, rawItem: any) => {
-  if (!sourceMode || sourceMode === 'focus') return null;
-  const dataset = getQuizDataset(sourceMode);
-  if (!Array.isArray(dataset) || !dataset.length) return null;
+  if (!sourceMode || sourceMode === 'focus' || sourceMode === 'bottleneck') return null;
+  const sourceBaseMode = getBaseFocusSourceMode(sourceMode);
+  const dataset = getExactQuizDataset(sourceBaseMode);
+  const sourceDataset = Array.isArray(dataset) ? dataset : [];
   const originalId = rawItem?.__focusOriginalId || rawItem?.id;
   const kana = rawItem?.kana;
-  return dataset.find((candidate: any) =>
-    (originalId && candidate?.id === originalId) ||
-    (kana && candidate?.kana === kana),
-  ) || null;
+  const exactMatch = sourceDataset.find((candidate: any) =>
+    originalId && kana && candidate?.id === originalId && candidate?.kana === kana,
+  );
+  if (exactMatch) return exactMatch;
+
+  if (kana) {
+    const sourceKanaMatch = sourceDataset.find((candidate: any) => candidate?.kana === kana);
+    if (sourceKanaMatch) return sourceKanaMatch;
+
+    for (const option of QUIZ_MODES) {
+      if (option.value === sourceBaseMode || option.value === 'focus' || option.value === 'bottleneck') continue;
+      const crossDatasetKanaMatch = option.dataset.find((candidate: any) => candidate?.kana === kana);
+      if (crossDatasetKanaMatch) return crossDatasetKanaMatch;
+    }
+    return null;
+  }
+
+  return originalId
+    ? sourceDataset.find((candidate: any) => candidate?.id === originalId) || null
+    : null;
 };
 const normalizeStoredFocusItem = (rawItem: any, sourceMode?: string) => {
   const canonical = getCanonicalFocusItem(sourceMode, rawItem);
   const base = canonical || rawItem || {};
   return {
     ...rawItem,
-    id: rawItem?.id ?? base.id,
-    kana: rawItem?.kana ?? base.kana,
+    id: canonical?.id ?? rawItem?.id ?? base.id,
+    kana: canonical?.kana ?? rawItem?.kana ?? base.kana,
     answers: Array.isArray(base?.answers) ? base.answers : Array.isArray(rawItem?.answers) ? rawItem.answers : [],
     onyomi: Array.isArray(base?.onyomi) ? base.onyomi : Array.isArray(rawItem?.onyomi) ? rawItem.onyomi : [],
     kunyomi: Array.isArray(base?.kunyomi) ? base.kunyomi : Array.isArray(rawItem?.kunyomi) ? rawItem.kunyomi : [],
@@ -1538,6 +1582,46 @@ const createLeaderboardModeTimerKey = (mode: string, timerMinutes?: number) =>
 const createLeaderboardEntryIdentity = (entry: any) =>
   `${normalizeStoredQuizModeKey(entry?.mode)}|${normalizeLeaderboardTimerMinutes(entry?.timerMinutes)}|${normalizeLeaderboardScoreType(entry?.scoreType)}|${entry?.typemasterQueueMode || ''}|${entry?.date || 0}|${entry?.timeMs || 0}|${entry?.score || 0}|${entry?.total || 0}|${entry?.finishReason || 'complete'}`;
 
+const createStableHash = (value: string) => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+const createAnalysisItemKey = (item: any) =>
+  `${item?.__focusSourceMode || item?.sourceMode || ''}:${item?.__focusOriginalId || item?.id || item?.kana || ''}`;
+
+const createAnalysisBottleneckSnapshot = (items: any[]) => {
+  const keys = (Array.isArray(items) ? items : [])
+    .map(createAnalysisItemKey)
+    .filter(Boolean)
+    .sort();
+  return {
+    itemCount: keys.length,
+    signature: keys.length ? createStableHash(keys.join('|')) : 'empty',
+  };
+};
+
+const formatAnalysisDuration = (ms: number) => {
+  const totalSeconds = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}:${`${minutes}`.padStart(2, '0')}:${`${seconds}`.padStart(2, '0')}`;
+  return `${minutes}:${`${seconds}`.padStart(2, '0')}`;
+};
+
+const escapeXml = (value: any) =>
+  `${value ?? ''}`
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
 function PencilNoteIcon({ active = false }: { active?: boolean }) {
   const pageFill = active ? '#dbeafe' : '#162338';
   const pageStroke = active ? '#bfdbfe' : '#60a5fa';
@@ -1618,6 +1702,7 @@ function KanaQuizView({
   const [quizFamily, setQuizFamily] = useState(getQuizModeFamily(defaultQuizMode));
   const [leaderboardScope, setLeaderboardScope] = useState(LEADERBOARD_SCOPE_OPTIONS[0].value);
   const [leaderboardGameType, setLeaderboardGameType] = useState(LEADERBOARD_GAME_OPTIONS[0].value);
+  const [analysisGameType, setAnalysisGameType] = useState(LEADERBOARD_GAME_OPTIONS[0].value);
   const [leaderboardTimerFilter, setLeaderboardTimerFilter] = useState<'all' | 'dynamic'>('all');
   const [isLeaderboardTimerDropdownOpen, setIsLeaderboardTimerDropdownOpen] = useState(false);
   const [timerMinutes, setTimerMinutes] = useState(1);
@@ -1637,12 +1722,22 @@ function KanaQuizView({
   const [lastRecordUpdate, setLastRecordUpdate] = useState<{ mode: string; scoreType?: QuizScoreMode; isNewRecord: boolean; rank: number | null } | null>(null);
   const [leaderboard, setLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; scoreType?: string }>>([]);
   const [sessionLeaderboard, setSessionLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; scoreType?: string }>>([]);
+  const [analysisEnabled, setAnalysisEnabled] = useState(false);
+  const [analysisSessionStartedAt, setAnalysisSessionStartedAt] = useState<number | null>(null);
+  const [analysisElapsedNow, setAnalysisElapsedNow] = useState(Date.now());
+  const [analysisEntries, setAnalysisEntries] = useState<any[]>([]);
+  const [activeAnalysisGraphKey, setActiveAnalysisGraphKey] = useState('');
   const [quizBackspaceCount, setQuizBackspaceCount] = useState(0);
   const quizBackspacePenaltyWordIdsRef = React.useRef<Set<string>>(new Set());
   const inputRefs = React.useRef<Record<string, TextInput | null>>({});
   const timerDeadlineMsRef = React.useRef<number | null>(null);
   const remainingSecondsRef = React.useRef(remainingSeconds);
   const suppressNextFocusPressRef = React.useRef(false);
+  const analysisSessionStartedAtRef = React.useRef<number | null>(null);
+  const analysisEntriesRef = React.useRef<any[]>([]);
+  const quizRoundFinalizedRef = React.useRef(false);
+  const endlessRoundFinalizedRef = React.useRef(false);
+  const typemasterRoundFinalizedRef = React.useRef(false);
 
   // Endless mode state
   const [endlessScore, setEndlessScore] = useState(0);
@@ -1655,6 +1750,11 @@ function KanaQuizView({
   const endlessQueueRef = React.useRef<CharacterQueue | null>(null);
   const endlessAnimationRef = React.useRef<number | null>(null);
   const endlessInputRef = React.useRef<TextInput | null>(null);
+  const endlessRuntimeRef = React.useRef({ isRunning: false, isPaused: false, hasFinished: false, score: 0 });
+  const endlessVisibleCharsRef = React.useRef<Array<{ id: string; item: any; position: number }>>([]);
+  const endlessPositionsRef = React.useRef<Record<string, number>>({});
+  const endlessCharRefs = React.useRef<Record<string, any>>({});
+  const endlessStopQueuedRef = React.useRef(false);
 
   // TypeMaster mode state
   const [typemasterScore, setTypemasterScore] = useState(0);
@@ -1670,8 +1770,11 @@ function KanaQuizView({
   const typemasterQueueRef = React.useRef<CharacterQueue | null>(null);
   const typemasterInputRef = React.useRef<TextInput | null>(null);
   const typemasterTimerWasArmedRef = React.useRef(false);
+  const typemasterRuntimeRef = React.useRef({ isRunning: false, isPaused: false, hasFinished: false, score: 0 });
   const [focusedItems, setFocusedItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
   const [bottleneckItems, setBottleneckItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
+  const focusedItemsRef = React.useRef<Array<{ key: string; sourceMode: string; item: any }>>([]);
+  const bottleneckItemsRef = React.useRef<Array<{ key: string; sourceMode: string; item: any }>>([]);
   const [isSaveManagerOpen, setIsSaveManagerOpen] = useState(false);
   const [focusNoteFolders, setFocusNoteFolders] = useState(() => {
     const folder = buildFocusNoteFolderPayload({ title: 'General' });
@@ -1696,6 +1799,212 @@ function KanaQuizView({
   const [loadedSaveProfileId, setLoadedSaveProfileId] = useState<string | null>(null);
   const [saveProfileName, setSaveProfileName] = useState('');
   const todayKey = formatDateKey(new Date());
+
+  useEffect(() => {
+    endlessRuntimeRef.current = {
+      ...endlessRuntimeRef.current,
+      isRunning: endlessIsRunning,
+      isPaused: isEndlessPaused,
+      hasFinished: endlessHasFinished,
+      score: endlessScore,
+    };
+  }, [endlessHasFinished, endlessIsRunning, endlessScore, isEndlessPaused]);
+
+  useEffect(() => {
+    typemasterRuntimeRef.current = {
+      ...typemasterRuntimeRef.current,
+      isRunning: typemasterIsRunning,
+      isPaused: isTypemasterPaused,
+      hasFinished: typemasterHasFinished,
+      score: typemasterScore,
+    };
+  }, [isTypemasterPaused, typemasterHasFinished, typemasterIsRunning, typemasterScore]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const shouldKeepForegroundActive = isRunning || endlessIsRunning || typemasterIsRunning;
+    if (!shouldKeepForegroundActive) return;
+
+    let wakeLock: any = null;
+    let cancelled = false;
+
+    const requestForegroundLock = async () => {
+      const wakeLockApi = (navigator as any)?.wakeLock;
+      if (!wakeLockApi || document.visibilityState !== 'visible' || cancelled || wakeLock) return;
+      try {
+        wakeLock = await wakeLockApi.request('screen');
+      } catch {
+        wakeLock = null;
+      }
+    };
+
+    const releaseForegroundLock = () => {
+      const lock = wakeLock;
+      wakeLock = null;
+      if (lock && typeof lock.release === 'function') {
+        void lock.release().catch(() => {});
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void requestForegroundLock();
+      } else {
+        releaseForegroundLock();
+      }
+    };
+
+    void requestForegroundLock();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      releaseForegroundLock();
+    };
+  }, [endlessIsRunning, isRunning, typemasterIsRunning]);
+
+  const setEndlessRuntime = useCallback((updates: Partial<{ isRunning: boolean; isPaused: boolean; hasFinished: boolean; score: number }>) => {
+    endlessRuntimeRef.current = {
+      ...endlessRuntimeRef.current,
+      ...updates,
+    };
+  }, []);
+
+  const setTypemasterRuntime = useCallback((updates: Partial<{ isRunning: boolean; isPaused: boolean; hasFinished: boolean; score: number }>) => {
+    typemasterRuntimeRef.current = {
+      ...typemasterRuntimeRef.current,
+      ...updates,
+    };
+  }, []);
+
+  const getEndlessCharsWithCurrentPositions = useCallback(
+    (chars: Array<{ id: string; item: any; position: number }>) =>
+      chars.map(char => ({
+        ...char,
+        position: endlessPositionsRef.current[char.id] ?? char.position,
+      })),
+    [],
+  );
+
+  const commitEndlessVisibleChars = useCallback((chars: Array<{ id: string; item: any; position: number }>) => {
+    endlessVisibleCharsRef.current = chars;
+    const nextPositions: Record<string, number> = {};
+    chars.forEach(char => {
+      nextPositions[char.id] = char.position;
+    });
+    endlessPositionsRef.current = nextPositions;
+    Object.keys(endlessCharRefs.current).forEach(id => {
+      if (!(id in nextPositions)) {
+        delete endlessCharRefs.current[id];
+      }
+    });
+    return chars;
+  }, []);
+
+  const applyEndlessCharPosition = useCallback((id: string, position: number) => {
+    const node = endlessCharRefs.current[id];
+    if (!node) return;
+    if (typeof node.setNativeProps === 'function') {
+      node.setNativeProps({ style: { left: `${position}%` } });
+      return;
+    }
+    const hostNode = typeof node.getNode === 'function' ? node.getNode() : node;
+    if (hostNode?.style) {
+      hostNode.style.left = `${position}%`;
+    }
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!endlessVisibleCharsRef.current.length) return;
+    endlessVisibleCharsRef.current.forEach(char => {
+      applyEndlessCharPosition(char.id, endlessPositionsRef.current[char.id] ?? char.position);
+    });
+  });
+
+  const normalizeAnalysisPayload = useCallback((payload: any) => {
+    const parsedEntries = Array.isArray(payload?.entries) ? payload.entries : [];
+    const entries = parsedEntries
+      .filter(entry => entry && typeof entry === 'object')
+      .map(entry => ({
+        ...entry,
+        id: `${entry.id || `${entry.date || Date.now()}-${entry.gameType || 'game'}`}`,
+        gameType: entry.gameType || 'quiz',
+        mode: normalizeStoredQuizModeKey(entry.mode || entry.modeKey || QUIZ_MODES[0].value),
+        graphKey: `${entry.graphKey || 'analysis:unknown'}`,
+        graphLabel: `${entry.graphLabel || entry.displayLabel || 'Analysis'}`,
+        displayLabel: `${entry.displayLabel || entry.graphLabel || 'Analysis'}`,
+        score: Number(entry.score) || 0,
+        total: Number(entry.total) || 0,
+        date: Number(entry.date) || Date.now(),
+        timeMs: Math.max(0, Number(entry.timeMs) || 0),
+        timerMinutes: normalizeLeaderboardTimerMinutes(entry.timerMinutes),
+        sessionStartedAt: Number(entry.sessionStartedAt) || null,
+        sessionElapsedMs: Math.max(0, Number(entry.sessionElapsedMs) || 0),
+        finishReason: entry.finishReason || 'complete',
+        scoreLabel: entry.scoreLabel || 'Score',
+        typemasterQueueMode: entry.typemasterQueueMode,
+        bottleneckSignature: entry.bottleneckSignature,
+        bottleneckItemCount: Number(entry.bottleneckItemCount) || 0,
+      }))
+      .sort((a, b) => a.date - b.date);
+    return {
+      enabled: Boolean(payload?.enabled),
+      sessionStartedAt: Number(payload?.sessionStartedAt) || null,
+      entries,
+    };
+  }, []);
+
+  const persistAnalysisPayload = useCallback((payload: { enabled: boolean; sessionStartedAt: number | null; entries: any[] }) => {
+    const serialized = JSON.stringify(payload);
+    void Promise.all([
+      AsyncStorage.setItem(QUIZ_ANALYSIS_STORAGE_KEY, serialized),
+      setExtensionStorageItem(QUIZ_ANALYSIS_STORAGE_KEY, serialized),
+    ]).catch(err => {
+      console.error('Failed to persist analysis data:', err);
+    });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadAnalysisData = async () => {
+      try {
+        const [stored, extensionStored] = await Promise.all([
+          AsyncStorage.getItem(QUIZ_ANALYSIS_STORAGE_KEY),
+          getExtensionStorageItem(QUIZ_ANALYSIS_STORAGE_KEY),
+        ]);
+        const source = stored || extensionStored;
+        if (!source) return;
+        const normalized = normalizeAnalysisPayload(JSON.parse(source));
+        if (cancelled) return;
+        analysisSessionStartedAtRef.current = normalized.sessionStartedAt;
+        analysisEntriesRef.current = normalized.entries;
+        setAnalysisEnabled(normalized.enabled);
+        setAnalysisSessionStartedAt(normalized.sessionStartedAt);
+        setAnalysisEntries(normalized.entries);
+      } catch (err) {
+        console.error('Failed to load analysis data:', err);
+      }
+    };
+    void loadAnalysisData();
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizeAnalysisPayload]);
+
+  useEffect(() => {
+    analysisSessionStartedAtRef.current = analysisSessionStartedAt;
+  }, [analysisSessionStartedAt]);
+
+  useEffect(() => {
+    analysisEntriesRef.current = analysisEntries;
+  }, [analysisEntries]);
+
+  useEffect(() => {
+    if (!analysisSessionStartedAt || !analysisEnabled) return;
+    const interval = setInterval(() => setAnalysisElapsedNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [analysisEnabled, analysisSessionStartedAt]);
+
   const activeFocusNoteFolder = useMemo(
     () => focusNoteFolders.find(folder => folder.id === activeFocusNoteFolderId) || focusNoteFolders[0] || null,
     [activeFocusNoteFolderId, focusNoteFolders],
@@ -1741,8 +2050,9 @@ function KanaQuizView({
   const focusLookup = useMemo(() => new Set(focusedItems.map(entry => entry.key)), [focusedItems]);
   const bottleneckLookup = useMemo(() => new Set(bottleneckItems.map(entry => entry.key)), [bottleneckItems]);
   const getFocusItemKey = useCallback((item: any, sourceMode: string) => {
+    const normalizedSourceMode = normalizeFocusSourceModeForItem(sourceMode, item);
     const idPart = item?.__focusOriginalId || item?.id || item?.kana || '';
-    return `${sourceMode}:${idPart}`;
+    return `${normalizedSourceMode}:${idPart}`;
   }, []);
   const getItemSourceMode = useCallback(
     (item: any) => {
@@ -1868,30 +2178,77 @@ function KanaQuizView({
     },
     [bottleneckDataset, engModeEnabled, focusDataset],
   );
-  const saveFocusedItems = useCallback(async (items: Array<{ key: string; sourceMode: string; item: any }>) => {
-    setFocusedItems(items);
-    await AsyncStorage.setItem(QUIZ_FOCUS_STORAGE_KEY, JSON.stringify(items));
-  }, []);
-  const saveBottleneckItems = useCallback(async (items: Array<{ key: string; sourceMode: string; item: any }>) => {
-    setBottleneckItems(items);
-    await AsyncStorage.setItem(QUIZ_BOTTLENECK_STORAGE_KEY, JSON.stringify(items));
-  }, []);
+  const normalizeFocusEntryList = useCallback(
+    (items: Array<{ key?: string; sourceMode: string; item: any }>) => {
+      const seen = new Set<string>();
+      return (Array.isArray(items) ? items : []).reduce<Array<{ key: string; sourceMode: string; item: any }>>((acc, entry) => {
+        if (!entry || !entry.item || !entry.sourceMode) return acc;
+        const item = normalizeStoredFocusItem({
+          id: entry.item.id,
+          kana: entry.item.kana,
+          answers: entry.item.answers,
+          onyomi: entry.item.onyomi,
+          kunyomi: entry.item.kunyomi,
+        }, entry.sourceMode);
+        if (!item?.kana && !item?.id) return acc;
+        const sourceMode = normalizeFocusSourceModeForItem(entry.sourceMode, item);
+        if (!sourceMode || sourceMode === 'focus' || sourceMode === 'bottleneck') return acc;
+        const key = getFocusItemKey(item, sourceMode);
+        const logicalKey = `${sourceMode}:${item.kana || item.id}`;
+        if (seen.has(key) || seen.has(logicalKey)) return acc;
+        seen.add(key);
+        seen.add(logicalKey);
+        acc.push({ key, sourceMode, item });
+        return acc;
+      }, []);
+    },
+    [getFocusItemKey],
+  );
+  const saveFocusedItems = useCallback(async (itemsOrUpdater: any) => {
+    const rawNext = typeof itemsOrUpdater === 'function'
+      ? itemsOrUpdater(focusedItemsRef.current)
+      : itemsOrUpdater;
+    const next = normalizeFocusEntryList(rawNext);
+    focusedItemsRef.current = next;
+    setFocusedItems(next);
+    await AsyncStorage.setItem(QUIZ_FOCUS_STORAGE_KEY, JSON.stringify(next));
+    return next;
+  }, [normalizeFocusEntryList]);
+  const saveBottleneckItems = useCallback(async (itemsOrUpdater: any) => {
+    const rawNext = typeof itemsOrUpdater === 'function'
+      ? itemsOrUpdater(bottleneckItemsRef.current)
+      : itemsOrUpdater;
+    const next = normalizeFocusEntryList(rawNext);
+    bottleneckItemsRef.current = next;
+    setBottleneckItems(next);
+    await AsyncStorage.setItem(QUIZ_BOTTLENECK_STORAGE_KEY, JSON.stringify(next));
+    return next;
+  }, [normalizeFocusEntryList]);
   const toggleFocusedItem = useCallback(
     async (item: any, sourceMode?: string) => {
       try {
-        const resolvedSourceMode = sourceMode || getItemSourceMode(item);
-        const key = getFocusItemKey(item, resolvedSourceMode);
+        const requestedSourceMode = sourceMode || getItemSourceMode(item);
         const plainItem = normalizeStoredFocusItem({
           id: item.__focusOriginalId || item.id,
           kana: item.kana,
           answers: Array.isArray(item.answers) ? item.answers : [],
           onyomi: Array.isArray(item.onyomi) ? item.onyomi : [],
           kunyomi: Array.isArray(item.kunyomi) ? item.kunyomi : [],
-        }, resolvedSourceMode);
-        const existing = focusedItems.some(entry => entry.key === key);
+        }, requestedSourceMode);
+        const resolvedSourceMode = normalizeFocusSourceModeForItem(requestedSourceMode, plainItem);
+        const key = getFocusItemKey(plainItem, resolvedSourceMode);
+        const matchesItem = (entry: any) =>
+          entry?.key === key ||
+          (
+            normalizeFocusSourceModeForItem(entry?.sourceMode, entry?.item) === resolvedSourceMode &&
+            entry?.item?.kana &&
+            plainItem?.kana &&
+            entry.item.kana === plainItem.kana
+          );
+        const existing = focusedItemsRef.current.some(matchesItem);
         const next = existing
-          ? focusedItems.filter(entry => entry.key !== key)
-          : [...focusedItems, { key, sourceMode: resolvedSourceMode, item: plainItem }];
+          ? focusedItemsRef.current.filter(entry => !matchesItem(entry))
+          : [...focusedItemsRef.current, { key, sourceMode: resolvedSourceMode, item: plainItem }];
         await saveFocusedItems(next);
         // Focus leaderboard session is tied to the current focus set; reset it whenever the set changes.
         setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
@@ -1901,31 +2258,40 @@ function KanaQuizView({
         console.error('Failed to toggle Focus item:', err);
       }
     },
-    [focusedItems, getFocusItemKey, getItemSourceMode, saveFocusedItems],
+    [getFocusItemKey, getItemSourceMode, saveFocusedItems],
   );
   const toggleBottleneckItem = useCallback(
     async (item: any, sourceMode?: string) => {
       try {
-        const resolvedSourceMode = sourceMode || getItemSourceMode(item);
-        const key = getFocusItemKey(item, resolvedSourceMode);
+        const requestedSourceMode = sourceMode || getItemSourceMode(item);
         const plainItem = normalizeStoredFocusItem({
           id: item.__focusOriginalId || item.id,
           kana: item.kana,
           answers: Array.isArray(item.answers) ? item.answers : [],
           onyomi: Array.isArray(item.onyomi) ? item.onyomi : [],
           kunyomi: Array.isArray(item.kunyomi) ? item.kunyomi : [],
-        }, resolvedSourceMode);
-        const existing = bottleneckItems.some(entry => entry.key === key);
+        }, requestedSourceMode);
+        const resolvedSourceMode = normalizeFocusSourceModeForItem(requestedSourceMode, plainItem);
+        const key = getFocusItemKey(plainItem, resolvedSourceMode);
+        const matchesItem = (entry: any) =>
+          entry?.key === key ||
+          (
+            normalizeFocusSourceModeForItem(entry?.sourceMode, entry?.item) === resolvedSourceMode &&
+            entry?.item?.kana &&
+            plainItem?.kana &&
+            entry.item.kana === plainItem.kana
+          );
+        const existing = bottleneckItemsRef.current.some(matchesItem);
         const next = existing
-          ? bottleneckItems.filter(entry => entry.key !== key)
-          : [...bottleneckItems, { key, sourceMode: resolvedSourceMode, item: plainItem }];
+          ? bottleneckItemsRef.current.filter(entry => !matchesItem(entry))
+          : [...bottleneckItemsRef.current, { key, sourceMode: resolvedSourceMode, item: plainItem }];
         await saveBottleneckItems(next);
         setLoadedSaveProfileId(null);
       } catch (err) {
         console.error('Failed to toggle Bottleneck item:', err);
       }
     },
-    [bottleneckItems, getFocusItemKey, getItemSourceMode, saveBottleneckItems],
+    [getFocusItemKey, getItemSourceMode, saveBottleneckItems],
   );
 
   const isJlptMode = isJlptQuizMode(quizMode);
@@ -1963,6 +2329,7 @@ function KanaQuizView({
     setQuizItems(shuffleQuiz(nextDataset));
     setAnswers({});
     setHasFinished(false);
+    quizRoundFinalizedRef.current = false;
     setFinishReason(null);
     setCompletionTimeMs(null);
   }, [engModeEnabled, quizMode]);
@@ -1991,19 +2358,8 @@ function KanaQuizView({
         if (!stored) return;
         const parsed = JSON.parse(stored);
         if (!Array.isArray(parsed)) return;
-        const cleaned = parsed
-          .filter(entry => entry && entry.item && entry.sourceMode)
-          .map(entry => ({
-            key: entry.key || `${entry.sourceMode}:${entry.item?.id || entry.item?.kana || ''}`,
-            sourceMode: entry.sourceMode,
-            item: normalizeStoredFocusItem({
-              id: entry.item.id,
-              kana: entry.item.kana,
-              answers: entry.item.answers,
-              onyomi: entry.item.onyomi,
-              kunyomi: entry.item.kunyomi,
-            }, entry.sourceMode),
-          }));
+        const cleaned = normalizeFocusEntryList(parsed);
+        focusedItemsRef.current = cleaned;
         setFocusedItems(cleaned);
         await AsyncStorage.setItem(QUIZ_FOCUS_STORAGE_KEY, JSON.stringify(cleaned));
       } catch (err) {
@@ -2011,7 +2367,7 @@ function KanaQuizView({
       }
     };
     void loadFocusedItems();
-  }, []);
+  }, [normalizeFocusEntryList]);
 
   useEffect(() => {
     const loadBottleneckItems = async () => {
@@ -2020,19 +2376,8 @@ function KanaQuizView({
         if (!stored) return;
         const parsed = JSON.parse(stored);
         if (!Array.isArray(parsed)) return;
-        const cleaned = parsed
-          .filter(entry => entry && entry.item && entry.sourceMode)
-          .map(entry => ({
-            key: entry.key || `${entry.sourceMode}:${entry.item?.id || entry.item?.kana || ''}`,
-            sourceMode: entry.sourceMode,
-            item: normalizeStoredFocusItem({
-              id: entry.item.id,
-              kana: entry.item.kana,
-              answers: entry.item.answers,
-              onyomi: entry.item.onyomi,
-              kunyomi: entry.item.kunyomi,
-            }, entry.sourceMode),
-          }));
+        const cleaned = normalizeFocusEntryList(parsed);
+        bottleneckItemsRef.current = cleaned;
         setBottleneckItems(cleaned);
         await AsyncStorage.setItem(QUIZ_BOTTLENECK_STORAGE_KEY, JSON.stringify(cleaned));
       } catch (err) {
@@ -2040,18 +2385,20 @@ function KanaQuizView({
       }
     };
     void loadBottleneckItems();
-  }, []);
+  }, [normalizeFocusEntryList]);
 
   useEffect(() => {
     if (!isFocusFamilyMode) return;
+    const nextDataset = quizMode === 'bottleneck' ? bottleneckDataset : focusDataset;
     setQuizItems(
-      shuffleQuiz(getDatasetForMode(quizMode)).map(entry => ({
+      shuffleQuiz(nextDataset).map(entry => ({
         ...entry,
       })),
     );
     setAnswers({});
     setIsRunning(false);
     setHasFinished(false);
+    quizRoundFinalizedRef.current = false;
     setFinishReason(null);
     setCompletionTimeMs(null);
     setQuizBackspaceCount(0);
@@ -2060,7 +2407,7 @@ function KanaQuizView({
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
     timerDeadlineMsRef.current = null;
-  }, [quizMode]);
+  }, [bottleneckDataset, focusDataset, isFocusFamilyMode, quizMode]);
 
   useEffect(() => {
     if (!shouldShowJlptModeControls) {
@@ -2822,10 +3169,8 @@ function KanaQuizView({
         return;
       }
 
-      const cleaned = cleanedProfile.focusItems;
-      const cleanedBottleneck = cleanedProfile.bottleneckItems || [];
-      await saveFocusedItems(cleaned);
-      await saveBottleneckItems(cleanedBottleneck);
+      const cleaned = await saveFocusedItems(cleanedProfile.focusItems);
+      const cleanedBottleneck = await saveBottleneckItems(cleanedProfile.bottleneckItems || []);
 
       const restoredFocusLeaderboard = limitLeaderboardPerMode(
         cleanedProfile.focusLeaderboard.filter(entry => isFocusModeKey(entry?.mode || '')),
@@ -2853,6 +3198,7 @@ function KanaQuizView({
         );
         setAnswers({});
         setHasFinished(false);
+        quizRoundFinalizedRef.current = false;
         setFinishReason(null);
         setCompletionTimeMs(null);
         setQuizBackspaceCount(0);
@@ -2945,6 +3291,120 @@ function KanaQuizView({
     },
     [deleteLeaderboardEntry, leaderboardScoresEnabled],
   );
+
+  const persistCurrentAnalysisState = useCallback((overrides: Partial<{ enabled: boolean; sessionStartedAt: number | null; entries: any[] }> = {}) => {
+    persistAnalysisPayload({
+      enabled: overrides.enabled ?? analysisEnabled,
+      sessionStartedAt: overrides.sessionStartedAt ?? analysisSessionStartedAtRef.current,
+      entries: overrides.entries ?? analysisEntriesRef.current,
+    });
+  }, [analysisEnabled, persistAnalysisPayload]);
+
+  const startAnalysisSessionIfNeeded = useCallback(() => {
+    if (!analysisEnabled) return null;
+    if (analysisSessionStartedAtRef.current) return analysisSessionStartedAtRef.current;
+    const startedAt = Date.now();
+    analysisSessionStartedAtRef.current = startedAt;
+    setAnalysisSessionStartedAt(startedAt);
+    setAnalysisElapsedNow(startedAt);
+    persistCurrentAnalysisState({ sessionStartedAt: startedAt });
+    return startedAt;
+  }, [analysisEnabled, persistCurrentAnalysisState]);
+
+  const setAnalysisEnabledAndPersist = useCallback((enabled: boolean) => {
+    setAnalysisEnabled(enabled);
+    persistCurrentAnalysisState({ enabled });
+  }, [persistCurrentAnalysisState]);
+
+  const resetAnalysisSession = useCallback(() => {
+    const confirmed = Platform.OS === 'web'
+      ? (typeof window !== 'undefined' ? window.confirm('Clear the current analysis session?') : false)
+      : true;
+    if (!confirmed) return;
+    analysisSessionStartedAtRef.current = null;
+    analysisEntriesRef.current = [];
+    setAnalysisSessionStartedAt(null);
+    setAnalysisEntries([]);
+    setActiveAnalysisGraphKey('');
+    setAnalysisElapsedNow(Date.now());
+    persistCurrentAnalysisState({ sessionStartedAt: null, entries: [] });
+  }, [persistCurrentAnalysisState]);
+
+  const buildAnalysisLabels = useCallback((gameType: string, modeKey: string, bottleneckSnapshot?: { itemCount: number; signature: string }, queueMode?: string, scoreType?: string) => {
+    const isBottleneck = isBottleneckModeKey(modeKey);
+    const normalizedMode = normalizeStoredQuizModeKey(modeKey);
+    const gameLabel = gameType === 'typemaster'
+      ? 'TypeMaster'
+      : gameType === 'endless'
+        ? 'Endless'
+        : 'Quiz';
+    const modeLabel = gameType === 'typemaster'
+      ? getLeaderboardModeDisplayLabel({ mode: normalizedMode, typemasterQueueMode: queueMode })
+      : getQuizModeLabel(normalizedMode);
+    const scoreKey = scoreType || 'score';
+    const bottleneckKey = isBottleneck ? `:${bottleneckSnapshot?.signature || 'empty'}` : '';
+    const queueKey = gameType === 'typemaster' ? `:${queueMode || DEFAULT_TYPEMASTER_QUEUE_MODE}` : '';
+    const graphKey = `analysis:${gameType}:${normalizedMode}:${scoreKey}${queueKey}${bottleneckKey}`;
+    const graphLabel = isBottleneck
+      ? `${gameLabel} - Bottleneck (${bottleneckSnapshot?.itemCount || 0} items, ${bottleneckSnapshot?.signature || 'empty'})`
+      : modeLabel;
+    return {
+      graphKey,
+      graphLabel,
+      displayLabel: isBottleneck ? graphLabel : modeLabel,
+    };
+  }, []);
+
+  const recordAnalysisRound = useCallback((round: {
+    gameType: 'quiz' | 'endless' | 'typemaster';
+    mode: string;
+    score: number;
+    total: number;
+    timeMs: number;
+    date: number;
+    finishReason: 'complete' | 'time' | 'stopped';
+    timerMinutes?: number;
+    scoreType?: string;
+    scoreLabel?: string;
+    typemasterQueueMode?: string;
+    items?: any[];
+  }) => {
+    if (!analysisEnabled) return;
+    const startedAt = analysisSessionStartedAtRef.current;
+    if (!startedAt) return;
+    const bottleneckSnapshot = isBottleneckModeKey(round.mode)
+      ? createAnalysisBottleneckSnapshot(round.items || getDatasetForMode(quizMode))
+      : null;
+    const labels = buildAnalysisLabels(round.gameType, round.mode, bottleneckSnapshot || undefined, round.typemasterQueueMode, round.scoreType);
+    const entry = {
+      id: `analysis-${round.date}-${round.gameType}-${createStableHash(`${round.mode}:${round.score}:${round.timeMs}:${analysisEntriesRef.current.length}`)}`,
+      sessionStartedAt: startedAt,
+      sessionElapsedMs: Math.max(0, round.date - startedAt),
+      gameType: round.gameType,
+      mode: normalizeStoredQuizModeKey(round.mode),
+      graphKey: labels.graphKey,
+      graphLabel: labels.graphLabel,
+      displayLabel: labels.displayLabel,
+      score: Math.round(Number(round.score) || 0),
+      total: Math.round(Number(round.total) || 0),
+      timeMs: Math.max(0, Number(round.timeMs) || 0),
+      date: round.date,
+      finishReason: round.finishReason,
+      timerMinutes: normalizeLeaderboardTimerMinutes(round.timerMinutes),
+      scoreType: round.scoreType,
+      scoreLabel: round.scoreLabel || 'Score',
+      typemasterQueueMode: round.typemasterQueueMode,
+      bottleneckSignature: bottleneckSnapshot?.signature,
+      bottleneckItemCount: bottleneckSnapshot?.itemCount || 0,
+    };
+    setAnalysisEntries(prev => {
+      const next = [...prev, entry].sort((a, b) => a.date - b.date);
+      analysisEntriesRef.current = next;
+      persistCurrentAnalysisState({ entries: next });
+      return next;
+    });
+    setActiveAnalysisGraphKey(prev => prev || entry.graphKey);
+  }, [analysisEnabled, buildAnalysisLabels, getDatasetForMode, persistCurrentAnalysisState, quizMode]);
 
   const calculateCorrectAnswers = useCallback(
     (answerMap: Record<string, string>) =>
@@ -3065,7 +3525,8 @@ function KanaQuizView({
 
   const finalizeQuiz = useCallback(
     (reason: 'complete' | 'time' | 'stopped', answerMap?: Record<string, string>, remainingMsSnapshot?: number) => {
-      if (hasFinished) return;
+      if (hasFinished || quizRoundFinalizedRef.current) return;
+      quizRoundFinalizedRef.current = true;
       const finalAnswers = answerMap || answers;
       const finalCorrectCount = calculateCorrectAnswers(finalAnswers);
       const finalCorrectCharCount = calculateCorrectCharacterCount(finalAnswers);
@@ -3090,6 +3551,10 @@ function KanaQuizView({
           ? calculateStudyQuizGamepoints(finalCorrectCharCount, elapsedMs, quizBackspaceCount)
           : calculateSpeedrunQuizGamepoints(finalCorrectCharCount, elapsedMs, quizBackspaceCount))
         : finalCorrectCharCount;
+      const analysisScore = leaderboardScoresEnabled ? finalGamepoints : finalCorrectCharCount;
+      const analysisTotal = leaderboardScoresEnabled
+        ? (isStudyScoreMode ? STUDY_SCORE_MAX : SPEEDRUN_SCORE_MAX)
+        : totalCharCount;
 
       setCompletionTimeMs(elapsedMs);
       setIsQuizScoreHidden(false);
@@ -3100,6 +3565,20 @@ function KanaQuizView({
       setIsQuizPaused(false);
       setFinishReason(reason);
       timerDeadlineMsRef.current = null;
+
+      recordAnalysisRound({
+        gameType: 'quiz',
+        mode: activeModeKey,
+        score: analysisScore,
+        total: analysisTotal,
+        date: now,
+        timeMs: elapsedMs,
+        finishReason: reason,
+        timerMinutes,
+        scoreType: leaderboardScoresEnabled ? (isStudyScoreMode ? 'study_points' : 'speedrun_points') : undefined,
+        scoreLabel: activeQuizLeaderboardLabel,
+        items: quizItems,
+      });
 
       if (isBottleneckMode) {
         return;
@@ -3125,7 +3604,7 @@ function KanaQuizView({
         }
       });
     },
-    [activeModeKey, activeQuizLeaderboardScoreType, answers, calculateCorrectAnswers, calculateCorrectCharacterCount, calculateSpeedrunQuizGamepoints, calculateStudyQuizGamepoints, hasFinished, isBottleneckMode, isStudyScoreMode, leaderboardScoresEnabled, quizBackspaceCount, quizItems, saveLeaderboardEntry, timerMinutes],
+    [activeModeKey, activeQuizLeaderboardLabel, activeQuizLeaderboardScoreType, answers, calculateCorrectAnswers, calculateCorrectCharacterCount, calculateSpeedrunQuizGamepoints, calculateStudyQuizGamepoints, hasFinished, isBottleneckMode, isStudyScoreMode, leaderboardScoresEnabled, quizBackspaceCount, quizItems, recordAnalysisRound, saveLeaderboardEntry, timerMinutes],
   );
 
   useEffect(() => {
@@ -3186,6 +3665,7 @@ function KanaQuizView({
     setQuizItems(shuffleQuiz(dataset));
     setAnswers({});
     setHasFinished(false);
+    quizRoundFinalizedRef.current = false;
     setFinishReason(null);
     setCompletionTimeMs(null);
     setIsQuizScoreHidden(false);
@@ -3226,6 +3706,7 @@ function KanaQuizView({
     setQuizItems(shuffleQuiz(getDatasetForMode(quizMode)));
     setAnswers({});
     setHasFinished(false);
+    quizRoundFinalizedRef.current = false;
     setFinishReason(null);
     setCompletionTimeMs(null);
     setIsQuizScoreHidden(false);
@@ -3238,7 +3719,7 @@ function KanaQuizView({
   };
 
   const stopQuiz = () => {
-    if (hasFinished) return;
+    if (hasFinished || quizRoundFinalizedRef.current || (!isRunning && !isQuizPaused)) return;
     const now = Date.now();
     const remainingMs = timerDeadlineMsRef.current
       ? Math.max(0, timerDeadlineMsRef.current - now)
@@ -3258,23 +3739,28 @@ function KanaQuizView({
       );
       return;
     }
+    startAnalysisSessionIfNeeded();
     endlessQueueRef.current = new CharacterQueue(dataset);
 
     // Initialize with 3 characters spread across the screen
     const initialChars = endlessQueueRef.current.getNext(3);
-    setEndlessVisibleChars(
-      initialChars.map((item, index) => ({
-        id: `${item.id}-${Date.now()}-${index}`,
-        item,
-        position: 100 + (index * 40), // Start off-screen to the right, spaced out
-      }))
-    );
+    const startStamp = Date.now();
+    const initialVisibleChars = initialChars.map((item, index) => ({
+      id: `${item.id}-${startStamp}-${index}`,
+      item,
+      position: 100 + (index * 40), // Start off-screen to the right, spaced out
+    }));
+    commitEndlessVisibleChars(initialVisibleChars);
+    setEndlessVisibleChars(initialVisibleChars);
 
+    setEndlessRuntime({ isRunning: true, isPaused: false, hasFinished: false, score: 0 });
+    endlessStopQueuedRef.current = false;
     setEndlessScore(0);
     setEndlessCurrentInput('');
     setEndlessIsRunning(true);
     setIsEndlessPaused(false);
     setEndlessHasFinished(false);
+    endlessRoundFinalizedRef.current = false;
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
     timerDeadlineMsRef.current = Date.now() + timerMinutes * 60 * 1000;
@@ -3285,7 +3771,7 @@ function KanaQuizView({
         endlessInputRef.current.focus();
       }
     }, 100);
-  }, [getDatasetForMode, quizMode, timerMinutes]);
+  }, [commitEndlessVisibleChars, getDatasetForMode, quizMode, setEndlessRuntime, startAnalysisSessionIfNeeded, timerMinutes]);
 
   const resetEndlessToSetup = useCallback(() => {
     if (endlessAnimationRef.current) {
@@ -3295,16 +3781,21 @@ function KanaQuizView({
     setEndlessIsRunning(false);
     setIsEndlessPaused(false);
     setEndlessHasFinished(false);
+    endlessRoundFinalizedRef.current = false;
+    setEndlessRuntime({ isRunning: false, isPaused: false, hasFinished: false, score: 0 });
+    endlessStopQueuedRef.current = false;
     setEndlessScore(0);
     setEndlessCurrentInput('');
+    commitEndlessVisibleChars([]);
     setEndlessVisibleChars([]);
     setRemainingSeconds(timerMinutes * 60);
     remainingSecondsRef.current = timerMinutes * 60;
     timerDeadlineMsRef.current = null;
-  }, [timerMinutes]);
+  }, [commitEndlessVisibleChars, setEndlessRuntime, timerMinutes]);
 
   const pauseEndlessMode = useCallback(() => {
-    if (!endlessIsRunning || endlessHasFinished) return;
+    const runtime = endlessRuntimeRef.current;
+    if (!runtime.isRunning || runtime.hasFinished) return;
     if (endlessAnimationRef.current) {
       cancelAnimationFrame(endlessAnimationRef.current);
       endlessAnimationRef.current = null;
@@ -3315,15 +3806,19 @@ function KanaQuizView({
     const nextSeconds = Math.ceil(remainingMs / 1000);
     setRemainingSeconds(nextSeconds);
     remainingSecondsRef.current = nextSeconds;
+    setEndlessRuntime({ isRunning: false, isPaused: true });
     setEndlessIsRunning(false);
     setIsEndlessPaused(true);
     timerDeadlineMsRef.current = null;
-  }, [endlessHasFinished, endlessIsRunning]);
+  }, [setEndlessRuntime]);
 
   const resumeEndlessMode = useCallback(() => {
-    if (!isEndlessPaused || endlessHasFinished) return;
+    const runtime = endlessRuntimeRef.current;
+    if (!runtime.isPaused || runtime.hasFinished) return;
     const startSeconds = remainingSecondsRef.current > 0 ? remainingSecondsRef.current : timerMinutes * 60;
     timerDeadlineMsRef.current = Date.now() + startSeconds * 1000;
+    setEndlessRuntime({ isRunning: true, isPaused: false });
+    endlessStopQueuedRef.current = false;
     setEndlessIsRunning(true);
     setIsEndlessPaused(false);
     setTimeout(() => {
@@ -3331,9 +3826,13 @@ function KanaQuizView({
         endlessInputRef.current.focus();
       }
     }, 0);
-  }, [endlessHasFinished, isEndlessPaused, timerMinutes]);
+  }, [setEndlessRuntime, timerMinutes]);
 
   const stopEndlessMode = useCallback((reason: 'time' | 'stopped' = 'stopped') => {
+    const runtime = endlessRuntimeRef.current;
+    if (runtime.hasFinished || endlessRoundFinalizedRef.current || (!runtime.isRunning && !runtime.isPaused)) return;
+    endlessRoundFinalizedRef.current = true;
+    setEndlessRuntime({ isRunning: false, isPaused: false, hasFinished: true });
     if (endlessAnimationRef.current) {
       cancelAnimationFrame(endlessAnimationRef.current);
       endlessAnimationRef.current = null;
@@ -3351,29 +3850,47 @@ function KanaQuizView({
     const completionTimeMs = reason === 'time'
       ? timerTotalMs
       : Math.max(0, Math.min(timerTotalMs, timerTotalMs - remainingMs));
+    const remainingSecondsAtFinish = reason === 'time' ? 0 : Math.ceil(remainingMs / 1000);
+    setRemainingSeconds(remainingSecondsAtFinish);
+    remainingSecondsRef.current = remainingSecondsAtFinish;
+    timerDeadlineMsRef.current = null;
+    const now = Date.now();
+    recordAnalysisRound({
+      gameType: 'endless',
+      mode: endlessModeKey,
+      score: runtime.score,
+      total: runtime.score,
+      date: now,
+      timeMs: completionTimeMs,
+      finishReason: reason,
+      timerMinutes,
+      scoreLabel: 'Characters',
+      items: getDatasetForMode(quizMode),
+    });
     void saveLeaderboardEntry({
       mode: endlessModeKey,
       timeMs: completionTimeMs,
-      score: endlessScore,
-      total: endlessScore,
-      date: Date.now(),
+      score: runtime.score,
+      total: runtime.score,
+      date: now,
       finishReason: reason,
       timerMinutes,
     });
-  }, [activeModeKey, endlessScore, saveLeaderboardEntry, timerMinutes]);
+  }, [activeModeKey, getDatasetForMode, quizMode, recordAnalysisRound, saveLeaderboardEntry, setEndlessRuntime, timerMinutes]);
 
   const handleEndlessInput = useCallback(
     (text: string) => {
-      if (!endlessIsRunning) return;
+      if (!endlessRuntimeRef.current.isRunning) return;
 
       setEndlessCurrentInput(text);
 
       // Check answer and update state in a single operation
       setEndlessVisibleChars(prev => {
         if (prev.length === 0) return prev;
+        const current = getEndlessCharsWithCurrentPositions(prev);
 
         // Get the leftmost character (the one the user should type)
-        const targetChar = prev[0];
+        const targetChar = current[0];
         const targetItem = targetChar.item;
 
         // Check if answer is correct
@@ -3391,7 +3908,9 @@ function KanaQuizView({
         if (isCorrect) {
           // Clear input and increment score
           setEndlessCurrentInput('');
-          setEndlessScore(s => s + 1);
+          const nextScore = endlessRuntimeRef.current.score + 1;
+          setEndlessRuntime({ score: nextScore });
+          setEndlessScore(nextScore);
 
           // Get new character from queue
           let newChar = null;
@@ -3399,7 +3918,7 @@ function KanaQuizView({
             const newChars = endlessQueueRef.current.getNext(1);
             if (newChars.length > 0) {
               // Find the rightmost character's position
-              const updated = prev.slice(1);
+              const updated = current.slice(1);
               const rightmostPosition = updated.length > 0
                 ? Math.max(...updated.map(c => c.position))
                 : 100;
@@ -3417,16 +3936,19 @@ function KanaQuizView({
           }
 
           // Remove first character and add new one
-          const updated = prev.slice(1);
-          return newChar ? [...updated, newChar] : updated;
+          const updated = current.slice(1);
+          endlessStopQueuedRef.current = false;
+          return commitEndlessVisibleChars(newChar ? [...updated, newChar] : updated);
         }
 
         return prev; // No change if answer is incorrect
       });
     },
     [
-      endlessIsRunning,
+      commitEndlessVisibleChars,
+      getEndlessCharsWithCurrentPositions,
       getAcceptedAnswersForItem,
+      setEndlessRuntime,
       usesJapaneseInputForItem,
     ]
   );
@@ -3441,31 +3963,26 @@ function KanaQuizView({
       return;
     }
 
-    let lastTime = Date.now();
+    let lastTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const animate = () => {
-      const now = Date.now();
-      const deltaTime = (now - lastTime) / 1000; // in seconds
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const deltaTime = Math.min((now - lastTime) / 1000, 0.05); // clamp tab-switch and GC stalls
       lastTime = now;
 
-      // Move characters to the left (scroll speed: 20 units per second)
-      setEndlessVisibleChars(prev => {
-        const updated = prev.map(char => ({
-          ...char,
-          position: char.position - 20 * deltaTime,
-        }));
+      // Move characters directly on the host nodes. React state only changes on game events.
+      const chars = endlessVisibleCharsRef.current;
+      for (let i = 0; i < chars.length; i += 1) {
+        const char = chars[i];
+        const nextPosition = (endlessPositionsRef.current[char.id] ?? char.position) - (20 * deltaTime);
+        endlessPositionsRef.current[char.id] = nextPosition;
+        applyEndlessCharPosition(char.id, nextPosition);
 
-        // Sort characters by position (leftmost first) to maintain correct order
-        const sorted = updated.sort((a, b) => a.position - b.position);
-
-        // Check if the leftmost character has passed the safe zone (failed to answer in time)
-        if (sorted.length > 0 && sorted[0].position < -10) {
-          // Game over - character reached the left edge
-          setTimeout(() => stopEndlessMode('stopped'), 0);
+        if (i === 0 && nextPosition < -10 && !endlessStopQueuedRef.current) {
+          endlessStopQueuedRef.current = true;
+          stopEndlessMode('stopped');
+          return;
         }
-
-        // Remove characters that have scrolled past the left edge (off screen completely)
-        return sorted.filter(char => char.position > -20);
-      });
+      }
 
       endlessAnimationRef.current = requestAnimationFrame(animate);
     };
@@ -3478,7 +3995,7 @@ function KanaQuizView({
         endlessAnimationRef.current = null;
       }
     };
-  }, [endlessIsRunning, stopEndlessMode]);
+  }, [applyEndlessCharPosition, endlessIsRunning, stopEndlessMode]);
 
   // Endless mode timer
   useEffect(() => {
@@ -3490,7 +4007,10 @@ function KanaQuizView({
       if (!deadlineMs) return;
 
       const remaining = Math.max(0, Math.floor((deadlineMs - now) / 1000));
-      setRemainingSeconds(remaining);
+      if (remainingSecondsRef.current !== remaining) {
+        remainingSecondsRef.current = remaining;
+        setRemainingSeconds(remaining);
+      }
 
       if (remaining === 0) {
         stopEndlessMode('time');
@@ -3512,6 +4032,7 @@ function KanaQuizView({
       );
       return;
     }
+    startAnalysisSessionIfNeeded();
     typemasterQueueRef.current = new CharacterQueue(dataset);
 
     // Initialize with 5 characters in the queue
@@ -3524,11 +4045,13 @@ function KanaQuizView({
     );
 
     setTypemasterScore(0);
+    setTypemasterRuntime({ isRunning: true, isPaused: false, hasFinished: false, score: 0 });
     setTypemasterCurrentInput('');
     setTypemasterBurstCursor(0);
     setTypemasterIsRunning(true);
     setIsTypemasterPaused(false);
     setTypemasterHasFinished(false);
+    typemasterRoundFinalizedRef.current = false;
     setTypemasterFinishReason(null);
     setLastRecordUpdate(null);
     setRemainingSeconds(timerMinutes * 60);
@@ -3542,12 +4065,14 @@ function KanaQuizView({
         typemasterInputRef.current.focus();
       }
     }, 100);
-  }, [getDatasetForMode, quizMode, timerMinutes]);
+  }, [getDatasetForMode, quizMode, setTypemasterRuntime, startAnalysisSessionIfNeeded, timerMinutes]);
 
   const resetTypemasterToSetup = useCallback(() => {
     setTypemasterIsRunning(false);
     setIsTypemasterPaused(false);
     setTypemasterHasFinished(false);
+    typemasterRoundFinalizedRef.current = false;
+    setTypemasterRuntime({ isRunning: false, isPaused: false, hasFinished: false, score: 0 });
     setTypemasterFinishReason(null);
     setLastRecordUpdate(null);
     setTypemasterScore(0);
@@ -3558,10 +4083,11 @@ function KanaQuizView({
     remainingSecondsRef.current = timerMinutes * 60;
     timerDeadlineMsRef.current = null;
     typemasterTimerWasArmedRef.current = false;
-  }, [timerMinutes]);
+  }, [setTypemasterRuntime, timerMinutes]);
 
   const pauseTypemasterMode = useCallback(() => {
-    if (!typemasterIsRunning || typemasterHasFinished) return;
+    const runtime = typemasterRuntimeRef.current;
+    if (!runtime.isRunning || runtime.hasFinished) return;
     const remainingMs = timerDeadlineMsRef.current
       ? Math.max(0, timerDeadlineMsRef.current - Date.now())
       : Math.max(0, remainingSecondsRef.current * 1000);
@@ -3569,19 +4095,22 @@ function KanaQuizView({
     typemasterTimerWasArmedRef.current = Boolean(timerDeadlineMsRef.current);
     setRemainingSeconds(nextSeconds);
     remainingSecondsRef.current = nextSeconds;
+    setTypemasterRuntime({ isRunning: false, isPaused: true });
     setTypemasterIsRunning(false);
     setIsTypemasterPaused(true);
     timerDeadlineMsRef.current = null;
-  }, [typemasterHasFinished, typemasterIsRunning]);
+  }, [setTypemasterRuntime]);
 
   const resumeTypemasterMode = useCallback(() => {
-    if (!isTypemasterPaused || typemasterHasFinished) return;
+    const runtime = typemasterRuntimeRef.current;
+    if (!runtime.isPaused || runtime.hasFinished) return;
     if (typemasterTimerWasArmedRef.current) {
       const startSeconds = remainingSecondsRef.current > 0 ? remainingSecondsRef.current : timerMinutes * 60;
       timerDeadlineMsRef.current = Date.now() + startSeconds * 1000;
     } else {
       timerDeadlineMsRef.current = null;
     }
+    setTypemasterRuntime({ isRunning: true, isPaused: false });
     setTypemasterIsRunning(true);
     setIsTypemasterPaused(false);
     setTimeout(() => {
@@ -3589,9 +4118,13 @@ function KanaQuizView({
         typemasterInputRef.current.focus();
       }
     }, 0);
-  }, [isTypemasterPaused, timerMinutes, typemasterHasFinished]);
+  }, [setTypemasterRuntime, timerMinutes]);
 
   const stopTypemasterMode = useCallback((reason: 'time' | 'stopped' = 'stopped') => {
+    const runtime = typemasterRuntimeRef.current;
+    if (runtime.hasFinished || typemasterRoundFinalizedRef.current || (!runtime.isRunning && !runtime.isPaused)) return;
+    typemasterRoundFinalizedRef.current = true;
+    setTypemasterRuntime({ isRunning: false, isPaused: false, hasFinished: true });
     setTypemasterIsRunning(false);
     setIsTypemasterPaused(false);
     setTypemasterHasFinished(true);
@@ -3606,25 +4139,44 @@ function KanaQuizView({
     const completionTimeMs = reason === 'time'
       ? timerTotalMs
       : Math.max(0, Math.min(timerTotalMs, timerTotalMs - remainingMs));
+    const remainingSecondsAtFinish = reason === 'time' ? 0 : Math.ceil(remainingMs / 1000);
+    setRemainingSeconds(remainingSecondsAtFinish);
+    remainingSecondsRef.current = remainingSecondsAtFinish;
+    timerDeadlineMsRef.current = null;
+    typemasterTimerWasArmedRef.current = false;
+    const now = Date.now();
     const entry = {
       mode: typemasterModeKey,
       timeMs: completionTimeMs,
-      score: typemasterScore,
-      total: typemasterScore,
-      date: Date.now(),
+      score: runtime.score,
+      total: runtime.score,
+      date: now,
       finishReason: reason,
       timerMinutes,
       typemasterQueueMode,
     };
+    recordAnalysisRound({
+      gameType: 'typemaster',
+      mode: typemasterModeKey,
+      score: runtime.score,
+      total: runtime.score,
+      date: now,
+      timeMs: completionTimeMs,
+      finishReason: reason,
+      timerMinutes,
+      typemasterQueueMode,
+      scoreLabel: 'Characters',
+      items: getDatasetForMode(quizMode),
+    });
     saveLeaderboardEntry(entry).then(result => {
       if (result) {
         setLastRecordUpdate({ mode: entry.mode, ...result });
       }
     });
-  }, [activeModeKey, typemasterQueueMode, typemasterScore, saveLeaderboardEntry, timerMinutes]);
+  }, [activeModeKey, getDatasetForMode, quizMode, recordAnalysisRound, saveLeaderboardEntry, setTypemasterRuntime, timerMinutes, typemasterQueueMode]);
 
   const armTypemasterTimer = useCallback(() => {
-    if (!typemasterIsRunning || timerDeadlineMsRef.current) return;
+    if (!typemasterRuntimeRef.current.isRunning || timerDeadlineMsRef.current) return;
     const startSeconds = remainingSecondsRef.current > 0 ? remainingSecondsRef.current : timerMinutes * 60;
     timerDeadlineMsRef.current = Date.now() + startSeconds * 1000;
     typemasterTimerWasArmedRef.current = true;
@@ -3632,11 +4184,11 @@ function KanaQuizView({
     const nextRemaining = Math.max(0, Math.ceil((timerDeadlineMsRef.current - Date.now()) / 1000));
     setRemainingSeconds(nextRemaining);
     remainingSecondsRef.current = nextRemaining;
-  }, [timerMinutes, typemasterIsRunning]);
+  }, [timerMinutes]);
 
   const handleTypemasterInput = useCallback(
     (text: string) => {
-      if (!typemasterIsRunning) return;
+      if (!typemasterRuntimeRef.current.isRunning) return;
 
       if (!timerDeadlineMsRef.current && text.length > 0) {
         armTypemasterTimer();
@@ -3670,7 +4222,9 @@ function KanaQuizView({
         if (isCorrect) {
           // Clear input and increment score
           setTypemasterCurrentInput('');
-          setTypemasterScore(s => s + 1);
+          const nextScore = typemasterRuntimeRef.current.score + 1;
+          setTypemasterRuntime({ score: nextScore });
+          setTypemasterScore(nextScore);
 
           if (typemasterQueueMode === 'burst') {
             const nextCursor = typemasterBurstCursor + 1;
@@ -3707,12 +4261,12 @@ function KanaQuizView({
       });
     },
     [
-      typemasterIsRunning,
       typemasterQueueMode,
       typemasterBurstCursor,
       getAcceptedAnswersForItem,
       usesJapaneseInputForItem,
       armTypemasterTimer,
+      setTypemasterRuntime,
     ]
   );
 
@@ -3726,7 +4280,10 @@ function KanaQuizView({
       if (!deadlineMs) return;
 
       const remaining = Math.max(0, Math.floor((deadlineMs - now) / 1000));
-      setRemainingSeconds(remaining);
+      if (remainingSecondsRef.current !== remaining) {
+        remainingSecondsRef.current = remaining;
+        setRemainingSeconds(remaining);
+      }
 
       if (remaining === 0) {
         stopTypemasterMode('time');
@@ -3853,14 +4410,17 @@ function KanaQuizView({
           remainingSecondsRef.current = startSeconds;
         }
         timerDeadlineMsRef.current = now + startSeconds * 1000;
+        startAnalysisSessionIfNeeded();
         setIsRunning(true);
       }
       setAnswers(prev => {
+        if (prev[id] === nextText) return prev;
         const next = { ...prev, [id]: nextText };
-        if (!hasFinished && isCorrectAnswer(id, nextText)) {
+        const currentAnswerIsCorrect = !hasFinished && isCorrectAnswer(id, nextText);
+        if (currentAnswerIsCorrect) {
           focusNextAnswer(id, next);
         }
-        if (!hasFinished) {
+        if (currentAnswerIsCorrect) {
           const allCorrect = quizItems.every(item => isCorrectAnswer(item.id, next[item.id] || ''));
           if (allCorrect) {
             finalizeQuiz('complete', next);
@@ -3869,7 +4429,7 @@ function KanaQuizView({
         return next;
       });
     },
-    [finalizeQuiz, focusNextAnswer, hasFinished, isCorrectAnswer, isJlptJapaneseInputMode, isQuizPaused, isRunning, quizItems, timerMinutes],
+    [finalizeQuiz, focusNextAnswer, hasFinished, isCorrectAnswer, isJlptJapaneseInputMode, isQuizPaused, isRunning, quizItems, startAnalysisSessionIfNeeded, timerMinutes],
   );
 
   const columns = useMemo(() => {
@@ -3968,9 +4528,12 @@ function KanaQuizView({
     ? getHintTextForItem(typemasterCurrentTarget.item)
     : 'Start to begin...';
   const quizPromptHidden = quizView === 'quiz' && isQuizPaused && !hasFinished;
-  const quizPrimaryActionLabel = isRunning ? 'Pause Quiz' : isQuizPaused ? 'Resume Quiz' : 'Play Quiz';
-  const endlessPrimaryActionLabel = endlessIsRunning ? 'Pause Endless' : isEndlessPaused ? 'Resume Endless' : 'Play Endless';
-  const typemasterPrimaryActionLabel = typemasterIsRunning ? 'Pause TypeMaster' : isTypemasterPaused ? 'Resume TypeMaster' : 'Play TypeMaster';
+  const canStopQuiz = (isRunning || isQuizPaused) && !hasFinished;
+  const canStopEndless = (endlessIsRunning || isEndlessPaused) && !endlessHasFinished;
+  const canStopTypemaster = (typemasterIsRunning || isTypemasterPaused) && !typemasterHasFinished;
+  const quizPrimaryActionLabel = hasFinished ? 'Play Again' : isRunning ? 'Pause Quiz' : isQuizPaused ? 'Resume Quiz' : 'Play Quiz';
+  const endlessPrimaryActionLabel = endlessHasFinished ? 'Play Again' : endlessIsRunning ? 'Pause Endless' : isEndlessPaused ? 'Resume Endless' : 'Play Endless';
+  const typemasterPrimaryActionLabel = typemasterHasFinished ? 'Play Again' : typemasterIsRunning ? 'Pause TypeMaster' : isTypemasterPaused ? 'Resume TypeMaster' : 'Play TypeMaster';
   const isTimerAdjustmentLocked =
     isRunning ||
     isQuizPaused ||
@@ -4083,6 +4646,170 @@ function KanaQuizView({
       setLeaderboardTimerFilter('all');
     }
   }, [currentLeaderboardTimerOptions, leaderboardTimerFilter]);
+  const analysisGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; entries: any[] }>();
+    const visibleAnalysisEntries = analysisEntries.filter(entry =>
+      analysisGameType === 'typemaster'
+        ? entry.gameType === 'typemaster'
+        : entry.gameType !== 'typemaster',
+    );
+    visibleAnalysisEntries.forEach(entry => {
+      const key = entry.graphKey || 'analysis:unknown';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          label: entry.graphLabel || entry.displayLabel || 'Analysis',
+          entries: [],
+        });
+      }
+      groups.get(key)?.entries.push(entry);
+    });
+    return Array.from(groups.values())
+      .map(group => ({
+        ...group,
+        entries: group.entries.sort((a, b) => a.date - b.date),
+      }))
+      .sort((a, b) => {
+        const latestA = a.entries[a.entries.length - 1]?.date || 0;
+        const latestB = b.entries[b.entries.length - 1]?.date || 0;
+        return latestB - latestA;
+      });
+  }, [analysisEntries, analysisGameType]);
+  const activeAnalysisGroup = analysisGroups.find(group => group.key === activeAnalysisGraphKey) || analysisGroups[0] || null;
+  const analysisSessionElapsedMs = analysisSessionStartedAt
+    ? Math.max(0, analysisElapsedNow - analysisSessionStartedAt)
+    : 0;
+  const analysisChart = useMemo(() => {
+    const entries = activeAnalysisGroup?.entries || [];
+    const width = 760;
+    const height = 300;
+    const padLeft = 56;
+    const padRight = 22;
+    const padTop = 24;
+    const padBottom = 44;
+    const plotWidth = width - padLeft - padRight;
+    const plotHeight = height - padTop - padBottom;
+    const maxElapsed = Math.max(1, ...entries.map(entry => Number(entry.sessionElapsedMs) || 0));
+    const maxScore = Math.max(1, ...entries.map(entry => Number(entry.score) || 0));
+    const scaledMaxScore = Math.ceil(maxScore * 1.08);
+    const points = entries.map((entry, index) => {
+      const x = entries.length === 1
+        ? padLeft + plotWidth / 2
+        : padLeft + ((Number(entry.sessionElapsedMs) || 0) / maxElapsed) * plotWidth;
+      const y = padTop + plotHeight - ((Number(entry.score) || 0) / scaledMaxScore) * plotHeight;
+      return { entry, index, x, y };
+    });
+    return {
+      width,
+      height,
+      padLeft,
+      padTop,
+      padBottom,
+      plotWidth,
+      plotHeight,
+      maxElapsed,
+      scaledMaxScore,
+      points,
+      polyline: points.map(point => `${point.x},${point.y}`).join(' '),
+    };
+  }, [activeAnalysisGroup]);
+
+  useEffect(() => {
+    if (!analysisGroups.length) {
+      if (activeAnalysisGraphKey) setActiveAnalysisGraphKey('');
+      return;
+    }
+    if (!activeAnalysisGraphKey || !analysisGroups.some(group => group.key === activeAnalysisGraphKey)) {
+      setActiveAnalysisGraphKey(analysisGroups[0].key);
+    }
+  }, [activeAnalysisGraphKey, analysisGroups]);
+
+  const exportActiveAnalysisGraph = useCallback(() => {
+    if (!activeAnalysisGroup || activeAnalysisGroup.entries.length === 0) {
+      Alert.alert('Analysis export', 'No analysis graph is available to export.');
+      return;
+    }
+    if (Platform.OS !== 'web' || typeof document === 'undefined' || typeof window === 'undefined') {
+      Alert.alert('Analysis export', 'Graph export is available on web.');
+      return;
+    }
+    const width = 900;
+    const height = 460;
+    const padLeft = 70;
+    const padTop = 76;
+    const padRight = 34;
+    const padBottom = 62;
+    const plotWidth = width - padLeft - padRight;
+    const plotHeight = height - padTop - padBottom;
+    const entries = activeAnalysisGroup.entries;
+    const maxElapsed = Math.max(1, ...entries.map(entry => Number(entry.sessionElapsedMs) || 0));
+    const maxScore = Math.max(1, ...entries.map(entry => Number(entry.score) || 0));
+    const scaledMaxScore = Math.ceil(maxScore * 1.08);
+    const points = entries.map(entry => {
+      const x = entries.length === 1
+        ? padLeft + plotWidth / 2
+        : padLeft + ((Number(entry.sessionElapsedMs) || 0) / maxElapsed) * plotWidth;
+      const y = padTop + plotHeight - ((Number(entry.score) || 0) / scaledMaxScore) * plotHeight;
+      return { entry, x, y };
+    });
+    const pointString = points.map(point => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
+    const circles = points.map(point =>
+      `<circle cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="4.5" fill="#38bdf8" stroke="#0f172a" stroke-width="2"><title>${escapeXml(`${point.entry.scoreLabel}: ${point.entry.score} at ${formatAnalysisDuration(point.entry.sessionElapsedMs)}`)}</title></circle>`,
+    ).join('');
+    const labels = points.map((point, index) => index % Math.max(1, Math.ceil(points.length / 8)) === 0
+      ? `<text x="${point.x.toFixed(2)}" y="${height - 22}" fill="#94a3b8" font-size="12" text-anchor="middle">${escapeXml(formatAnalysisDuration(point.entry.sessionElapsedMs))}</text>`
+      : '').join('');
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="100%" height="100%" fill="#0b1220"/>
+  <text x="${padLeft}" y="34" fill="#f8fafc" font-size="22" font-weight="700">${escapeXml(activeAnalysisGroup.label)}</text>
+  <text x="${padLeft}" y="56" fill="#94a3b8" font-size="13">${escapeXml(`${entries.length} runs | exported ${new Date().toLocaleString()}`)}</text>
+  <line x1="${padLeft}" y1="${padTop}" x2="${padLeft}" y2="${padTop + plotHeight}" stroke="#334155" stroke-width="1"/>
+  <line x1="${padLeft}" y1="${padTop + plotHeight}" x2="${padLeft + plotWidth}" y2="${padTop + plotHeight}" stroke="#334155" stroke-width="1"/>
+  <text x="22" y="${padTop + 6}" fill="#94a3b8" font-size="12">${scaledMaxScore}</text>
+  <text x="22" y="${padTop + plotHeight}" fill="#94a3b8" font-size="12">0</text>
+  <polyline points="${pointString}" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  ${circles}
+  ${labels}
+</svg>`;
+    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const image = document.createElement('img');
+    image.onload = () => {
+      try {
+        const scale = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+        const context = canvas.getContext('2d');
+        if (!context) {
+          Alert.alert('Analysis export', 'Could not prepare JPEG export.');
+          return;
+        }
+        context.scale(scale, scale);
+        context.fillStyle = '#0b1220';
+        context.fillRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+        const anchor = document.createElement('a');
+        anchor.href = canvas.toDataURL('image/jpeg', 0.94);
+        anchor.download = `tensai-analysis-${createStableHash(activeAnalysisGroup.key)}.jpeg`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+      } catch (error) {
+        console.error('Failed to export analysis graph as JPEG:', error);
+        Alert.alert('Analysis export', 'Could not export the graph as JPEG.');
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      Alert.alert('Analysis export', 'Could not render the graph for JPEG export.');
+    };
+    image.src = url;
+  }, [activeAnalysisGroup]);
+
   const activeJlptN4Variant = JLPT_N4_VARIANT_VALUES.includes(quizMode) ? quizMode : JLPT_N4_VARIANT_VALUES[0];
   const shouldShowLeaderboardGamepoints = leaderboardScoresEnabled;
   const renderLeaderboardTimerFilter = (options: Array<{ value: string; label: string }>, compact = false) => {
@@ -4235,6 +4962,12 @@ function KanaQuizView({
     setTypemasterIsRunning(false);
     setIsTypemasterPaused(false);
     setHasFinished(false);
+    quizRoundFinalizedRef.current = false;
+    endlessRoundFinalizedRef.current = false;
+    typemasterRoundFinalizedRef.current = false;
+    setEndlessRuntime({ isRunning: false, isPaused: false, hasFinished: false });
+    setTypemasterRuntime({ isRunning: false, isPaused: false, hasFinished: false });
+    endlessStopQueuedRef.current = false;
     setFinishReason(null);
     setCompletionTimeMs(null);
     setQuizBackspaceCount(0);
@@ -4318,7 +5051,7 @@ function KanaQuizView({
             >
               <PencilNoteIcon active={isFocusNotesOpen} />
             </Pressable>
-            <Text style={styles.quizNavVersion}>v1.35</Text>
+            <Text style={styles.quizNavVersion}>v1.4</Text>
           </View>
         </View>
 
@@ -4602,6 +5335,7 @@ function KanaQuizView({
                           setIsRunning(false);
                           setIsQuizPaused(false);
                           setHasFinished(false);
+                          quizRoundFinalizedRef.current = false;
                           setFinishReason(null);
                           setCompletionTimeMs(null);
                           setLastRecordUpdate(null);
@@ -4649,6 +5383,8 @@ function KanaQuizView({
           ) : null}
           {quizView === 'leaderboard' ? (
             renderTimerAdjuster(formatTimer(timerMinutes * 60))
+          ) : quizView === 'analysis' ? (
+            null
           ) : (
             <>
               <Pressable
@@ -4679,24 +5415,32 @@ function KanaQuizView({
                   <>
                     <Pressable
                       style={styles.quizPlayButton}
-                      onPress={endlessIsRunning ? pauseEndlessMode : isEndlessPaused ? resumeEndlessMode : startEndlessMode}
+                      onPress={endlessIsRunning ? pauseEndlessMode : isEndlessPaused ? resumeEndlessMode : endlessHasFinished ? resetEndlessToSetup : startEndlessMode}
                     >
                       <Text style={styles.quizPlayButtonLabel}>{endlessPrimaryActionLabel}</Text>
                     </Pressable>
-                    <Pressable style={styles.quizStopButton} onPress={() => stopEndlessMode('stopped')}>
-                      <Text style={styles.quizStopButtonLabel}>Stop</Text>
+                    <Pressable
+                      style={[styles.quizStopButton, !canStopEndless && styles.quizStopButtonDisabled]}
+                      onPress={() => stopEndlessMode('stopped')}
+                      disabled={!canStopEndless}
+                    >
+                      <Text style={[styles.quizStopButtonLabel, !canStopEndless && styles.quizStopButtonLabelDisabled]}>Stop</Text>
                     </Pressable>
                   </>
                 ) : quizView === 'typemaster' ? (
                   <>
                     <Pressable
                       style={styles.quizPlayButton}
-                      onPress={typemasterIsRunning ? pauseTypemasterMode : isTypemasterPaused ? resumeTypemasterMode : startTypemasterMode}
+                      onPress={typemasterIsRunning ? pauseTypemasterMode : isTypemasterPaused ? resumeTypemasterMode : typemasterHasFinished ? resetTypemasterToSetup : startTypemasterMode}
                     >
                       <Text style={styles.quizPlayButtonLabel}>{typemasterPrimaryActionLabel}</Text>
                     </Pressable>
-                    <Pressable style={styles.quizStopButton} onPress={() => stopTypemasterMode('stopped')}>
-                      <Text style={styles.quizStopButtonLabel}>Stop</Text>
+                    <Pressable
+                      style={[styles.quizStopButton, !canStopTypemaster && styles.quizStopButtonDisabled]}
+                      onPress={() => stopTypemasterMode('stopped')}
+                      disabled={!canStopTypemaster}
+                    >
+                      <Text style={[styles.quizStopButtonLabel, !canStopTypemaster && styles.quizStopButtonLabelDisabled]}>Stop</Text>
                     </Pressable>
                   </>
                 ) : (
@@ -4707,8 +5451,12 @@ function KanaQuizView({
                     >
                       <Text style={styles.quizPlayButtonLabel}>{quizPrimaryActionLabel}</Text>
                     </Pressable>
-                    <Pressable style={styles.quizStopButton} onPress={stopQuiz}>
-                      <Text style={styles.quizStopButtonLabel}>Stop</Text>
+                    <Pressable
+                      style={[styles.quizStopButton, !canStopQuiz && styles.quizStopButtonDisabled]}
+                      onPress={stopQuiz}
+                      disabled={!canStopQuiz}
+                    >
+                      <Text style={[styles.quizStopButtonLabel, !canStopQuiz && styles.quizStopButtonLabelDisabled]}>Stop</Text>
                     </Pressable>
                   </>
                 )}
@@ -5153,10 +5901,19 @@ function KanaQuizView({
                   {endlessVisibleChars.map(char => (
                     <View
                       key={char.id}
+                      ref={node => {
+                        if (node) {
+                          endlessCharRefs.current[char.id] = node;
+                          applyEndlessCharPosition(char.id, endlessPositionsRef.current[char.id] ?? char.position);
+                        } else {
+                          delete endlessCharRefs.current[char.id];
+                        }
+                      }}
                       style={{
                         position: 'absolute',
                         left: `${char.position}%`,
                         top: '50%',
+                        willChange: 'left',
                         transform: [{ translateY: -40 }],
                       }}
                     >
@@ -5233,6 +5990,188 @@ function KanaQuizView({
                     placeholderTextColor="#64748b"
                   />
                 </View>
+              </View>
+            )}
+          </View>
+        ) : quizView === 'analysis' ? (
+          <View style={styles.quizFinishCard}>
+            <View style={[styles.quizFinishHeader, styles.quizLeaderboardTopHeader]}>
+              <View style={styles.quizLeaderboardHeaderText}>
+                <Text style={styles.quizFinishTitle}>Analysis</Text>
+                <Text style={styles.quizFinishSubtitle}>
+                  {analysisEnabled
+                    ? analysisSessionStartedAt
+                      ? `Session time ${formatAnalysisDuration(analysisSessionElapsedMs)}`
+                      : 'Analysis armed. First played round starts the session timer.'
+                    : 'Analysis paused.'}
+                </Text>
+              </View>
+              <View style={styles.analysisHeaderActions}>
+                <View style={styles.quizLeaderboardToolbarGroup}>
+                  {LEADERBOARD_GAME_OPTIONS.map(option =>
+                    renderLeaderboardToolbarButton(
+                      `analysis-game-${option.value}`,
+                      option.label,
+                      option.value === analysisGameType,
+                      () => setAnalysisGameType(option.value),
+                    ),
+                  )}
+                </View>
+                <Pressable
+                  style={[styles.analysisToggleButton, analysisEnabled && styles.analysisToggleButtonActive]}
+                  onPress={() => setAnalysisEnabledAndPersist(!analysisEnabled)}
+                >
+                  <Text style={[styles.analysisToggleButtonLabel, analysisEnabled && styles.analysisToggleButtonLabelActive]}>
+                    {analysisEnabled ? 'Analysis On' : 'Analysis Off'}
+                  </Text>
+                </Pressable>
+                <Pressable style={styles.quizLeaderboardToolbarButton} onPress={exportActiveAnalysisGraph}>
+                  <Text style={styles.quizLeaderboardToolbarButtonLabel}>Export JPEG</Text>
+                </Pressable>
+                <Pressable style={styles.quizLeaderboardToolbarButton} onPress={resetAnalysisSession}>
+                  <Text style={styles.quizLeaderboardToolbarButtonLabel}>Reset</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.analysisSummaryGrid}>
+              <View style={styles.quizFinishStat}>
+                <Text style={styles.quizFinishStatLabel}>Runs Logged</Text>
+                <Text style={styles.quizFinishStatValue}>{analysisEntries.length}</Text>
+              </View>
+              <View style={styles.quizFinishStat}>
+                <Text style={styles.quizFinishStatLabel}>Graphs</Text>
+                <Text style={styles.quizFinishStatValue}>{analysisGroups.length}</Text>
+              </View>
+              <View style={styles.quizFinishStat}>
+                <Text style={styles.quizFinishStatLabel}>Session</Text>
+                <Text style={styles.quizFinishStatValue}>
+                  {analysisSessionStartedAt ? formatAnalysisDuration(analysisSessionElapsedMs) : '0:00'}
+                </Text>
+              </View>
+            </View>
+
+            {analysisGroups.length > 0 ? (
+              <>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.analysisGraphTabsScroll}
+                  contentContainerStyle={styles.analysisGraphTabs}
+                >
+                  {analysisGroups.map(group => {
+                    const selected = group.key === activeAnalysisGroup?.key;
+                    return (
+                      <Pressable
+                        key={group.key}
+                        style={[styles.analysisGraphTab, selected && styles.analysisGraphTabActive]}
+                        onPress={() => setActiveAnalysisGraphKey(group.key)}
+                      >
+                        <Text style={[styles.analysisGraphTabLabel, selected && styles.analysisGraphTabLabelActive]} numberOfLines={1}>
+                          {group.label}
+                        </Text>
+                        <Text style={styles.analysisGraphTabMeta}>{group.entries.length} runs</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={styles.analysisChartPanel}>
+                  <View style={styles.analysisChartHeader}>
+                    <Text style={styles.quizLeaderboardTitle}>{activeAnalysisGroup?.label || 'Analysis Graph'}</Text>
+                    <Text style={styles.analysisChartMeta}>
+                      {activeAnalysisGroup?.entries.length || 0} runs | max {analysisChart.scaledMaxScore}
+                    </Text>
+                  </View>
+                  <Svg
+                    width="100%"
+                    height={analysisChart.height}
+                    viewBox={`0 0 ${analysisChart.width} ${analysisChart.height}`}
+                  >
+                    <Line
+                      x1={analysisChart.padLeft}
+                      y1={analysisChart.padTop}
+                      x2={analysisChart.padLeft}
+                      y2={analysisChart.padTop + analysisChart.plotHeight}
+                      stroke="#334155"
+                      strokeWidth="1"
+                    />
+                    <Line
+                      x1={analysisChart.padLeft}
+                      y1={analysisChart.padTop + analysisChart.plotHeight}
+                      x2={analysisChart.padLeft + analysisChart.plotWidth}
+                      y2={analysisChart.padTop + analysisChart.plotHeight}
+                      stroke="#334155"
+                      strokeWidth="1"
+                    />
+                    {[0.25, 0.5, 0.75].map(mark => (
+                      <Line
+                        key={`analysis-grid-${mark}`}
+                        x1={analysisChart.padLeft}
+                        y1={analysisChart.padTop + analysisChart.plotHeight * mark}
+                        x2={analysisChart.padLeft + analysisChart.plotWidth}
+                        y2={analysisChart.padTop + analysisChart.plotHeight * mark}
+                        stroke="#1e293b"
+                        strokeWidth="1"
+                      />
+                    ))}
+                    <SvgText x={10} y={analysisChart.padTop + 6} fill="#94a3b8" fontSize="12">
+                      {analysisChart.scaledMaxScore}
+                    </SvgText>
+                    <SvgText x={22} y={analysisChart.padTop + analysisChart.plotHeight} fill="#94a3b8" fontSize="12">
+                      0
+                    </SvgText>
+                    {analysisChart.polyline ? (
+                      <Polyline
+                        points={analysisChart.polyline}
+                        fill="none"
+                        stroke="#38bdf8"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    ) : null}
+                    {analysisChart.points.map(point => (
+                      <Circle
+                        key={point.entry.id}
+                        cx={point.x}
+                        cy={point.y}
+                        r="5"
+                        fill="#38bdf8"
+                        stroke="#0f172a"
+                        strokeWidth="2"
+                      />
+                    ))}
+                    {analysisChart.points.map((point, index) => (
+                      index % Math.max(1, Math.ceil(analysisChart.points.length / 5)) === 0 ? (
+                        <SvgText
+                          key={`analysis-label-${point.entry.id}`}
+                          x={point.x}
+                          y={analysisChart.height - 12}
+                          fill="#94a3b8"
+                          fontSize="11"
+                          textAnchor="middle"
+                        >
+                          {formatAnalysisDuration(point.entry.sessionElapsedMs)}
+                        </SvgText>
+                      ) : null
+                    ))}
+                  </Svg>
+                  <View style={styles.analysisRunList}>
+                    {(activeAnalysisGroup?.entries || []).slice(-8).reverse().map(entry => (
+                      <View key={entry.id} style={styles.analysisRunRow}>
+                        <Text style={styles.analysisRunLabel} numberOfLines={1}>{entry.displayLabel}</Text>
+                        <Text style={styles.analysisRunValue}>{entry.score.toLocaleString()}</Text>
+                        <Text style={styles.analysisRunMeta}>{formatAnalysisDuration(entry.sessionElapsedMs)}</Text>
+                        <Text style={styles.analysisRunMeta}>{formatMilliseconds(entry.timeMs)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View style={styles.quizFinishLeaderboardPanelWide}>
+                <Text style={styles.quizLeaderboardEmpty}>No analysis runs logged yet.</Text>
               </View>
             )}
           </View>
