@@ -44,7 +44,7 @@ export const JLPT_N3_KANJI_DETAILS: Record<string, { readings: string[]; meaning
   権: { readings: ['ken'], meanings: ['rights', 'authority', 'power'] },
   支: { readings: ['shi', 'sasa'], meanings: ['support', 'branch', 'sustain', 'prop up'] },
   報: { readings: ['hou', 'muku'], meanings: ['news', 'report', 'reward', 'retribution'] },
-  済: { readings: ['sai', 'su'], meanings: ['come to an end', 'settle', 'finish', 'settle (debt, etc.)'] },
+  済: { readings: ['sai', 'su', 'zumi', 'zai'], meanings: ['come to an end', 'settle', 'finish', 'settle (debt, etc.)'] },
   活: { readings: ['katsu', 'i'], meanings: ['lively', 'active', 'life'] },
   原: { readings: ['gen', 'hara'], meanings: ['original', 'fundamental', 'field', 'meadow'] },
   共: { readings: ['kyou', 'tomo'], meanings: ['together', 'both', 'jointly'] },

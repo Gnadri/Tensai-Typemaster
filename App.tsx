@@ -16,6 +16,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Line, Path, Polyline, Text as SvgText } from 'react-native-svg';
 import { styles } from './mobile/src/styles/appStyles';
 import { JLPT_N3_KANJI_DETAILS, JLPT_N3_KANJI_SOURCE } from './mobile/src/data/jlpt_n3_kanji';
+import { JLPT_N2_KANJI_DETAILS, JLPT_N2_KANJI_SOURCE } from './mobile/src/data/jlpt_n2_kanji';
+import {
+  JLPT_N1_1_KANJI_SOURCE,
+  JLPT_N1_2_KANJI_SOURCE,
+  JLPT_N1_KANJI_DETAILS,
+  JLPT_N1_KANJI_SOURCE_PART_3,
+  JLPT_N1_KANJI_SOURCE_PART_4,
+  JLPT_N1_KANJI_SOURCE_PART_5,
+  JLPT_N1_KANJI_SOURCE_PART_6,
+  JLPT_N1_KANJI_SOURCE_PART_7,
+  JLPT_N1_KANJI_SOURCE_PART_8,
+  JLPT_N1_KANJI_SOURCE_PART_9,
+  JLPT_N1_KANJI_SOURCE_PART_10,
+} from './mobile/src/data/jlpt_n1_kanji';
 import { JOYO_KANJI_READING_LOOKUP } from './mobile/src/data/joyo_kanji_readings';
 import {
   buildFocusNoteFolderPayload,
@@ -838,6 +852,37 @@ const JLPT_N3_4_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N3_4_KANJI_SOURCE, JLPT_N3_
 const JLPT_N3_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
   Object.entries(JLPT_N3_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
 );
+const JLPT_N2_KANJI_SOURCE_PARTS = (() => {
+  const allKanji = JLPT_N2_KANJI_SOURCE.split(/\s+/).filter(Boolean);
+  const partSize = Math.ceil(allKanji.length / 4);
+  return Array.from({ length: 4 }, (_, index) =>
+    allKanji.slice(index * partSize, (index + 1) * partSize).join(' '),
+  );
+})();
+const JLPT_N2_1_KANJI_SOURCE = JLPT_N2_KANJI_SOURCE_PARTS[0];
+const JLPT_N2_2_KANJI_SOURCE = JLPT_N2_KANJI_SOURCE_PARTS[1];
+const JLPT_N2_3_KANJI_SOURCE = JLPT_N2_KANJI_SOURCE_PARTS[2];
+const JLPT_N2_4_KANJI_SOURCE = JLPT_N2_KANJI_SOURCE_PARTS[3];
+const JLPT_N2_1_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N2_1_KANJI_SOURCE, JLPT_N2_KANJI_DETAILS, 'n2_1');
+const JLPT_N2_2_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N2_2_KANJI_SOURCE, JLPT_N2_KANJI_DETAILS, 'n2_2');
+const JLPT_N2_3_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N2_3_KANJI_SOURCE, JLPT_N2_KANJI_DETAILS, 'n2_3');
+const JLPT_N2_4_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N2_4_KANJI_SOURCE, JLPT_N2_KANJI_DETAILS, 'n2_4');
+const JLPT_N2_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
+  Object.entries(JLPT_N2_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
+);
+const JLPT_N1_1_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N1_1_KANJI_SOURCE, JLPT_N1_KANJI_DETAILS, 'n1_1');
+const JLPT_N1_2_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N1_2_KANJI_SOURCE, JLPT_N1_KANJI_DETAILS, 'n1_2');
+const JLPT_N1_3_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N1_KANJI_SOURCE_PART_3, JLPT_N1_KANJI_DETAILS, 'n1_3');
+const JLPT_N1_4_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N1_KANJI_SOURCE_PART_4, JLPT_N1_KANJI_DETAILS, 'n1_4');
+const JLPT_N1_5_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N1_KANJI_SOURCE_PART_5, JLPT_N1_KANJI_DETAILS, 'n1_5');
+const JLPT_N1_6_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N1_KANJI_SOURCE_PART_6, JLPT_N1_KANJI_DETAILS, 'n1_6');
+const JLPT_N1_7_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N1_KANJI_SOURCE_PART_7, JLPT_N1_KANJI_DETAILS, 'n1_7');
+const JLPT_N1_8_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N1_KANJI_SOURCE_PART_8, JLPT_N1_KANJI_DETAILS, 'n1_8');
+const JLPT_N1_9_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N1_KANJI_SOURCE_PART_9, JLPT_N1_KANJI_DETAILS, 'n1_9');
+const JLPT_N1_10_KANJI_QUIZ = buildJlptKanjiQuiz(JLPT_N1_KANJI_SOURCE_PART_10, JLPT_N1_KANJI_DETAILS, 'n1_10');
+const JLPT_N1_ENGLISH_MEANINGS_BY_KANA: Record<string, string[]> = Object.fromEntries(
+  Object.entries(JLPT_N1_KANJI_DETAILS).map(([kana, detail]) => [kana, detail.meanings]),
+);
 
 function formatDateKey(date: any): string {
   if (!(date instanceof Date)) return '';
@@ -933,6 +978,8 @@ const getGlossaryDetailsForMode = (mode: string) => {
   if (mode === 'jlpt_n4') return JLPT_N4_KANJI_DETAILS;
   if (mode === 'jlpt_n4_2') return JLPT_N4_2_KANJI_DETAILS;
   if (JLPT_N3_VARIANT_VALUES.includes(mode)) return JLPT_N3_KANJI_DETAILS;
+  if (JLPT_N2_VARIANT_VALUES.includes(mode)) return JLPT_N2_KANJI_DETAILS;
+  if (JLPT_N1_VARIANT_VALUES.includes(mode)) return JLPT_N1_KANJI_DETAILS;
   return {};
 };
 
@@ -988,6 +1035,20 @@ const KANJI_GLOSSARY_ENTRIES_BY_MODE: Record<string, KanjiGlossaryEntry[]> = {
   jlpt_n3_2: buildKanjiGlossaryEntries(JLPT_N3_2_KANJI_QUIZ, JLPT_N3_KANJI_DETAILS, 'jlpt_n3_2'),
   jlpt_n3_3: buildKanjiGlossaryEntries(JLPT_N3_3_KANJI_QUIZ, JLPT_N3_KANJI_DETAILS, 'jlpt_n3_3'),
   jlpt_n3_4: buildKanjiGlossaryEntries(JLPT_N3_4_KANJI_QUIZ, JLPT_N3_KANJI_DETAILS, 'jlpt_n3_4'),
+  jlpt_n2: buildKanjiGlossaryEntries(JLPT_N2_1_KANJI_QUIZ, JLPT_N2_KANJI_DETAILS, 'jlpt_n2'),
+  jlpt_n2_2: buildKanjiGlossaryEntries(JLPT_N2_2_KANJI_QUIZ, JLPT_N2_KANJI_DETAILS, 'jlpt_n2_2'),
+  jlpt_n2_3: buildKanjiGlossaryEntries(JLPT_N2_3_KANJI_QUIZ, JLPT_N2_KANJI_DETAILS, 'jlpt_n2_3'),
+  jlpt_n2_4: buildKanjiGlossaryEntries(JLPT_N2_4_KANJI_QUIZ, JLPT_N2_KANJI_DETAILS, 'jlpt_n2_4'),
+  jlpt_n1: buildKanjiGlossaryEntries(JLPT_N1_1_KANJI_QUIZ, JLPT_N1_KANJI_DETAILS, 'jlpt_n1'),
+  jlpt_n1_2: buildKanjiGlossaryEntries(JLPT_N1_2_KANJI_QUIZ, JLPT_N1_KANJI_DETAILS, 'jlpt_n1_2'),
+  jlpt_n1_3: buildKanjiGlossaryEntries(JLPT_N1_3_KANJI_QUIZ, JLPT_N1_KANJI_DETAILS, 'jlpt_n1_3'),
+  jlpt_n1_4: buildKanjiGlossaryEntries(JLPT_N1_4_KANJI_QUIZ, JLPT_N1_KANJI_DETAILS, 'jlpt_n1_4'),
+  jlpt_n1_5: buildKanjiGlossaryEntries(JLPT_N1_5_KANJI_QUIZ, JLPT_N1_KANJI_DETAILS, 'jlpt_n1_5'),
+  jlpt_n1_6: buildKanjiGlossaryEntries(JLPT_N1_6_KANJI_QUIZ, JLPT_N1_KANJI_DETAILS, 'jlpt_n1_6'),
+  jlpt_n1_7: buildKanjiGlossaryEntries(JLPT_N1_7_KANJI_QUIZ, JLPT_N1_KANJI_DETAILS, 'jlpt_n1_7'),
+  jlpt_n1_8: buildKanjiGlossaryEntries(JLPT_N1_8_KANJI_QUIZ, JLPT_N1_KANJI_DETAILS, 'jlpt_n1_8'),
+  jlpt_n1_9: buildKanjiGlossaryEntries(JLPT_N1_9_KANJI_QUIZ, JLPT_N1_KANJI_DETAILS, 'jlpt_n1_9'),
+  jlpt_n1_10: buildKanjiGlossaryEntries(JLPT_N1_10_KANJI_QUIZ, JLPT_N1_KANJI_DETAILS, 'jlpt_n1_10'),
 };
 
 const shuffleQuiz = (items: any[]) => {
@@ -1314,6 +1375,20 @@ const QUIZ_MODES = [
   { value: 'jlpt_n3_2', label: 'JLPT N3-2', tabLabel: 'N3-2', family: 'jlpt', dataset: JLPT_N3_2_KANJI_QUIZ },
   { value: 'jlpt_n3_3', label: 'JLPT N3-3', tabLabel: 'N3-3', family: 'jlpt', dataset: JLPT_N3_3_KANJI_QUIZ },
   { value: 'jlpt_n3_4', label: 'JLPT N3-4', tabLabel: 'N3-4', family: 'jlpt', dataset: JLPT_N3_4_KANJI_QUIZ },
+  { value: 'jlpt_n2', label: 'JLPT N2-1', tabLabel: 'N2-1', family: 'jlpt', dataset: JLPT_N2_1_KANJI_QUIZ },
+  { value: 'jlpt_n2_2', label: 'JLPT N2-2', tabLabel: 'N2-2', family: 'jlpt', dataset: JLPT_N2_2_KANJI_QUIZ },
+  { value: 'jlpt_n2_3', label: 'JLPT N2-3', tabLabel: 'N2-3', family: 'jlpt', dataset: JLPT_N2_3_KANJI_QUIZ },
+  { value: 'jlpt_n2_4', label: 'JLPT N2-4', tabLabel: 'N2-4', family: 'jlpt', dataset: JLPT_N2_4_KANJI_QUIZ },
+  { value: 'jlpt_n1', label: 'JLPT N1-1', tabLabel: 'N1-1', family: 'jlpt', dataset: JLPT_N1_1_KANJI_QUIZ },
+  { value: 'jlpt_n1_2', label: 'JLPT N1-2', tabLabel: 'N1-2', family: 'jlpt', dataset: JLPT_N1_2_KANJI_QUIZ },
+  { value: 'jlpt_n1_3', label: 'JLPT N1-3', tabLabel: 'N1-3', family: 'jlpt', dataset: JLPT_N1_3_KANJI_QUIZ },
+  { value: 'jlpt_n1_4', label: 'JLPT N1-4', tabLabel: 'N1-4', family: 'jlpt', dataset: JLPT_N1_4_KANJI_QUIZ },
+  { value: 'jlpt_n1_5', label: 'JLPT N1-5', tabLabel: 'N1-5', family: 'jlpt', dataset: JLPT_N1_5_KANJI_QUIZ },
+  { value: 'jlpt_n1_6', label: 'JLPT N1-6', tabLabel: 'N1-6', family: 'jlpt', dataset: JLPT_N1_6_KANJI_QUIZ },
+  { value: 'jlpt_n1_7', label: 'JLPT N1-7', tabLabel: 'N1-7', family: 'jlpt', dataset: JLPT_N1_7_KANJI_QUIZ },
+  { value: 'jlpt_n1_8', label: 'JLPT N1-8', tabLabel: 'N1-8', family: 'jlpt', dataset: JLPT_N1_8_KANJI_QUIZ },
+  { value: 'jlpt_n1_9', label: 'JLPT N1-9', tabLabel: 'N1-9', family: 'jlpt', dataset: JLPT_N1_9_KANJI_QUIZ },
+  { value: 'jlpt_n1_10', label: 'JLPT N1-10', tabLabel: 'N1-10', family: 'jlpt', dataset: JLPT_N1_10_KANJI_QUIZ },
   { value: 'focus', label: 'Focus', tabLabel: 'Focus', family: 'focus', dataset: [] },
   { value: 'bottleneck', label: 'Bottleneck', tabLabel: 'Bottleneck', family: 'focus', dataset: [] },
 ];
@@ -1342,10 +1417,12 @@ const QUIZ_VIEW_OPTIONS = [
   { value: 'quiz', label: 'Quiz' },
   { value: 'endless', label: 'Endless' },
   { value: 'typemaster', label: 'TypeMaster' },
+  { value: 'choice', label: 'Choice' },
   { value: 'glossary', label: 'Glossary' },
   { value: 'leaderboard', label: 'Leaderboard' },
   { value: 'analysis', label: 'Analysis' },
 ];
+const MULTIPLE_CHOICE_OPTION_COUNT = 5;
 const TYPEMASTER_QUEUE_OPTIONS = [
   { value: 'rapidfire', label: 'Rapidfire' },
   { value: 'burst', label: 'Burst' },
@@ -1362,12 +1439,15 @@ const LEADERBOARD_TIMER_FILTER_OPTIONS = [
 const LEADERBOARD_GAME_OPTIONS = [
   { value: 'quiz', label: 'Quiz' },
   { value: 'typemaster', label: 'TypeMaster' },
+  { value: 'choice', label: 'Choice' },
 ];
 const KANA_VARIANT_OPTIONS = {
   hiragana: ['hiragana', 'hiragana_dakuten'],
   katakana: ['katakana', 'katakana_dakuten'],
 };
 const JLPT_N3_VARIANT_VALUES = ['jlpt_n3', 'jlpt_n3_2', 'jlpt_n3_3', 'jlpt_n3_4'];
+const JLPT_N2_VARIANT_VALUES = ['jlpt_n2', 'jlpt_n2_2', 'jlpt_n2_3', 'jlpt_n2_4'];
+const JLPT_N1_VARIANT_VALUES = ['jlpt_n1', 'jlpt_n1_2', 'jlpt_n1_3', 'jlpt_n1_4', 'jlpt_n1_5', 'jlpt_n1_6', 'jlpt_n1_7', 'jlpt_n1_8', 'jlpt_n1_9', 'jlpt_n1_10'];
 const JLPT_N4_VARIANT_VALUES = ['jlpt_n4', 'jlpt_n4_2'];
 
 const isJlptQuizMode = (mode: string) => mode.startsWith('jlpt_');
@@ -1416,19 +1496,30 @@ const getQuizModeFamily = (mode: string) => {
 };
 const getQuizModesForFamily = (family: string) => QUIZ_MODES.filter(option => option.family === family);
 
-const getQuizModeKey = (mode: string, jlptReadingMode: string = DEFAULT_JLPT_READING_MODE) =>
-  isJlptQuizMode(mode) || mode === 'focus' ? `${mode}:${jlptReadingMode}` : mode;
+const ENG_MODE_KEY_PREFIX = 'eng:';
+const isEngModeKey = (mode: string) => typeof mode === 'string' && mode.startsWith(ENG_MODE_KEY_PREFIX);
+const stripEngModeKey = (mode: string) => isEngModeKey(mode) ? mode.slice(ENG_MODE_KEY_PREFIX.length) : mode;
+const withEngModeKey = (mode: string, engModeEnabled: boolean = false) =>
+  engModeEnabled ? `${ENG_MODE_KEY_PREFIX}${stripEngModeKey(mode)}` : stripEngModeKey(mode);
+
+const getQuizModeKey = (mode: string, jlptReadingMode: string = DEFAULT_JLPT_READING_MODE, engModeEnabled: boolean = false) => {
+  const baseModeKey = isJlptQuizMode(mode) || mode === 'focus' ? `${mode}:${jlptReadingMode}` : mode;
+  return withEngModeKey(baseModeKey, engModeEnabled);
+};
 
 const getTypeMasterModeKey = (quizModeKey: string) => `typemaster:${quizModeKey}`;
+const getMultipleChoiceModeKey = (quizModeKey: string) => `choice:${quizModeKey}`;
 const getBaseFocusSourceMode = (sourceMode: string | undefined) => {
   if (!sourceMode) return '';
   const withoutModePrefix = sourceMode.startsWith('endless:')
     ? sourceMode.replace('endless:', '')
+    : sourceMode.startsWith('choice:')
+      ? sourceMode.replace('choice:', '')
     : sourceMode;
   const parsedTypeMaster = withoutModePrefix.startsWith('typemaster:')
     ? parseTypeMasterModeKey(withoutModePrefix)
     : null;
-  return (parsedTypeMaster?.quizModeKey || withoutModePrefix).split(':')[0];
+  return stripEngModeKey(parsedTypeMaster?.quizModeKey || withoutModePrefix).split(':')[0];
 };
 const getSourceModeFromCanonicalItemId = (id: any) => {
   const safeId = `${id || ''}`;
@@ -1439,25 +1530,48 @@ const getSourceModeFromCanonicalItemId = (id: any) => {
   if (safeId.startsWith('n3_2_')) return 'jlpt_n3_2';
   if (safeId.startsWith('n3_3_')) return 'jlpt_n3_3';
   if (safeId.startsWith('n3_4_')) return 'jlpt_n3_4';
+  if (safeId.startsWith('n2_1_')) return 'jlpt_n2';
+  if (safeId.startsWith('n2_2_')) return 'jlpt_n2_2';
+  if (safeId.startsWith('n2_3_')) return 'jlpt_n2_3';
+  if (safeId.startsWith('n2_4_')) return 'jlpt_n2_4';
+  if (safeId.startsWith('n1_1_')) return 'jlpt_n1';
+  if (safeId.startsWith('n1_2_')) return 'jlpt_n1_2';
+  if (safeId.startsWith('n1_3_')) return 'jlpt_n1_3';
+  if (safeId.startsWith('n1_4_')) return 'jlpt_n1_4';
+  if (safeId.startsWith('n1_5_')) return 'jlpt_n1_5';
+  if (safeId.startsWith('n1_6_')) return 'jlpt_n1_6';
+  if (safeId.startsWith('n1_7_')) return 'jlpt_n1_7';
+  if (safeId.startsWith('n1_8_')) return 'jlpt_n1_8';
+  if (safeId.startsWith('n1_9_')) return 'jlpt_n1_9';
+  if (safeId.startsWith('n1_10_')) return 'jlpt_n1_10';
   return '';
 };
 const normalizeFocusSourceModeForItem = (sourceMode: string | undefined, item: any) =>
   getSourceModeFromCanonicalItemId(item?.id) || getBaseFocusSourceMode(sourceMode) || `${sourceMode || ''}`;
-const isFocusModeKey = (mode: string) =>
-  mode === 'focus' ||
-  mode.startsWith('focus:') ||
-  mode.startsWith('endless:focus') ||
-  mode.startsWith('typemaster:focus');
-const isBottleneckModeKey = (mode: string) =>
-  mode === 'bottleneck' ||
-  mode.startsWith('bottleneck:') ||
-  mode.startsWith('endless:bottleneck') ||
-  mode.startsWith('typemaster:bottleneck');
+const isFocusModeKey = (mode: string) => {
+  const safeMode = typeof mode === 'string' ? mode : '';
+  if (!safeMode) return false;
+  if (safeMode.startsWith('endless:')) return isFocusModeKey(safeMode.replace('endless:', ''));
+  if (safeMode.startsWith('typemaster:')) return isFocusModeKey(safeMode.replace('typemaster:', ''));
+  if (safeMode.startsWith('choice:')) return isFocusModeKey(safeMode.replace('choice:', ''));
+  const stripped = stripEngModeKey(safeMode);
+  return stripped === 'focus' || stripped.startsWith('focus:');
+};
+const isBottleneckModeKey = (mode: string) => {
+  const safeMode = typeof mode === 'string' ? mode : '';
+  if (!safeMode) return false;
+  if (safeMode.startsWith('endless:')) return isBottleneckModeKey(safeMode.replace('endless:', ''));
+  if (safeMode.startsWith('typemaster:')) return isBottleneckModeKey(safeMode.replace('typemaster:', ''));
+  if (safeMode.startsWith('choice:')) return isBottleneckModeKey(safeMode.replace('choice:', ''));
+  const stripped = stripEngModeKey(safeMode);
+  return stripped === 'bottleneck' || stripped.startsWith('bottleneck:');
+};
 
 const parseTypeMasterModeKey = (mode: string) => {
   if (!mode.startsWith('typemaster:')) return null;
   const raw = mode.replace('typemaster:', '');
-  const parts = raw.split(':').filter(Boolean);
+  const engMode = isEngModeKey(raw);
+  const parts = stripEngModeKey(raw).split(':').filter(Boolean);
   if (!parts.length) return null;
   const last = parts[parts.length - 1];
   const hasQueueMode = TYPEMASTER_QUEUE_OPTIONS.some(option => option.value === last);
@@ -1468,8 +1582,8 @@ const parseTypeMasterModeKey = (mode: string) => {
     ? (baseParts[1] || DEFAULT_JLPT_READING_MODE)
     : null;
   const normalizedQuizModeKey = isJlptQuizMode(baseMode)
-    ? getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE)
-    : baseMode;
+    ? getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE, engMode)
+    : withEngModeKey(baseParts.join(':') || baseMode, engMode);
   return {
     queueMode,
     quizModeKey: normalizedQuizModeKey,
@@ -1480,21 +1594,24 @@ const normalizeStoredQuizModeKey = (mode: any) => {
   const safeMode = typeof mode === 'string' ? mode : QUIZ_MODES[0].value;
   if (safeMode.startsWith('endless:')) {
     const withoutEndless = safeMode.replace('endless:', '');
-    const [baseMode, jlptReadingMode] = withoutEndless.split(':');
-    if (isJlptQuizMode(baseMode)) {
-      return `endless:${getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE)}`;
-    }
-    return safeMode;
+    return `endless:${normalizeStoredQuizModeKey(withoutEndless)}`;
   }
   if (safeMode.startsWith('typemaster:')) {
     const parsed = parseTypeMasterModeKey(safeMode);
     if (!parsed) return safeMode;
     return getTypeMasterModeKey(parsed.quizModeKey);
   }
-  const [baseMode, jlptReadingMode] = safeMode.split(':');
-  return isJlptQuizMode(baseMode)
+  if (safeMode.startsWith('choice:')) {
+    const withoutChoice = safeMode.replace('choice:', '');
+    return getMultipleChoiceModeKey(normalizeStoredQuizModeKey(withoutChoice));
+  }
+  const engMode = isEngModeKey(safeMode);
+  const withoutEng = stripEngModeKey(safeMode);
+  const [baseMode, jlptReadingMode] = withoutEng.split(':');
+  const normalizedMode = isJlptQuizMode(baseMode)
     ? getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE)
-    : safeMode;
+    : withoutEng;
+  return withEngModeKey(normalizedMode, engMode);
 };
 
 const getQuizModeLabel = (mode: string) => {
@@ -1504,29 +1621,38 @@ const getQuizModeLabel = (mode: string) => {
   // Handle endless mode: "endless:mode" or "endless:mode:jlptReadingMode"
   if (mode.startsWith('endless:')) {
     const withoutEndless = mode.replace('endless:', '');
-    const [baseMode, jlptReadingMode] = withoutEndless.split(':');
-    const selected = QUIZ_MODES.find(option => option.value === baseMode);
-    if (!selected) return `Endless - ${withoutEndless}`;
-    const selectedBaseLabel = getSelectedBaseLabel(selected);
-    if (!isJlptQuizMode(baseMode)) return `Endless - ${selectedBaseLabel}`;
-    const selectedJlptMode = JLPT_READING_MODES.find(option => option.value === jlptReadingMode);
-    return selectedJlptMode ? `Endless - ${selectedBaseLabel} - ${selectedJlptMode.label}` : `Endless - ${selectedBaseLabel}`;
+    return `Endless - ${getQuizModeLabel(withoutEndless)}`;
   }
 
   // Handle typemaster mode: "typemaster:mode" or "typemaster:mode:jlptReadingMode"
   if (mode.startsWith('typemaster:')) {
     const parsed = parseTypeMasterModeKey(mode);
     if (!parsed) return `TypeMaster - ${mode.replace('typemaster:', '')}`;
-    const [baseMode, jlptReadingMode] = parsed.quizModeKey.split(':');
-    const selected = QUIZ_MODES.find(option => option.value === baseMode);
     const queueLabel = (TYPEMASTER_QUEUE_OPTIONS.find(option => option.value === parsed.queueMode) || TYPEMASTER_QUEUE_OPTIONS[0]).label;
-    if (!selected) return `TypeMaster (${queueLabel}) - ${parsed.quizModeKey}`;
-    const selectedBaseLabel = getSelectedBaseLabel(selected);
-    if (!isJlptQuizMode(baseMode)) return `TypeMaster (${queueLabel}) - ${selectedBaseLabel}`;
-    const selectedJlptMode = JLPT_READING_MODES.find(option => option.value === jlptReadingMode);
-    return selectedJlptMode
-      ? `TypeMaster (${queueLabel}) - ${selectedBaseLabel} - ${selectedJlptMode.label}`
-      : `TypeMaster (${queueLabel}) - ${selectedBaseLabel}`;
+    return `TypeMaster (${queueLabel}) - ${getQuizModeLabel(parsed.quizModeKey)}`;
+  }
+
+  if (mode.startsWith('choice:')) {
+    const withoutChoice = mode.replace('choice:', '');
+    return `Choice - ${getQuizModeLabel(withoutChoice)}`;
+  }
+
+  if (isEngModeKey(mode)) {
+    const withoutEng = stripEngModeKey(mode);
+    const [baseMode] = withoutEng.split(':');
+    const selected = QUIZ_MODES.find(option => option.value === baseMode);
+    if (
+      KANA_VARIANT_OPTIONS.hiragana.includes(baseMode as any) ||
+      KANA_VARIANT_OPTIONS.katakana.includes(baseMode as any)
+    ) {
+      return 'Alphabet - ENG';
+    }
+    if (selected && isJlptQuizMode(baseMode)) {
+      return `${getSelectedBaseLabel(selected)} - ENG`;
+    }
+    if (baseMode === 'focus') return 'Focus - ENG';
+    if (baseMode === 'bottleneck') return 'Bottleneck - ENG';
+    return `${getQuizModeLabel(withoutEng)} - ENG`;
   }
 
   const [baseMode, jlptReadingMode] = mode.split(':');
@@ -1587,7 +1713,7 @@ const getJlptAcceptedReadings = (item: any, jlptReadingMode: string) => {
 const isJlptEnglishTranslateMode = (jlptReadingMode: string) =>
   JLPT_ENGLISH_TRANSLATE_MODES.includes(jlptReadingMode);
 const getJlptEnglishMeaningsForItem = (item: any) =>
-  ([...(JLPT_N5_ENGLISH_MEANINGS[item.id] || []), ...(JLPT_N4_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N4_2_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N3_ENGLISH_MEANINGS_BY_KANA[item.kana] || [])])
+  ([...(JLPT_N5_ENGLISH_MEANINGS[item.id] || []), ...(JLPT_N4_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N4_2_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N3_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N2_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N1_ENGLISH_MEANINGS_BY_KANA[item.kana] || [])])
     .map((value: string) => normalizeRomaji(value))
     .filter(Boolean);
 const getJlptAcceptedAnswers = (item: any, jlptReadingMode: string) => {
@@ -1674,18 +1800,23 @@ const getFinishReasonLabel = (reason: string) => {
 const clampNumber = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 const getQuizTotalChars = (items: Array<{ kana?: string }>) =>
   items.reduce((sum, it) => sum + (it.kana ? it.kana.length : 0), 0);
+const getChoiceItemIdentity = (item: any) =>
+  `${item?.__focusSourceMode || ''}:${item?.__focusOriginalId || item?.id || ''}:${item?.kana || ''}`;
 const isEndlessModeKey = (mode: string) => typeof mode === 'string' && mode.startsWith('endless:');
 const isTypeMasterModeKey = (mode: string) => typeof mode === 'string' && mode.startsWith('typemaster:');
+const isMultipleChoiceModeKey = (mode: string) => typeof mode === 'string' && mode.startsWith('choice:');
 
 const getLeaderboardFinishReasonLabel = (entry: { mode: string; finishReason?: string }) => {
   const reason = entry.finishReason || 'complete';
   if (isTypeMasterModeKey(entry.mode) && reason === 'time') return 'Complete';
+  if (isMultipleChoiceModeKey(entry.mode) && reason === 'time') return 'Complete';
   return getFinishReasonLabel(reason);
 };
 
 const getLeaderboardTimeDisplay = (entry: { mode: string; finishReason?: string; timeMs: number }) => {
   const reason = entry.finishReason || 'complete';
   if (isTypeMasterModeKey(entry.mode) && reason === 'time') return 'Complete';
+  if (isMultipleChoiceModeKey(entry.mode) && reason === 'time') return 'Complete';
   return formatMilliseconds(entry.timeMs);
 };
 
@@ -1925,6 +2056,7 @@ function KanaQuizView({
   const quizRoundFinalizedRef = React.useRef(false);
   const endlessRoundFinalizedRef = React.useRef(false);
   const typemasterRoundFinalizedRef = React.useRef(false);
+  const multipleChoiceRoundFinalizedRef = React.useRef(false);
 
   // Endless mode state
   const [endlessScore, setEndlessScore] = useState(0);
@@ -1958,6 +2090,18 @@ function KanaQuizView({
   const typemasterInputRef = React.useRef<TextInput | null>(null);
   const typemasterTimerWasArmedRef = React.useRef(false);
   const typemasterRuntimeRef = React.useRef({ isRunning: false, isPaused: false, hasFinished: false, score: 0 });
+
+  // Multiple choice mode state
+  const [multipleChoiceScore, setMultipleChoiceScore] = useState(0);
+  const [multipleChoiceOptions, setMultipleChoiceOptions] = useState<Array<{ id: string; item: any }>>([]);
+  const [multipleChoiceTarget, setMultipleChoiceTarget] = useState<{ id: string; item: any } | null>(null);
+  const [multipleChoiceIsRunning, setMultipleChoiceIsRunning] = useState(false);
+  const [isMultipleChoicePaused, setIsMultipleChoicePaused] = useState(false);
+  const [multipleChoiceHasFinished, setMultipleChoiceHasFinished] = useState(false);
+  const [multipleChoiceFinishReason, setMultipleChoiceFinishReason] = useState<'time' | 'stopped' | null>(null);
+  const [multipleChoiceIncorrectId, setMultipleChoiceIncorrectId] = useState<string | null>(null);
+  const multipleChoiceQueueRef = React.useRef<CharacterQueue | null>(null);
+  const multipleChoiceRuntimeRef = React.useRef({ isRunning: false, isPaused: false, hasFinished: false, score: 0 });
   const [focusedItems, setFocusedItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
   const [bottleneckItems, setBottleneckItems] = useState<Array<{ key: string; sourceMode: string; item: any }>>([]);
   const focusedItemsRef = React.useRef<Array<{ key: string; sourceMode: string; item: any }>>([]);
@@ -2008,8 +2152,18 @@ function KanaQuizView({
   }, [isTypemasterPaused, typemasterHasFinished, typemasterIsRunning, typemasterScore]);
 
   useEffect(() => {
+    multipleChoiceRuntimeRef.current = {
+      ...multipleChoiceRuntimeRef.current,
+      isRunning: multipleChoiceIsRunning,
+      isPaused: isMultipleChoicePaused,
+      hasFinished: multipleChoiceHasFinished,
+      score: multipleChoiceScore,
+    };
+  }, [isMultipleChoicePaused, multipleChoiceHasFinished, multipleChoiceIsRunning, multipleChoiceScore]);
+
+  useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const shouldKeepForegroundActive = isRunning || endlessIsRunning || typemasterIsRunning;
+    const shouldKeepForegroundActive = isRunning || endlessIsRunning || typemasterIsRunning || multipleChoiceIsRunning;
     if (!shouldKeepForegroundActive) return;
 
     let wakeLock: any = null;
@@ -2048,7 +2202,7 @@ function KanaQuizView({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       releaseForegroundLock();
     };
-  }, [endlessIsRunning, isRunning, typemasterIsRunning]);
+  }, [endlessIsRunning, isRunning, multipleChoiceIsRunning, typemasterIsRunning]);
 
   const setEndlessRuntime = useCallback((updates: Partial<{ isRunning: boolean; isPaused: boolean; hasFinished: boolean; score: number }>) => {
     endlessRuntimeRef.current = {
@@ -2060,6 +2214,13 @@ function KanaQuizView({
   const setTypemasterRuntime = useCallback((updates: Partial<{ isRunning: boolean; isPaused: boolean; hasFinished: boolean; score: number }>) => {
     typemasterRuntimeRef.current = {
       ...typemasterRuntimeRef.current,
+      ...updates,
+    };
+  }, []);
+
+  const setMultipleChoiceRuntime = useCallback((updates: Partial<{ isRunning: boolean; isPaused: boolean; hasFinished: boolean; score: number }>) => {
+    multipleChoiceRuntimeRef.current = {
+      ...multipleChoiceRuntimeRef.current,
       ...updates,
     };
   }, []);
@@ -2500,7 +2661,10 @@ function KanaQuizView({
   const isEnglishVocabularyMode = engModeEnabled && isKanjiStudyMode;
   const isEnglishAlphabetMode = engModeEnabled && !isKanjiStudyMode;
   const shouldShowJlptKanjiInfo = isKanjiStudyMode && !isJlptJapaneseInputMode;
-  const activeModeKey = getQuizModeKey(quizMode, jlptReadingMode);
+  const activeModeReadingKey = engModeEnabled && isKanjiStudyMode
+    ? JLPT_ENGLISH_TRANSLATE_MODES[0]
+    : jlptReadingMode;
+  const activeModeKey = getQuizModeKey(quizMode, activeModeReadingKey, engModeEnabled);
   const columnCount = isJlptJapaneseInputMode ? 4 : 5;
 
   useEffect(() => {
@@ -3623,6 +3787,8 @@ function KanaQuizView({
     const normalizedMode = normalizeStoredQuizModeKey(modeKey);
     const gameLabel = gameType === 'typemaster'
       ? 'TypeMaster'
+      : gameType === 'choice'
+        ? 'Choice'
       : gameType === 'endless'
         ? 'Endless'
         : 'Quiz';
@@ -3644,7 +3810,7 @@ function KanaQuizView({
   }, []);
 
   const recordAnalysisRound = useCallback((round: {
-    gameType: 'quiz' | 'endless' | 'typemaster';
+    gameType: 'quiz' | 'endless' | 'typemaster' | 'choice';
     mode: string;
     score: number;
     total: number;
@@ -4581,6 +4747,294 @@ function KanaQuizView({
     return () => clearInterval(interval);
   }, [typemasterIsRunning, stopTypemasterMode]);
 
+  const getMultipleChoicePromptTextForItem = useCallback(
+    (item: any, sourceMode?: string) => {
+      const resolvedSourceMode = sourceMode || getItemSourceMode(item);
+      if (isJlptQuizMode(resolvedSourceMode)) {
+        if (engModeEnabled || isJlptEnglishTranslateMode(jlptReadingMode)) {
+          const englishMeanings = getJlptEnglishMeaningsForItem(item);
+          if (englishMeanings.length) return englishMeanings.join(' / ');
+        }
+
+        const readingMode = jlptReadingMode === 'jp_on_kun_kanji'
+          ? DEFAULT_JLPT_READING_MODE
+          : jlptReadingMode;
+        const readings = getJlptAcceptedReadings(item, readingMode);
+        if (readings.length) return readings.join('/');
+      }
+
+      return getHintTextForItem(item, sourceMode);
+    },
+    [engModeEnabled, getHintTextForItem, getItemSourceMode, jlptReadingMode],
+  );
+
+  const getMultipleChoiceOptionTextForItem = useCallback(
+    (item: any, sourceMode?: string) => {
+      const resolvedSourceMode = sourceMode || getItemSourceMode(item);
+      if (isJlptQuizMode(resolvedSourceMode)) return item?.kana || '';
+      return getPromptTextForItem(item, sourceMode);
+    },
+    [getItemSourceMode, getPromptTextForItem],
+  );
+
+  const getMultipleChoiceReadingKeysForItem = useCallback(
+    (item: any, sourceMode?: string) => {
+      const resolvedSourceMode = sourceMode || getItemSourceMode(item);
+      if (isJlptQuizMode(resolvedSourceMode)) {
+        const readingMode = jlptReadingMode === 'jp_on_kun_kanji' || isJlptEnglishTranslateMode(jlptReadingMode)
+          ? DEFAULT_JLPT_READING_MODE
+          : jlptReadingMode;
+        const readings = getJlptAcceptedReadings(item, readingMode);
+        if (readings.length) return readings.map((value: string) => normalizeRomaji(value)).filter(Boolean);
+      }
+      return getAcceptedAnswersForItem(item, sourceMode)
+        .map((value: string) => normalizeRomaji(value))
+        .filter(Boolean);
+    },
+    [getAcceptedAnswersForItem, getItemSourceMode, jlptReadingMode],
+  );
+
+  const getMultipleChoiceEligibleDataset = useCallback(
+    (dataset: any[]) =>
+      dataset.filter(item =>
+        getMultipleChoiceOptionTextForItem(item).trim().length > 0 &&
+        getMultipleChoicePromptTextForItem(item).trim().length > 0,
+      ),
+    [getMultipleChoiceOptionTextForItem, getMultipleChoicePromptTextForItem],
+  );
+
+  const buildMultipleChoiceOptionEntries = useCallback(
+    (target: any, dataset: any[]) => {
+      const selected: any[] = [target];
+      const usedReadings = new Set<string>();
+      const getConflictKeys = (item: any) => {
+        const keys = Array.from(new Set(getMultipleChoiceReadingKeysForItem(item)));
+        return keys.length ? keys : [`item:${getChoiceItemIdentity(item)}`];
+      };
+
+      getConflictKeys(target).forEach(key => usedReadings.add(key));
+
+      const candidates = shuffleQuiz(dataset).filter(candidate =>
+        getChoiceItemIdentity(candidate) !== getChoiceItemIdentity(target),
+      );
+
+      for (const candidate of candidates) {
+        const candidateKeys = getConflictKeys(candidate);
+        if (candidateKeys.some(key => usedReadings.has(key))) continue;
+        selected.push(candidate);
+        candidateKeys.forEach(key => usedReadings.add(key));
+        if (selected.length >= MULTIPLE_CHOICE_OPTION_COUNT) break;
+      }
+
+      return shuffleQuiz(selected).map((item, index) => ({
+        id: `${item.id || item.kana || 'choice'}-${Date.now()}-${index}`,
+        item,
+      }));
+    },
+    [getMultipleChoiceReadingKeysForItem],
+  );
+
+  const setNextMultipleChoiceRound = useCallback(
+    (sourceDataset?: any[]) => {
+      const dataset = getMultipleChoiceEligibleDataset(sourceDataset || getDatasetForMode(quizMode));
+      if (!dataset.length) return false;
+      if (!multipleChoiceQueueRef.current) {
+        multipleChoiceQueueRef.current = new CharacterQueue(dataset);
+      }
+
+      const requiredCount = Math.min(MULTIPLE_CHOICE_OPTION_COUNT, dataset.length);
+      let bestTarget: any = null;
+      let bestOptions: Array<{ id: string; item: any }> = [];
+      const attempts = Math.max(dataset.length, 1);
+
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const [target] = multipleChoiceQueueRef.current.getNext(1);
+        if (!target) continue;
+        const options = buildMultipleChoiceOptionEntries(target, dataset);
+        if (options.length > bestOptions.length) {
+          bestTarget = target;
+          bestOptions = options;
+        }
+        if (options.length >= requiredCount) break;
+      }
+
+      if (!bestTarget || !bestOptions.length) return false;
+      const timestamp = Date.now();
+      setMultipleChoiceTarget({
+        id: `${bestTarget.id || bestTarget.kana || 'choice-target'}-${timestamp}`,
+        item: bestTarget,
+      });
+      setMultipleChoiceOptions(bestOptions);
+      setMultipleChoiceIncorrectId(null);
+      return true;
+    },
+    [buildMultipleChoiceOptionEntries, getDatasetForMode, getMultipleChoiceEligibleDataset, quizMode],
+  );
+
+  const startMultipleChoiceMode = useCallback(() => {
+    const dataset = getMultipleChoiceEligibleDataset(getDatasetForMode(quizMode));
+    if (!dataset.length) {
+      Alert.alert(
+        quizMode === 'bottleneck' ? 'Bottleneck list is empty' : 'Focus list is empty',
+        quizMode === 'bottleneck'
+          ? 'Add items to Bottleneck by clicking and holding a prompt in Quiz or TypeMaster.'
+          : 'Add items to Focus by clicking a prompt in Quiz or TypeMaster.',
+      );
+      return;
+    }
+
+    startAnalysisSessionIfNeeded();
+    multipleChoiceQueueRef.current = new CharacterQueue(dataset);
+    setMultipleChoiceScore(0);
+    setMultipleChoiceRuntime({ isRunning: true, isPaused: false, hasFinished: false, score: 0 });
+    setMultipleChoiceIsRunning(true);
+    setIsMultipleChoicePaused(false);
+    setMultipleChoiceHasFinished(false);
+    multipleChoiceRoundFinalizedRef.current = false;
+    setMultipleChoiceFinishReason(null);
+    setLastRecordUpdate(null);
+    setRemainingSeconds(timerMinutes * 60);
+    remainingSecondsRef.current = timerMinutes * 60;
+    timerDeadlineMsRef.current = Date.now() + timerMinutes * 60 * 1000;
+    setNextMultipleChoiceRound(dataset);
+  }, [getDatasetForMode, getMultipleChoiceEligibleDataset, quizMode, setMultipleChoiceRuntime, setNextMultipleChoiceRound, startAnalysisSessionIfNeeded, timerMinutes]);
+
+  const resetMultipleChoiceToSetup = useCallback(() => {
+    setMultipleChoiceIsRunning(false);
+    setIsMultipleChoicePaused(false);
+    setMultipleChoiceHasFinished(false);
+    multipleChoiceRoundFinalizedRef.current = false;
+    setMultipleChoiceRuntime({ isRunning: false, isPaused: false, hasFinished: false, score: 0 });
+    setMultipleChoiceFinishReason(null);
+    setLastRecordUpdate(null);
+    setMultipleChoiceScore(0);
+    setMultipleChoiceOptions([]);
+    setMultipleChoiceTarget(null);
+    setMultipleChoiceIncorrectId(null);
+    setRemainingSeconds(timerMinutes * 60);
+    remainingSecondsRef.current = timerMinutes * 60;
+    timerDeadlineMsRef.current = null;
+  }, [setMultipleChoiceRuntime, timerMinutes]);
+
+  const pauseMultipleChoiceMode = useCallback(() => {
+    const runtime = multipleChoiceRuntimeRef.current;
+    if (!runtime.isRunning || runtime.hasFinished) return;
+    const remainingMs = timerDeadlineMsRef.current
+      ? Math.max(0, timerDeadlineMsRef.current - Date.now())
+      : Math.max(0, remainingSecondsRef.current * 1000);
+    const nextSeconds = Math.ceil(remainingMs / 1000);
+    setRemainingSeconds(nextSeconds);
+    remainingSecondsRef.current = nextSeconds;
+    setMultipleChoiceRuntime({ isRunning: false, isPaused: true });
+    setMultipleChoiceIsRunning(false);
+    setIsMultipleChoicePaused(true);
+    timerDeadlineMsRef.current = null;
+  }, [setMultipleChoiceRuntime]);
+
+  const resumeMultipleChoiceMode = useCallback(() => {
+    const runtime = multipleChoiceRuntimeRef.current;
+    if (!runtime.isPaused || runtime.hasFinished) return;
+    const startSeconds = remainingSecondsRef.current > 0 ? remainingSecondsRef.current : timerMinutes * 60;
+    timerDeadlineMsRef.current = Date.now() + startSeconds * 1000;
+    setMultipleChoiceRuntime({ isRunning: true, isPaused: false });
+    setMultipleChoiceIsRunning(true);
+    setIsMultipleChoicePaused(false);
+  }, [setMultipleChoiceRuntime, timerMinutes]);
+
+  const stopMultipleChoiceMode = useCallback((reason: 'time' | 'stopped' = 'stopped') => {
+    const runtime = multipleChoiceRuntimeRef.current;
+    if (runtime.hasFinished || multipleChoiceRoundFinalizedRef.current || (!runtime.isRunning && !runtime.isPaused)) return;
+    multipleChoiceRoundFinalizedRef.current = true;
+    setMultipleChoiceRuntime({ isRunning: false, isPaused: false, hasFinished: true });
+    setMultipleChoiceIsRunning(false);
+    setIsMultipleChoicePaused(false);
+    setMultipleChoiceHasFinished(true);
+    setMultipleChoiceFinishReason(reason);
+
+    const choiceModeKey = getMultipleChoiceModeKey(activeModeKey);
+    const timerTotalMs = timerMinutes * 60 * 1000;
+    const remainingMs = timerDeadlineMsRef.current
+      ? Math.max(0, timerDeadlineMsRef.current - Date.now())
+      : Math.max(0, remainingSecondsRef.current * 1000);
+    const completionTimeMs = reason === 'time'
+      ? timerTotalMs
+      : Math.max(0, Math.min(timerTotalMs, timerTotalMs - remainingMs));
+    const remainingSecondsAtFinish = reason === 'time' ? 0 : Math.ceil(remainingMs / 1000);
+    setRemainingSeconds(remainingSecondsAtFinish);
+    remainingSecondsRef.current = remainingSecondsAtFinish;
+    timerDeadlineMsRef.current = null;
+    const now = Date.now();
+    const entry = {
+      mode: choiceModeKey,
+      timeMs: completionTimeMs,
+      score: runtime.score,
+      total: runtime.score,
+      date: now,
+      finishReason: reason,
+      timerMinutes,
+    };
+    recordAnalysisRound({
+      gameType: 'choice',
+      mode: choiceModeKey,
+      score: runtime.score,
+      total: runtime.score,
+      date: now,
+      timeMs: completionTimeMs,
+      finishReason: reason,
+      timerMinutes,
+      scoreLabel: 'Correct',
+      items: getDatasetForMode(quizMode),
+    });
+    saveLeaderboardEntry(entry).then(result => {
+      if (result) {
+        setLastRecordUpdate({ mode: entry.mode, ...result });
+      }
+    });
+  }, [activeModeKey, getDatasetForMode, quizMode, recordAnalysisRound, saveLeaderboardEntry, setMultipleChoiceRuntime, timerMinutes]);
+
+  const handleMultipleChoiceOptionPress = useCallback(
+    (option: { id: string; item: any }) => {
+      const runtime = multipleChoiceRuntimeRef.current;
+      if (!runtime.isRunning || runtime.hasFinished || !multipleChoiceTarget) return;
+      const isCorrectChoice = getChoiceItemIdentity(option.item) === getChoiceItemIdentity(multipleChoiceTarget.item);
+      if (!isCorrectChoice) {
+        setMultipleChoiceIncorrectId(option.id);
+        setTimeout(() => {
+          setMultipleChoiceIncorrectId(prev => (prev === option.id ? null : prev));
+        }, 350);
+        return;
+      }
+
+      const nextScore = runtime.score + 1;
+      setMultipleChoiceRuntime({ score: nextScore });
+      setMultipleChoiceScore(nextScore);
+      setNextMultipleChoiceRound();
+    },
+    [multipleChoiceTarget, setMultipleChoiceRuntime, setNextMultipleChoiceRound],
+  );
+
+  useEffect(() => {
+    if (!multipleChoiceIsRunning) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const deadlineMs = timerDeadlineMsRef.current;
+      if (!deadlineMs) return;
+
+      const remaining = Math.max(0, Math.floor((deadlineMs - now) / 1000));
+      if (remainingSecondsRef.current !== remaining) {
+        remainingSecondsRef.current = remaining;
+        setRemainingSeconds(remaining);
+      }
+
+      if (remaining === 0) {
+        stopMultipleChoiceMode('time');
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [multipleChoiceIsRunning, stopMultipleChoiceMode]);
+
   const correctAnswerCount = useMemo(() => calculateCorrectAnswers(answers), [answers, calculateCorrectAnswers]);
   const correctCharacterCount = useMemo(() => calculateCorrectCharacterCount(answers), [answers, calculateCorrectCharacterCount]);
   const totalCharacterCount = useMemo(() => getQuizTotalChars(quizItems), [quizItems]);
@@ -4725,7 +5179,9 @@ function KanaQuizView({
   }, [columnCount, quizItems]);
   const activeLeaderboardModeKey = leaderboardGameType === 'typemaster'
     ? getTypeMasterModeKey(activeModeKey)
-    : activeModeKey;
+    : leaderboardGameType === 'choice'
+      ? getMultipleChoiceModeKey(activeModeKey)
+      : activeModeKey;
   const sessionOnlyLeaderboardScopeOptions = LEADERBOARD_SCOPE_OPTIONS
     .filter(option => option.value === 'session')
     .map(option => ({ ...option, label: 'Current Focus Mode Leaderboard' }));
@@ -4791,7 +5247,7 @@ function KanaQuizView({
     },
     [compareLeaderboardEntriesByScore, compareLeaderboardEntriesByTime, timerMinutes],
   );
-  const activeLeaderboardUsesModeTimer = isTypeMasterModeKey(activeLeaderboardModeKey) || isEndlessModeKey(activeLeaderboardModeKey) || isFocusModeKey(activeLeaderboardModeKey);
+  const activeLeaderboardUsesModeTimer = isTypeMasterModeKey(activeLeaderboardModeKey) || isMultipleChoiceModeKey(activeLeaderboardModeKey) || isEndlessModeKey(activeLeaderboardModeKey) || isFocusModeKey(activeLeaderboardModeKey);
   const activeLeaderboardSourceEntries = useMemo(
     () => getLeaderboardSourceEntries(getLeaderboardEntriesForMode(activeLeaderboardModeKey), activeLeaderboardModeKey, activeLeaderboardUsesModeTimer, activeQuizLeaderboardScoreType),
     [activeLeaderboardModeKey, activeLeaderboardUsesModeTimer, activeQuizLeaderboardScoreType, getLeaderboardEntriesForMode, getLeaderboardSourceEntries],
@@ -4804,18 +5260,26 @@ function KanaQuizView({
   );
   const completedModeLabel = getQuizModeLabel(activeModeKey);
   const typemasterModeKey = getTypeMasterModeKey(activeModeKey);
+  const multipleChoiceModeKey = getMultipleChoiceModeKey(activeModeKey);
   const isBottleneckTypemasterMode = isBottleneckModeKey(typemasterModeKey);
+  const isBottleneckMultipleChoiceMode = isBottleneckModeKey(multipleChoiceModeKey);
   const completedLeaderboardScopeOptions = isFocusModeKey(activeModeKey)
     ? sessionOnlyLeaderboardScopeOptions
     : LEADERBOARD_SCOPE_OPTIONS;
   const typemasterCompletedLeaderboardScopeOptions = isFocusModeKey(typemasterModeKey)
     ? sessionOnlyLeaderboardScopeOptions
     : LEADERBOARD_SCOPE_OPTIONS;
+  const multipleChoiceCompletedLeaderboardScopeOptions = isFocusModeKey(multipleChoiceModeKey)
+    ? sessionOnlyLeaderboardScopeOptions
+    : LEADERBOARD_SCOPE_OPTIONS;
   const typemasterCompletedModeLabel = getQuizModeLabel(typemasterModeKey);
+  const multipleChoiceCompletedModeLabel = getQuizModeLabel(multipleChoiceModeKey);
   const activeScopeLabel = getScopeLabelForMode(activeLeaderboardModeKey);
   const completedScopeLabel = getScopeLabelForMode(activeModeKey);
   const typemasterCompletedScopeLabel = getScopeLabelForMode(typemasterModeKey);
+  const multipleChoiceCompletedScopeLabel = getScopeLabelForMode(multipleChoiceModeKey);
   const typemasterCompletionTimeMs = Math.max(0, timerMinutes * 60 * 1000 - remainingSeconds * 1000);
+  const multipleChoiceCompletionTimeMs = Math.max(0, timerMinutes * 60 * 1000 - remainingSeconds * 1000);
   const typemasterCurrentTargetIndex = typemasterQueueMode === 'burst'
     ? Math.max(0, Math.min(typemasterBurstCursor, Math.max(typemasterQueue.length - 1, 0)))
     : 0;
@@ -4823,20 +5287,27 @@ function KanaQuizView({
   const typemasterHintText = typemasterCurrentTarget
     ? getHintTextForItem(typemasterCurrentTarget.item)
     : 'Start to begin...';
+  const multipleChoicePromptText = multipleChoiceTarget
+    ? getMultipleChoicePromptTextForItem(multipleChoiceTarget.item)
+    : 'Start to begin...';
   const quizPromptHidden = quizView === 'quiz' && isQuizPaused && !hasFinished;
   const canStopQuiz = (isRunning || isQuizPaused) && !hasFinished;
   const canStopEndless = (endlessIsRunning || isEndlessPaused) && !endlessHasFinished;
   const canStopTypemaster = (typemasterIsRunning || isTypemasterPaused) && !typemasterHasFinished;
+  const canStopMultipleChoice = (multipleChoiceIsRunning || isMultipleChoicePaused) && !multipleChoiceHasFinished;
   const quizPrimaryActionLabel = hasFinished ? 'Play Again' : isRunning ? 'Pause Quiz' : isQuizPaused ? 'Resume Quiz' : 'Play Quiz';
   const endlessPrimaryActionLabel = endlessHasFinished ? 'Play Again' : endlessIsRunning ? 'Pause Endless' : isEndlessPaused ? 'Resume Endless' : 'Play Endless';
   const typemasterPrimaryActionLabel = typemasterHasFinished ? 'Play Again' : typemasterIsRunning ? 'Pause TypeMaster' : isTypemasterPaused ? 'Resume TypeMaster' : 'Play TypeMaster';
+  const multipleChoicePrimaryActionLabel = multipleChoiceHasFinished ? 'Play Again' : multipleChoiceIsRunning ? 'Pause Choice' : isMultipleChoicePaused ? 'Resume Choice' : 'Play Choice';
   const isTimerAdjustmentLocked =
     isRunning ||
     isQuizPaused ||
     endlessIsRunning ||
     isEndlessPaused ||
     typemasterIsRunning ||
-    isTypemasterPaused;
+    isTypemasterPaused ||
+    multipleChoiceIsRunning ||
+    isMultipleChoicePaused;
   const renderTimerAdjuster = (timerDisplay: string, expired: boolean = false) => (
     <View style={styles.quizTimerControl}>
       <Pressable
@@ -4873,7 +5344,7 @@ function KanaQuizView({
   const displayedFamilyModes = quizView === 'glossary' && activeGlossaryFilter !== 'jlpt'
     ? []
     : effectiveQuizFamily === 'jlpt'
-    ? activeFamilyModes.filter(option => ![...JLPT_N4_VARIANT_VALUES.slice(1), ...JLPT_N3_VARIANT_VALUES.slice(1)].includes(option.value))
+    ? activeFamilyModes.filter(option => ![...JLPT_N4_VARIANT_VALUES.slice(1), ...JLPT_N3_VARIANT_VALUES.slice(1), ...JLPT_N2_VARIANT_VALUES.slice(1), ...JLPT_N1_VARIANT_VALUES.slice(1)].includes(option.value))
     : effectiveQuizFamily === 'kana'
       ? engModeEnabled
         ? activeFamilyModes.filter(option => option.value === 'hiragana')
@@ -4881,6 +5352,8 @@ function KanaQuizView({
       : activeFamilyModes;
   const activeKanaVariant = quizMode.startsWith('katakana') ? (KANA_VARIANT_OPTIONS.katakana.includes(quizMode) ? quizMode : 'katakana') : (KANA_VARIANT_OPTIONS.hiragana.includes(quizMode) ? quizMode : 'hiragana');
   const activeJlptN3Variant = JLPT_N3_VARIANT_VALUES.includes(quizMode) ? quizMode : JLPT_N3_VARIANT_VALUES[0];
+  const activeJlptN2Variant = JLPT_N2_VARIANT_VALUES.includes(quizMode) ? quizMode : JLPT_N2_VARIANT_VALUES[0];
+  const activeJlptN1Variant = JLPT_N1_VARIANT_VALUES.includes(quizMode) ? quizMode : JLPT_N1_VARIANT_VALUES[0];
   const focusGlossaryEntries = useMemo(
     () =>
       focusDataset
@@ -4978,16 +5451,28 @@ function KanaQuizView({
     () => selectLeaderboardEntries(typemasterCompletedLeaderboardSourceEntries, leaderboardPrimaryRankKey, leaderboardTimerFilter),
     [leaderboardPrimaryRankKey, leaderboardTimerFilter, selectLeaderboardEntries, typemasterCompletedLeaderboardSourceEntries],
   );
+  const multipleChoiceCompletedLeaderboardSourceEntries = useMemo(
+    () => getLeaderboardSourceEntries(getLeaderboardEntriesForMode(multipleChoiceModeKey), multipleChoiceModeKey, true),
+    [getLeaderboardEntriesForMode, getLeaderboardSourceEntries, multipleChoiceModeKey],
+  );
+  const multipleChoiceCompletedLeaderboardTimerOptions = useMemo(() => getLeaderboardTimerOptions(multipleChoiceCompletedLeaderboardSourceEntries), [getLeaderboardTimerOptions, multipleChoiceCompletedLeaderboardSourceEntries]);
+  const multipleChoiceCompletedModeLeaderboard = useMemo(
+    () => selectLeaderboardEntries(multipleChoiceCompletedLeaderboardSourceEntries, leaderboardPrimaryRankKey, leaderboardTimerFilter),
+    [leaderboardPrimaryRankKey, leaderboardTimerFilter, multipleChoiceCompletedLeaderboardSourceEntries, selectLeaderboardEntries],
+  );
   const getLeaderboardTimerFilterDisplay = (options: Array<{ value: string; label: string }>) =>
     options.find(option => option.value === leaderboardTimerFilter)?.label || 'All';
   const activeLeaderboardGameLabel = (LEADERBOARD_GAME_OPTIONS.find(option => option.value === leaderboardGameType) || LEADERBOARD_GAME_OPTIONS[0]).label;
   const activeLeaderboardTimerDisplay = getLeaderboardTimerFilterDisplay(activeLeaderboardTimerOptions);
   const completedLeaderboardTimerDisplay = getLeaderboardTimerFilterDisplay(completedLeaderboardTimerOptions);
   const typemasterCompletedLeaderboardTimerDisplay = getLeaderboardTimerFilterDisplay(typemasterCompletedLeaderboardTimerOptions);
+  const multipleChoiceCompletedLeaderboardTimerDisplay = getLeaderboardTimerFilterDisplay(multipleChoiceCompletedLeaderboardTimerOptions);
   const currentLeaderboardTimerOptions = quizView === 'leaderboard'
     ? activeLeaderboardTimerOptions
     : quizView === 'typemaster' && typemasterHasFinished
       ? typemasterCompletedLeaderboardTimerOptions
+      : quizView === 'choice' && multipleChoiceHasFinished
+        ? multipleChoiceCompletedLeaderboardTimerOptions
       : hasFinished
         ? completedLeaderboardTimerOptions
         : activeLeaderboardTimerOptions;
@@ -5005,7 +5490,9 @@ function KanaQuizView({
       .filter(entry =>
         analysisGameType === 'typemaster'
           ? entry.gameType === 'typemaster'
-          : entry.gameType !== 'typemaster',
+          : analysisGameType === 'choice'
+            ? entry.gameType === 'choice'
+            : entry.gameType !== 'typemaster' && entry.gameType !== 'choice',
       )
       .filter(entry =>
         analysisTimeScope === 'fixed'
@@ -5016,6 +5503,8 @@ function KanaQuizView({
       const key = entry.graphKey || 'analysis:unknown';
       const gameLabel = entry.gameType === 'typemaster'
         ? 'TypeMaster'
+        : entry.gameType === 'choice'
+          ? 'Choice'
         : entry.gameType === 'endless'
           ? 'Endless'
           : 'Quiz';
@@ -5421,7 +5910,7 @@ function KanaQuizView({
     setIsLeaderboardTimerDropdownOpen(false);
   };
   const selectQuizMode = (nextMode: string) => {
-    if (isRunning) return;
+    if (isRunning || endlessIsRunning || typemasterIsRunning || multipleChoiceIsRunning) return;
     setQuizMode(nextMode);
     closeQuizDropdownMenus();
     setQuizItems(shuffleQuiz(getDatasetForMode(nextMode)));
@@ -5432,13 +5921,23 @@ function KanaQuizView({
     setIsEndlessPaused(false);
     setTypemasterIsRunning(false);
     setIsTypemasterPaused(false);
+    setMultipleChoiceIsRunning(false);
+    setIsMultipleChoicePaused(false);
+    setMultipleChoiceHasFinished(false);
+    setMultipleChoiceFinishReason(null);
     setHasFinished(false);
     quizRoundFinalizedRef.current = false;
     endlessRoundFinalizedRef.current = false;
     typemasterRoundFinalizedRef.current = false;
+    multipleChoiceRoundFinalizedRef.current = false;
     setEndlessRuntime({ isRunning: false, isPaused: false, hasFinished: false });
     setTypemasterRuntime({ isRunning: false, isPaused: false, hasFinished: false });
+    setMultipleChoiceRuntime({ isRunning: false, isPaused: false, hasFinished: false });
     endlessStopQueuedRef.current = false;
+    setMultipleChoiceScore(0);
+    setMultipleChoiceOptions([]);
+    setMultipleChoiceTarget(null);
+    setMultipleChoiceIncorrectId(null);
     setFinishReason(null);
     setCompletionTimeMs(null);
     setQuizBackspaceCount(0);
@@ -5794,6 +6293,136 @@ function KanaQuizView({
                   </View>
                 );
               }
+              if (value === 'jlpt_n2') {
+                const isN2Selected = JLPT_N2_VARIANT_VALUES.includes(quizMode);
+                return (
+                  <View
+                    key="jlpt-n2-split"
+                    style={styles.quizSplitTabGroup}
+                    onTouchStart={event => event.stopPropagation()}
+                  >
+                    <Pressable
+                      style={[
+                        styles.quizSubNavTab,
+                        styles.quizSplitTabMain,
+                        isN2Selected && styles.quizSubNavTabActive,
+                      ]}
+                      onPress={() => selectQuizMode(activeJlptN2Variant)}
+                    >
+                      <Text style={[styles.quizSubNavTabText, isN2Selected && styles.quizSubNavTabTextActive]}>
+                        N2
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.quizSubNavTab,
+                        styles.quizSplitTabToggle,
+                        isN2Selected && styles.quizSplitTabToggleActive,
+                      ]}
+                      onPress={() => {
+                        if (isRunning) return;
+                        setIsJlptModeDropdownOpen(false);
+                        setOpenJlptSetDropdownBase(prev => (prev === value ? null : value));
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.quizSubNavTabText,
+                          styles.quizSplitTabChevron,
+                          isN2Selected && styles.quizSubNavTabTextActive,
+                        ]}
+                      >
+                        {openJlptSetDropdownBase === value ? '▲' : '▼'}
+                      </Text>
+                    </Pressable>
+                    {openJlptSetDropdownBase === value ? (
+                      <View style={styles.quizSplitTabMenu}>
+                        {JLPT_N2_VARIANT_VALUES.map(variantValue => {
+                          const variantOption = QUIZ_MODES.find(mode => mode.value === variantValue);
+                          if (!variantOption) return null;
+                          const variantSelected = quizMode === variantValue;
+                          return (
+                            <Pressable
+                              key={variantValue}
+                              style={[styles.quizDropdownMenuItem, variantSelected && styles.quizDropdownMenuItemActive]}
+                              onPress={() => selectQuizMode(variantValue)}
+                            >
+                              <Text style={[styles.quizDropdownMenuItemText, variantSelected && styles.quizDropdownMenuItemTextActive]}>
+                                {variantOption.tabLabel}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              }
+              if (value === 'jlpt_n1') {
+                const isN1Selected = JLPT_N1_VARIANT_VALUES.includes(quizMode);
+                return (
+                  <View
+                    key="jlpt-n1-split"
+                    style={styles.quizSplitTabGroup}
+                    onTouchStart={event => event.stopPropagation()}
+                  >
+                    <Pressable
+                      style={[
+                        styles.quizSubNavTab,
+                        styles.quizSplitTabMain,
+                        isN1Selected && styles.quizSubNavTabActive,
+                      ]}
+                      onPress={() => selectQuizMode(activeJlptN1Variant)}
+                    >
+                      <Text style={[styles.quizSubNavTabText, isN1Selected && styles.quizSubNavTabTextActive]}>
+                        N1
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.quizSubNavTab,
+                        styles.quizSplitTabToggle,
+                        isN1Selected && styles.quizSplitTabToggleActive,
+                      ]}
+                      onPress={() => {
+                        if (isRunning) return;
+                        setIsJlptModeDropdownOpen(false);
+                        setOpenJlptSetDropdownBase(prev => (prev === value ? null : value));
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.quizSubNavTabText,
+                          styles.quizSplitTabChevron,
+                          isN1Selected && styles.quizSubNavTabTextActive,
+                        ]}
+                      >
+                        {openJlptSetDropdownBase === value ? '▲' : '▼'}
+                      </Text>
+                    </Pressable>
+                    {openJlptSetDropdownBase === value ? (
+                      <View style={styles.quizSplitTabMenu}>
+                        {JLPT_N1_VARIANT_VALUES.map(variantValue => {
+                          const variantOption = QUIZ_MODES.find(mode => mode.value === variantValue);
+                          if (!variantOption) return null;
+                          const variantSelected = quizMode === variantValue;
+                          return (
+                            <Pressable
+                              key={variantValue}
+                              style={[styles.quizDropdownMenuItem, variantSelected && styles.quizDropdownMenuItemActive]}
+                              onPress={() => selectQuizMode(variantValue)}
+                            >
+                              <Text style={[styles.quizDropdownMenuItemText, variantSelected && styles.quizDropdownMenuItemTextActive]}>
+                                {variantOption.tabLabel}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              }
               return (
                 <Pressable
                   key={value}
@@ -5833,14 +6462,24 @@ function KanaQuizView({
                         key={option.value}
                         style={[styles.quizDropdownMenuItem, selected && styles.quizDropdownMenuItemActive]}
                         onPress={() => {
-                          if (isRunning) return;
+                          if (isRunning || endlessIsRunning || typemasterIsRunning || multipleChoiceIsRunning) return;
                           setIsJlptModeDropdownOpen(false);
                           setJlptReadingMode(option.value);
                           setAnswers({});
                           setIsRunning(false);
                           setIsQuizPaused(false);
+                          setMultipleChoiceIsRunning(false);
+                          setIsMultipleChoicePaused(false);
+                          setMultipleChoiceHasFinished(false);
+                          setMultipleChoiceFinishReason(null);
+                          setMultipleChoiceScore(0);
+                          setMultipleChoiceOptions([]);
+                          setMultipleChoiceTarget(null);
+                          setMultipleChoiceIncorrectId(null);
                           setHasFinished(false);
                           quizRoundFinalizedRef.current = false;
+                          multipleChoiceRoundFinalizedRef.current = false;
+                          setMultipleChoiceRuntime({ isRunning: false, isPaused: false, hasFinished: false, score: 0 });
                           setFinishReason(null);
                           setCompletionTimeMs(null);
                           setLastRecordUpdate(null);
@@ -5901,13 +6540,19 @@ function KanaQuizView({
                 }}
               >
                 <Text style={styles.quizStatLabel}>
-                  {quizView === 'endless' || quizView === 'typemaster' ? 'Characters' : 'Score'}
+                  {quizView === 'endless' || quizView === 'typemaster'
+                    ? 'Characters'
+                    : quizView === 'choice'
+                      ? 'Correct'
+                      : 'Score'}
                 </Text>
                 <Text style={styles.quizStatValue}>
                   {quizView === 'endless'
                     ? endlessScore
                     : quizView === 'typemaster'
                       ? typemasterScore
+                      : quizView === 'choice'
+                        ? multipleChoiceScore
                       : isQuizScoreHidden
                         ? 'Hidden'
                         : leaderboardScoresEnabled
@@ -5946,6 +6591,22 @@ function KanaQuizView({
                       disabled={!canStopTypemaster}
                     >
                       <Text style={[styles.quizStopButtonLabel, !canStopTypemaster && styles.quizStopButtonLabelDisabled]}>Stop</Text>
+                    </Pressable>
+                  </>
+                ) : quizView === 'choice' ? (
+                  <>
+                    <Pressable
+                      style={styles.quizPlayButton}
+                      onPress={multipleChoiceIsRunning ? pauseMultipleChoiceMode : isMultipleChoicePaused ? resumeMultipleChoiceMode : multipleChoiceHasFinished ? resetMultipleChoiceToSetup : startMultipleChoiceMode}
+                    >
+                      <Text style={styles.quizPlayButtonLabel}>{multipleChoicePrimaryActionLabel}</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.quizStopButton, !canStopMultipleChoice && styles.quizStopButtonDisabled]}
+                      onPress={() => stopMultipleChoiceMode('stopped')}
+                      disabled={!canStopMultipleChoice}
+                    >
+                      <Text style={[styles.quizStopButtonLabel, !canStopMultipleChoice && styles.quizStopButtonLabelDisabled]}>Stop</Text>
                     </Pressable>
                   </>
                 ) : (
@@ -6275,6 +6936,212 @@ function KanaQuizView({
                     placeholder={typemasterShowHints ? `Type: ${typemasterHintText}` : ''}
                     placeholderTextColor="#64748b"
                   />
+                </View>
+              </View>
+            )}
+          </View>
+        ) : quizView === 'choice' ? (
+          <View style={styles.quizFinishCard}>
+            {multipleChoiceHasFinished ? (
+              <View>
+                <View style={styles.quizFinishHeader}>
+                  <View>
+                    <Text style={styles.quizFinishTitle}>Multiple Choice Complete</Text>
+                    <Text style={styles.quizFinishSubtitle}>
+                      {multipleChoiceFinishReason === 'stopped' ? 'Multiple choice stopped early.' : 'Multiple choice run complete.'}
+                    </Text>
+                    {!isBottleneckMultipleChoiceMode && lastRecordUpdate && lastRecordUpdate.mode === multipleChoiceModeKey ? (
+                      <Text style={[styles.quizRecordNotice, lastRecordUpdate.isNewRecord && styles.quizRecordNoticeNew]}>
+                        {lastRecordUpdate.isNewRecord
+                          ? `New ${multipleChoiceCompletedModeLabel} record!`
+                          : lastRecordUpdate.rank
+                            ? `Placed #${lastRecordUpdate.rank} on ${multipleChoiceCompletedModeLabel} leaderboard.`
+                            : `${multipleChoiceCompletedModeLabel} run saved.`}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Pressable style={styles.quizFinishButton} onPress={resetMultipleChoiceToSetup}>
+                    <Text style={styles.quizFinishButtonLabel}>Play Again</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.quizFinishContent}>
+                  <View style={styles.quizFinishStatsTop}>
+                    <View style={styles.quizFinishStatsTopRow}>
+                      <View style={[styles.quizFinishStat, styles.quizFinishStatCompact]}>
+                        <Text style={styles.quizFinishStatLabel}>Correct Choices</Text>
+                        <Text style={styles.quizFinishStatValue}>{multipleChoiceScore}</Text>
+                      </View>
+                      <View style={[styles.quizFinishStat, styles.quizFinishStatCompact]}>
+                        {multipleChoiceFinishReason === 'stopped' ? (
+                          <>
+                            <Text style={styles.quizFinishStatLabel}>Time Left</Text>
+                            <Text style={[styles.quizFinishStatValue, styles.quizTimerValueExpired]}>{formatTimer(remainingSeconds)}</Text>
+                          </>
+                        ) : (
+                          <>
+                            <Text style={styles.quizFinishStatLabel}>Complete</Text>
+                            <Text style={[styles.quizFinishStatValue, styles.quizRecordNoticeNew]}>Complete</Text>
+                          </>
+                        )}
+                      </View>
+                      <View style={[styles.quizFinishStat, styles.quizFinishStatCompact]}>
+                        <Text style={styles.quizFinishStatLabel}>Completion Time</Text>
+                        <Text style={styles.quizFinishStatValue}>{formatMilliseconds(multipleChoiceCompletionTimeMs)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                  {isBottleneckMultipleChoiceMode ? (
+                    <View style={styles.quizFinishLeaderboardPanelWide}>
+                      <Text style={styles.quizLeaderboardEmpty}>Bottleneck runs are not saved to leaderboards.</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.quizFinishLeaderboardPanelWide}>
+                      <View style={styles.quizLeaderboard}>
+                        <View style={styles.quizLeaderboardHeaderRow}>
+                          <Text style={styles.quizLeaderboardTitle}>{multipleChoiceCompletedModeLabel} Leaderboard ({multipleChoiceCompletedLeaderboardTimerDisplay}, {multipleChoiceCompletedScopeLabel})</Text>
+                          <View style={styles.quizLeaderboardScopeTabs}>
+                            {renderLeaderboardTimerFilter(multipleChoiceCompletedLeaderboardTimerOptions, true)}
+                            <Pressable
+                              style={[styles.quizLeaderboardEditPill, isLeaderboardEditMode && styles.quizLeaderboardEditPillActive]}
+                              onPress={() => setIsLeaderboardEditMode(prev => !prev)}
+                            >
+                              <Text style={[styles.quizLeaderboardEditPillLabel, isLeaderboardEditMode && styles.quizLeaderboardEditPillLabelActive]}>
+                                {isLeaderboardEditMode ? 'Done' : 'Edit'}
+                              </Text>
+                            </Pressable>
+                            {multipleChoiceCompletedLeaderboardScopeOptions.map(option => {
+                              const selected = option.value === leaderboardScope;
+                              return (
+                                <Pressable
+                                  key={`choice-completed-scope-${option.value}`}
+                                  style={[styles.quizLeaderboardScopePill, selected && styles.quizLeaderboardScopePillActive]}
+                                  onPress={() => setLeaderboardScope(option.value)}
+                                >
+                                  <Text style={[styles.quizLeaderboardScopeLabel, selected && styles.quizLeaderboardScopeLabelActive]}>
+                                    {option.label}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        </View>
+                        {isFocusModeKey(multipleChoiceModeKey) && leaderboardScope === 'session' ? (
+                          <Text style={styles.quizFinishSubtitle}>{focusLeaderboardSaveNotice}</Text>
+                        ) : null}
+                        {multipleChoiceCompletedModeLeaderboard.length > 0
+                          ? renderLeaderboardEntries(multipleChoiceCompletedModeLeaderboard)
+                          : <Text style={styles.quizLeaderboardEmpty}>No {multipleChoiceCompletedScopeLabel.toLowerCase()} entries for this mode.</Text>}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              </View>
+            ) : (
+              <View style={{ width: '100%', padding: 20 }}>
+                <View style={styles.typemasterGameHeader}>
+                  <View style={styles.typemasterGameHeaderInfo}>
+                    <Text style={{ color: '#e2e8f0', fontSize: 18, fontWeight: '600' }}>
+                      Score: {multipleChoiceScore}
+                    </Text>
+                    <Text style={{ color: '#94a3b8', fontSize: 14, marginTop: 8 }}>
+                      Choose the matching kanji
+                    </Text>
+                  </View>
+                  <View style={styles.typemasterGameHeaderTimerWrap}>
+                    {renderTimerAdjuster(formatTimer(remainingSeconds))}
+                  </View>
+                  <View style={styles.typemasterGameHeaderActionWrap}>
+                    {!multipleChoiceIsRunning && (
+                      <Pressable
+                        style={{
+                          backgroundColor: '#10b981',
+                          paddingHorizontal: 24,
+                          paddingVertical: 12,
+                          borderRadius: 8,
+                        }}
+                        onPress={startMultipleChoiceMode}
+                      >
+                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Start</Text>
+                      </Pressable>
+                    )}
+                    {multipleChoiceIsRunning && (
+                      <Pressable
+                        style={{
+                          backgroundColor: '#ef4444',
+                          paddingHorizontal: 24,
+                          paddingVertical: 12,
+                          borderRadius: 8,
+                        }}
+                        onPress={() => stopMultipleChoiceMode('stopped')}
+                      >
+                        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Stop</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.multipleChoiceOptionsPanel}>
+                  <Text style={styles.multipleChoicePanelLabel}>
+                    Kanji Choices
+                  </Text>
+                  <View style={styles.multipleChoiceOptionRow}>
+                    {multipleChoiceOptions.map(option => {
+                      const isFocusedChar = isFocusedItem(option.item);
+                      const isBottleneckChar = isBottleneckItem(option.item);
+                      const optionText = getMultipleChoiceOptionTextForItem(option.item);
+                      return (
+                        <Pressable
+                          key={option.id}
+                          style={[
+                            styles.multipleChoiceOptionCard,
+                            isFocusedChar && styles.multipleChoiceOptionCardFocused,
+                            isBottleneckChar && styles.multipleChoiceOptionCardBottleneck,
+                            multipleChoiceIncorrectId === option.id && styles.multipleChoiceOptionCardIncorrect,
+                          ]}
+                          onPress={() => handleMultipleChoiceOptionPress(option)}
+                          disabled={!multipleChoiceIsRunning}
+                        >
+                          {shouldShowJlptKanjiInfo && isJlptStyleItem(option.item) ? (
+                            <Pressable
+                              onPress={(event: any) => {
+                                event?.stopPropagation?.();
+                                openJishoWord(option.item.kana);
+                              }}
+                              style={styles.quizKanjiInfoButton}
+                              hitSlop={6}
+                            >
+                              <Text style={styles.quizKanjiInfoLabel}>i</Text>
+                            </Pressable>
+                          ) : null}
+                          <Text
+                            style={[
+                              styles.multipleChoiceOptionText,
+                              isBottleneckChar && styles.multipleChoiceOptionTextBottleneck,
+                            ]}
+                          >
+                            {optionText}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {!multipleChoiceIsRunning && multipleChoiceOptions.length === 0 && (
+                    <Text style={styles.multipleChoiceIdleText}>
+                      Press Start to begin!
+                    </Text>
+                  )}
+                </View>
+
+                <View>
+                  <Text style={styles.multipleChoicePromptLabel}>
+                    Prompt:
+                  </Text>
+                  <View style={styles.multipleChoicePromptBox}>
+                    <Text style={styles.multipleChoicePromptText}>
+                      {multipleChoicePromptText}
+                    </Text>
+                  </View>
                 </View>
               </View>
             )}
