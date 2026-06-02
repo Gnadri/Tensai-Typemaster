@@ -1981,6 +1981,48 @@ function PencilNoteIcon({ active = false }: { active?: boolean }) {
   );
 }
 
+function LoopCycleIcon({ active = false, disabled = false }: { active?: boolean; disabled?: boolean }) {
+  const stroke = disabled ? '#64748b' : active ? '#bfdbfe' : '#93c5fd';
+  const accent = disabled ? '#475569' : active ? '#38bdf8' : '#60a5fa';
+
+  return (
+    <Svg width={20} height={20} viewBox="0 0 20 20">
+      <Path
+        d="M15.25 6.25A6.25 6.25 0 0 0 4.35 4.5L3.1 5.75"
+        fill="none"
+        stroke={stroke}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M3.1 2.35v3.4h3.4"
+        fill="none"
+        stroke={accent}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M4.75 13.75a6.25 6.25 0 0 0 10.9 1.75l1.25-1.25"
+        fill="none"
+        stroke={stroke}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M16.9 17.65v-3.4h-3.4"
+        fill="none"
+        stroke={accent}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 function KanaQuizView({
   scoreMode = 'off',
   engModeEnabled = false,
@@ -2036,6 +2078,8 @@ function KanaQuizView({
   const [finishReason, setFinishReason] = useState<'time' | 'complete' | 'stopped' | null>(null);
   const [completionTimeMs, setCompletionTimeMs] = useState<number | null>(null);
   const [isQuizScoreHidden, setIsQuizScoreHidden] = useState(false);
+  const [isBottleneckLoopEnabled, setIsBottleneckLoopEnabled] = useState(false);
+  const [bottleneckLoopScore, setBottleneckLoopScore] = useState(0);
   const [isLeaderboardEditMode, setIsLeaderboardEditMode] = useState(false);
   const [lastRecordUpdate, setLastRecordUpdate] = useState<{ mode: string; scoreType?: QuizScoreMode; isNewRecord: boolean; rank: number | null } | null>(null);
   const [leaderboard, setLeaderboard] = useState<Array<{ mode: string; timeMs: number; score: number; total: number; date: number; finishReason: 'complete' | 'time' | 'stopped'; scoreType?: string }>>([]);
@@ -2054,6 +2098,8 @@ function KanaQuizView({
   const analysisSessionStartedAtRef = React.useRef<number | null>(null);
   const analysisEntriesRef = React.useRef<any[]>([]);
   const quizRoundFinalizedRef = React.useRef(false);
+  const bottleneckLoopScoreRef = React.useRef(0);
+  const bottleneckLoopCycleCorrectIdsRef = React.useRef<Set<string>>(new Set());
   const endlessRoundFinalizedRef = React.useRef(false);
   const typemasterRoundFinalizedRef = React.useRef(false);
   const multipleChoiceRoundFinalizedRef = React.useRef(false);
@@ -2223,6 +2269,19 @@ function KanaQuizView({
       ...multipleChoiceRuntimeRef.current,
       ...updates,
     };
+  }, []);
+
+  const resetBottleneckLoopScore = useCallback(() => {
+    bottleneckLoopScoreRef.current = 0;
+    bottleneckLoopCycleCorrectIdsRef.current.clear();
+    setBottleneckLoopScore(0);
+  }, []);
+
+  const incrementBottleneckLoopScore = useCallback(() => {
+    const nextScore = bottleneckLoopScoreRef.current + 1;
+    bottleneckLoopScoreRef.current = nextScore;
+    setBottleneckLoopScore(nextScore);
+    return nextScore;
   }, []);
 
   const getEndlessCharsWithCurrentPositions = useCallback(
@@ -2652,6 +2711,7 @@ function KanaQuizView({
   const isFocusMode = quizMode === 'focus';
   const isBottleneckMode = quizMode === 'bottleneck';
   const isFocusFamilyMode = isFocusMode || isBottleneckMode;
+  const isFocusFamilyLoopScoring = isFocusFamilyMode && isBottleneckLoopEnabled;
   const activeFocusFamilyDataset = isBottleneckMode ? bottleneckDataset : focusDataset;
   const shouldShowJlptModeControls = quizView !== 'glossary' && (isJlptMode || isFocusFamilyMode) && !engModeEnabled;
   const isJlptJapaneseInputMode = !engModeEnabled && isJlptMode && jlptReadingMode === 'jp_on_kun_kanji';
@@ -2770,6 +2830,7 @@ function KanaQuizView({
     quizRoundFinalizedRef.current = false;
     setFinishReason(null);
     setCompletionTimeMs(null);
+    resetBottleneckLoopScore();
     setQuizBackspaceCount(0);
     quizBackspacePenaltyWordIdsRef.current.clear();
     setLastRecordUpdate(null);
@@ -3987,6 +4048,7 @@ function KanaQuizView({
       const now = Date.now();
       const timerTotalMs = timerMinutes * 60 * 1000;
       const totalCharCount = getQuizTotalChars(quizItems);
+      const finalLoopScore = bottleneckLoopScoreRef.current;
       const remainingMs =
         typeof remainingMsSnapshot === 'number'
           ? Math.max(0, remainingMsSnapshot)
@@ -4000,13 +4062,19 @@ function KanaQuizView({
       }
       elapsedMs = Math.max(0, Math.min(elapsedMs, timerTotalMs));
 
-      const finalGamepoints = leaderboardScoresEnabled
+      const finalGamepoints = isFocusFamilyLoopScoring
+        ? finalLoopScore
+        : leaderboardScoresEnabled
         ? (isStudyScoreMode
           ? calculateStudyQuizGamepoints(finalCorrectCharCount, elapsedMs, quizBackspaceCount)
           : calculateSpeedrunQuizGamepoints(finalCorrectCharCount, elapsedMs, quizBackspaceCount))
         : finalCorrectCharCount;
-      const analysisScore = leaderboardScoresEnabled ? finalGamepoints : finalCorrectCharCount;
-      const analysisTotal = leaderboardScoresEnabled
+      const analysisScore = isFocusFamilyLoopScoring
+        ? finalLoopScore
+        : leaderboardScoresEnabled ? finalGamepoints : finalCorrectCharCount;
+      const analysisTotal = isFocusFamilyLoopScoring
+        ? Math.max(finalLoopScore, 1)
+        : leaderboardScoresEnabled
         ? (isStudyScoreMode ? STUDY_SCORE_MAX : SPEEDRUN_SCORE_MAX)
         : totalCharCount;
 
@@ -4029,8 +4097,10 @@ function KanaQuizView({
         timeMs: elapsedMs,
         finishReason: reason,
         timerMinutes,
-        scoreType: leaderboardScoresEnabled ? (isStudyScoreMode ? 'study_points' : 'speedrun_points') : undefined,
-        scoreLabel: activeQuizLeaderboardLabel,
+        scoreType: isFocusFamilyLoopScoring
+          ? 'loop_fields'
+          : leaderboardScoresEnabled ? (isStudyScoreMode ? 'study_points' : 'speedrun_points') : undefined,
+        scoreLabel: isFocusFamilyLoopScoring ? 'Fields' : activeQuizLeaderboardLabel,
         items: quizItems,
       });
 
@@ -4041,16 +4111,18 @@ function KanaQuizView({
       const entry = {
         mode: activeModeKey,
         timeMs: elapsedMs,
-        score: finalCorrectCharCount,
-        total: totalCharCount,
+        score: isFocusFamilyLoopScoring ? finalLoopScore : finalCorrectCharCount,
+        total: isFocusFamilyLoopScoring ? Math.max(finalLoopScore, 1) : totalCharCount,
         date: now,
         finishReason: reason,
         timerMinutes,
-        scoreType: leaderboardScoresEnabled ? (isStudyScoreMode ? 'study_points' : 'speedrun_points') : undefined,
-        correctCount: finalCorrectCount,
-        testscore: finalCorrectCharCount,
-        totalTestscore: totalCharCount,
-        gamepoints: leaderboardScoresEnabled ? finalGamepoints : undefined,
+        scoreType: isFocusFamilyLoopScoring
+          ? undefined
+          : leaderboardScoresEnabled ? (isStudyScoreMode ? 'study_points' : 'speedrun_points') : undefined,
+        correctCount: isFocusFamilyLoopScoring ? finalLoopScore : finalCorrectCount,
+        testscore: isFocusFamilyLoopScoring ? finalLoopScore : finalCorrectCharCount,
+        totalTestscore: isFocusFamilyLoopScoring ? Math.max(finalLoopScore, 1) : totalCharCount,
+        gamepoints: isFocusFamilyLoopScoring ? undefined : leaderboardScoresEnabled ? finalGamepoints : undefined,
       };
       saveLeaderboardEntry(entry).then(result => {
         if (result) {
@@ -4058,7 +4130,7 @@ function KanaQuizView({
         }
       });
     },
-    [activeModeKey, activeQuizLeaderboardLabel, activeQuizLeaderboardScoreType, answers, calculateCorrectAnswers, calculateCorrectCharacterCount, calculateSpeedrunQuizGamepoints, calculateStudyQuizGamepoints, hasFinished, isBottleneckMode, isStudyScoreMode, leaderboardScoresEnabled, quizBackspaceCount, quizItems, recordAnalysisRound, saveLeaderboardEntry, timerMinutes],
+    [activeModeKey, activeQuizLeaderboardLabel, activeQuizLeaderboardScoreType, answers, calculateCorrectAnswers, calculateCorrectCharacterCount, calculateSpeedrunQuizGamepoints, calculateStudyQuizGamepoints, hasFinished, isBottleneckMode, isFocusFamilyLoopScoring, isStudyScoreMode, leaderboardScoresEnabled, quizBackspaceCount, quizItems, recordAnalysisRound, saveLeaderboardEntry, timerMinutes],
   );
 
   useEffect(() => {
@@ -4123,6 +4195,7 @@ function KanaQuizView({
     setFinishReason(null);
     setCompletionTimeMs(null);
     setIsQuizScoreHidden(false);
+    resetBottleneckLoopScore();
     setQuizBackspaceCount(0);
     quizBackspacePenaltyWordIdsRef.current.clear();
     setIsQuizPaused(false);
@@ -4164,6 +4237,7 @@ function KanaQuizView({
     setFinishReason(null);
     setCompletionTimeMs(null);
     setIsQuizScoreHidden(false);
+    resetBottleneckLoopScore();
     setQuizBackspaceCount(0);
     quizBackspacePenaltyWordIdsRef.current.clear();
     setLastRecordUpdate(null);
@@ -5160,18 +5234,37 @@ function KanaQuizView({
         const next = { ...prev, [id]: nextText };
         const currentAnswerIsCorrect = !hasFinished && isCorrectAnswer(id, nextText);
         if (currentAnswerIsCorrect) {
+          if (isFocusFamilyLoopScoring && !bottleneckLoopCycleCorrectIdsRef.current.has(id)) {
+            bottleneckLoopCycleCorrectIdsRef.current.add(id);
+            incrementBottleneckLoopScore();
+          }
           focusNextAnswer(id, next);
         }
         if (currentAnswerIsCorrect) {
           const allCorrect = quizItems.every(item => isCorrectAnswer(item.id, next[item.id] || ''));
           if (allCorrect) {
+            if (isFocusFamilyLoopScoring) {
+              const loopItems = shuffleQuiz(quizItems);
+              setQuizItems(loopItems);
+              bottleneckLoopCycleCorrectIdsRef.current.clear();
+              quizBackspacePenaltyWordIdsRef.current.clear();
+              if (Platform.OS === 'web' && typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(() => {
+                  const firstItem = loopItems[0];
+                  if (firstItem && inputRefs.current[firstItem.id] && typeof inputRefs.current[firstItem.id]?.focus === 'function') {
+                    inputRefs.current[firstItem.id]?.focus();
+                  }
+                });
+              }
+              return {};
+            }
             finalizeQuiz('complete', next);
           }
         }
         return next;
       });
     },
-    [finalizeQuiz, focusNextAnswer, hasFinished, isCorrectAnswer, isJlptJapaneseInputMode, isQuizPaused, isRunning, quizItems, startAnalysisSessionIfNeeded, timerMinutes],
+    [finalizeQuiz, focusNextAnswer, hasFinished, incrementBottleneckLoopScore, isCorrectAnswer, isFocusFamilyLoopScoring, isJlptJapaneseInputMode, isQuizPaused, isRunning, quizItems, startAnalysisSessionIfNeeded, timerMinutes],
   );
 
   const columns = useMemo(() => {
@@ -5182,6 +5275,7 @@ function KanaQuizView({
     : leaderboardGameType === 'choice'
       ? getMultipleChoiceModeKey(activeModeKey)
       : activeModeKey;
+  const activeLeaderboardScoreTypeForMode = isFocusFamilyLoopScoring ? 'off' : activeQuizLeaderboardScoreType;
   const sessionOnlyLeaderboardScopeOptions = LEADERBOARD_SCOPE_OPTIONS
     .filter(option => option.value === 'session')
     .map(option => ({ ...option, label: 'Current Focus Mode Leaderboard' }));
@@ -5249,8 +5343,8 @@ function KanaQuizView({
   );
   const activeLeaderboardUsesModeTimer = isTypeMasterModeKey(activeLeaderboardModeKey) || isMultipleChoiceModeKey(activeLeaderboardModeKey) || isEndlessModeKey(activeLeaderboardModeKey) || isFocusModeKey(activeLeaderboardModeKey);
   const activeLeaderboardSourceEntries = useMemo(
-    () => getLeaderboardSourceEntries(getLeaderboardEntriesForMode(activeLeaderboardModeKey), activeLeaderboardModeKey, activeLeaderboardUsesModeTimer, activeQuizLeaderboardScoreType),
-    [activeLeaderboardModeKey, activeLeaderboardUsesModeTimer, activeQuizLeaderboardScoreType, getLeaderboardEntriesForMode, getLeaderboardSourceEntries],
+    () => getLeaderboardSourceEntries(getLeaderboardEntriesForMode(activeLeaderboardModeKey), activeLeaderboardModeKey, activeLeaderboardUsesModeTimer, activeLeaderboardScoreTypeForMode),
+    [activeLeaderboardModeKey, activeLeaderboardScoreTypeForMode, activeLeaderboardUsesModeTimer, getLeaderboardEntriesForMode, getLeaderboardSourceEntries],
   );
   const getLeaderboardTimerOptions = useCallback((_entries: Array<{ timerMinutes?: number }>) => LEADERBOARD_TIMER_FILTER_OPTIONS, []);
   const activeLeaderboardTimerOptions = useMemo(() => getLeaderboardTimerOptions(activeLeaderboardSourceEntries), [activeLeaderboardSourceEntries, getLeaderboardTimerOptions]);
@@ -5295,6 +5389,7 @@ function KanaQuizView({
   const canStopEndless = (endlessIsRunning || isEndlessPaused) && !endlessHasFinished;
   const canStopTypemaster = (typemasterIsRunning || isTypemasterPaused) && !typemasterHasFinished;
   const canStopMultipleChoice = (multipleChoiceIsRunning || isMultipleChoicePaused) && !multipleChoiceHasFinished;
+  const isBottleneckLoopToggleLocked = isRunning || isQuizPaused || hasFinished;
   const quizPrimaryActionLabel = hasFinished ? 'Play Again' : isRunning ? 'Pause Quiz' : isQuizPaused ? 'Resume Quiz' : 'Play Quiz';
   const endlessPrimaryActionLabel = endlessHasFinished ? 'Play Again' : endlessIsRunning ? 'Pause Endless' : isEndlessPaused ? 'Resume Endless' : 'Play Endless';
   const typemasterPrimaryActionLabel = typemasterHasFinished ? 'Play Again' : typemasterIsRunning ? 'Pause TypeMaster' : isTypemasterPaused ? 'Resume TypeMaster' : 'Play TypeMaster';
@@ -5434,8 +5529,8 @@ function KanaQuizView({
           ? 'Type letter...'
           : 'Type...';
   const completedLeaderboardSourceEntries = useMemo(
-    () => getLeaderboardSourceEntries(getLeaderboardEntriesForMode(activeModeKey), activeModeKey, false, activeQuizLeaderboardScoreType),
-    [activeModeKey, activeQuizLeaderboardScoreType, getLeaderboardEntriesForMode, getLeaderboardSourceEntries],
+    () => getLeaderboardSourceEntries(getLeaderboardEntriesForMode(activeModeKey), activeModeKey, false, activeLeaderboardScoreTypeForMode),
+    [activeLeaderboardScoreTypeForMode, activeModeKey, getLeaderboardEntriesForMode, getLeaderboardSourceEntries],
   );
   const completedLeaderboardTimerOptions = useMemo(() => getLeaderboardTimerOptions(completedLeaderboardSourceEntries), [completedLeaderboardSourceEntries, getLeaderboardTimerOptions]);
   const completedModeLeaderboard = useMemo(
@@ -6482,6 +6577,7 @@ function KanaQuizView({
                           setMultipleChoiceRuntime({ isRunning: false, isPaused: false, hasFinished: false, score: 0 });
                           setFinishReason(null);
                           setCompletionTimeMs(null);
+                          resetBottleneckLoopScore();
                           setLastRecordUpdate(null);
                           setRemainingSeconds(timerMinutes * 60);
                           remainingSecondsRef.current = timerMinutes * 60;
@@ -6501,6 +6597,28 @@ function KanaQuizView({
         </View>
 
         <View style={styles.quizControlsSection}>
+          {quizView === 'quiz' && isFocusFamilyMode ? (
+            <Pressable
+              accessibilityLabel="Toggle loop mode"
+              accessibilityRole="button"
+              style={[
+                styles.quizLoopToggleButton,
+                isBottleneckLoopEnabled && styles.quizLoopToggleButtonActive,
+                isBottleneckLoopToggleLocked && styles.quizLoopToggleButtonDisabled,
+              ]}
+              onPress={() => {
+                if (isBottleneckLoopToggleLocked) return;
+                setIsBottleneckLoopEnabled(prev => !prev);
+                resetBottleneckLoopScore();
+                setAnswers({});
+                setQuizBackspaceCount(0);
+                quizBackspacePenaltyWordIdsRef.current.clear();
+              }}
+              disabled={isBottleneckLoopToggleLocked}
+            >
+              <LoopCycleIcon active={isBottleneckLoopEnabled} disabled={isBottleneckLoopToggleLocked} />
+            </Pressable>
+          ) : null}
           {quizView === 'quiz' ? (
             renderTimerAdjuster(formatTimer(remainingSeconds), hasFinished || endlessHasFinished || typemasterHasFinished)
           ) : null}
@@ -6544,6 +6662,8 @@ function KanaQuizView({
                     ? 'Characters'
                     : quizView === 'choice'
                       ? 'Correct'
+                      : quizView === 'quiz' && isFocusFamilyLoopScoring
+                        ? 'Fields'
                       : 'Score'}
                 </Text>
                 <Text style={styles.quizStatValue}>
@@ -6553,6 +6673,8 @@ function KanaQuizView({
                       ? typemasterScore
                       : quizView === 'choice'
                         ? multipleChoiceScore
+                      : quizView === 'quiz' && isFocusFamilyLoopScoring
+                        ? bottleneckLoopScore.toLocaleString()
                       : isQuizScoreHidden
                         ? 'Hidden'
                         : leaderboardScoresEnabled
@@ -7731,9 +7853,11 @@ function KanaQuizView({
               <View style={styles.quizFinishStatsTop}>
                 <View style={styles.quizFinishStatsTopRow}>
                   <View style={[styles.quizFinishStat, styles.quizFinishStatCompact]}>
-                    <Text style={styles.quizFinishStatLabel}>Score</Text>
+                    <Text style={styles.quizFinishStatLabel}>{isFocusFamilyLoopScoring ? 'Fields' : 'Score'}</Text>
                     <Text style={styles.quizFinishStatValue}>
-                      {leaderboardScoresEnabled ? quizGamepoints.toLocaleString() : `${correctCharacterCount}/${totalCharacterCount}`}
+                      {isFocusFamilyLoopScoring
+                        ? bottleneckLoopScore.toLocaleString()
+                        : leaderboardScoresEnabled ? quizGamepoints.toLocaleString() : `${correctCharacterCount}/${totalCharacterCount}`}
                     </Text>
                   </View>
                   <View style={[styles.quizFinishStat, styles.quizFinishStatCompact]}>
@@ -7741,6 +7865,11 @@ function KanaQuizView({
                       <>
                         <Text style={styles.quizFinishStatLabel}>Time Left</Text>
                         <Text style={[styles.quizFinishStatValue, styles.quizTimerValueExpired]}>{formatTimer(remainingSeconds)}</Text>
+                      </>
+                    ) : finishReason === 'time' ? (
+                      <>
+                        <Text style={styles.quizFinishStatLabel}>Status</Text>
+                        <Text style={[styles.quizFinishStatValue, styles.quizTimerValueExpired]}>Time Up</Text>
                       </>
                     ) : (
                       <>

@@ -110,7 +110,7 @@ export const JLPT_N3_KANJI_DETAILS: Record<string, { readings: string[]; meaning
   構: { readings: ['kou', 'kama'], meanings: ['set up', 'care', 'structure', 'construct'] },
   割: { readings: ['katsu', 'wari', 'wa'], meanings: ['divide', 'split', 'proportion'] },
   費: { readings: ['hi', 'tsui'], meanings: ['expense', 'cost', 'spend', 'consume'] },
-  付: { readings: ['fu', 'tsu'], meanings: ['attach', 'add', 'apply'] },
+  付: { readings: ['fu', 'tsu', 'adhere'], meanings: ['attach', 'add', 'apply'] },
   難: { readings: ['nan', 'muzuka'], meanings: ['difficult', 'impossible', 'trouble'] },
   優: { readings: ['yuu', 'yasa', 'sugu'], meanings: ['superior', 'gentle', 'excellence', 'kindness'] },
   収: { readings: ['shuu', 'osa'], meanings: ['obtain', 'collect', 'income'] },

@@ -846,6 +846,23 @@ export const styles = StyleSheet.create({
     gap: 12,
     flexWrap: 'wrap',
   },
+  quizLoopToggleButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#26364f',
+    backgroundColor: '#0f172a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quizLoopToggleButtonActive: {
+    borderColor: '#38bdf8',
+    backgroundColor: '#12304c',
+  },
+  quizLoopToggleButtonDisabled: {
+    opacity: 0.55,
+  },
   quizTimerControl: {
     flexDirection: 'row',
     alignItems: 'center',
