@@ -2044,9 +2044,9 @@ export const JOYO_KANJI_READING_LOOKUP: Record<string, JoyoKanjiReadingEntry> = 
   },
   想: {
     onyomi: ['ソウ', 'ソ'],
-    kunyomi: [],
+    kunyomi: ['おもう'],
     onyomiRomaji: ['sou', 'so'],
-    kunyomiRomaji: [],
+    kunyomiRomaji: ['omou'],
   },
   早: {
     onyomi: ['ソウ', 'サッ'],
@@ -3510,7 +3510,7 @@ export const JOYO_KANJI_READING_LOOKUP: Record<string, JoyoKanjiReadingEntry> = 
     onyomi: ['ラク'],
     kunyomi: ['おちる', 'おとす'],
     onyomiRomaji: ['raku'],
-    kunyomiRomaji: ['ochiru', 'otosu'],
+    kunyomiRomaji: ['ochiru', 'otosu', 'ochi'],
   },
   利: {
     onyomi: ['リ'],

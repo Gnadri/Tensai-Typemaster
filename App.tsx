@@ -1417,7 +1417,7 @@ const QUIZ_VIEW_OPTIONS = [
   { value: 'quiz', label: 'Quiz' },
   { value: 'endless', label: 'Endless' },
   { value: 'typemaster', label: 'TypeMaster' },
-  { value: 'choice', label: 'Choice' },
+  { value: 'choice', label: 'Multiple Choice' },
   { value: 'glossary', label: 'Glossary' },
   { value: 'leaderboard', label: 'Leaderboard' },
   { value: 'analysis', label: 'Analysis' },
@@ -1439,7 +1439,7 @@ const LEADERBOARD_TIMER_FILTER_OPTIONS = [
 const LEADERBOARD_GAME_OPTIONS = [
   { value: 'quiz', label: 'Quiz' },
   { value: 'typemaster', label: 'TypeMaster' },
-  { value: 'choice', label: 'Choice' },
+  { value: 'choice', label: 'Multiple Choice' },
 ];
 const KANA_VARIANT_OPTIONS = {
   hiragana: ['hiragana', 'hiragana_dakuten'],
@@ -1634,7 +1634,7 @@ const getQuizModeLabel = (mode: string) => {
 
   if (mode.startsWith('choice:')) {
     const withoutChoice = mode.replace('choice:', '');
-    return `Choice - ${getQuizModeLabel(withoutChoice)}`;
+    return `Multiple Choice - ${getQuizModeLabel(withoutChoice)}`;
   }
 
   if (isEngModeKey(mode)) {
@@ -2095,6 +2095,7 @@ function KanaQuizView({
   const timerDeadlineMsRef = React.useRef<number | null>(null);
   const remainingSecondsRef = React.useRef(remainingSeconds);
   const suppressNextFocusPressRef = React.useRef(false);
+  const suppressNextFocusFamilyDatasetSyncRef = React.useRef(false);
   const analysisSessionStartedAtRef = React.useRef<number | null>(null);
   const analysisEntriesRef = React.useRef<any[]>([]);
   const quizRoundFinalizedRef = React.useRef(false);
@@ -2435,14 +2436,21 @@ function KanaQuizView({
   }, [activeFocusNoteFolderId, focusNoteFolders]);
 
   const focusDataset = useMemo(
-    () =>
-      focusedItems.map(entry => ({
-        ...entry.item,
-        id: entry.key,
-        __focusSourceMode: entry.sourceMode,
-        __focusOriginalId: entry.item.id,
-      })),
-    [focusedItems],
+    () => {
+      const seen = new Set<string>();
+      return [...focusedItems, ...bottleneckItems].reduce<any[]>((acc, entry) => {
+        if (!entry || seen.has(entry.key)) return acc;
+        seen.add(entry.key);
+        acc.push({
+          ...entry.item,
+          id: entry.key,
+          __focusSourceMode: entry.sourceMode,
+          __focusOriginalId: entry.item.id,
+        });
+        return acc;
+      }, []);
+    },
+    [bottleneckItems, focusedItems],
   );
   const bottleneckDataset = useMemo(
     () =>
@@ -2454,7 +2462,7 @@ function KanaQuizView({
       })),
     [bottleneckItems],
   );
-  const focusLookup = useMemo(() => new Set(focusedItems.map(entry => entry.key)), [focusedItems]);
+  const focusLookup = useMemo(() => new Set([...focusedItems, ...bottleneckItems].map(entry => entry.key)), [bottleneckItems, focusedItems]);
   const bottleneckLookup = useMemo(() => new Set(bottleneckItems.map(entry => entry.key)), [bottleneckItems]);
   const getFocusItemKey = useCallback((item: any, sourceMode: string) => {
     const normalizedSourceMode = normalizeFocusSourceModeForItem(sourceMode, item);
@@ -2698,13 +2706,34 @@ function KanaQuizView({
         const next = existing
           ? bottleneckItemsRef.current.filter(entry => !matchesItem(entry))
           : [...bottleneckItemsRef.current, { key, sourceMode: resolvedSourceMode, item: plainItem }];
+        if (quizMode === 'focus' || quizMode === 'bottleneck') {
+          suppressNextFocusFamilyDatasetSyncRef.current = true;
+        }
         await saveBottleneckItems(next);
+        // Bottleneck items are included in Focus mode, so Focus session records depend on this set too.
+        setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
+        setLeaderboardScope('session');
+        setLeaderboardIndex(prev => {
+          const nextIndexes = { ...prev };
+          Object.keys(nextIndexes).forEach(modeKey => {
+            if (isFocusModeKey(modeKey)) delete nextIndexes[modeKey];
+          });
+          return nextIndexes;
+        });
+        setSessionLeaderboardIndex(prev => {
+          const nextIndexes = { ...prev };
+          Object.keys(nextIndexes).forEach(modeKey => {
+            if (isFocusModeKey(modeKey)) delete nextIndexes[modeKey];
+          });
+          return nextIndexes;
+        });
+        setLastRecordUpdate(prev => (prev && isFocusModeKey(prev.mode) ? null : prev));
         setLoadedSaveProfileId(null);
       } catch (err) {
         console.error('Failed to toggle Bottleneck item:', err);
       }
     },
-    [getFocusItemKey, getItemSourceMode, saveBottleneckItems],
+    [getFocusItemKey, getItemSourceMode, quizMode, saveBottleneckItems],
   );
 
   const isJlptMode = isJlptQuizMode(quizMode);
@@ -2808,6 +2837,10 @@ function KanaQuizView({
 
   useEffect(() => {
     if (!isFocusFamilyMode) return;
+    if (suppressNextFocusFamilyDatasetSyncRef.current) {
+      suppressNextFocusFamilyDatasetSyncRef.current = false;
+      return;
+    }
     const roundIsActive =
       isRunning ||
       isQuizPaused ||
@@ -3849,7 +3882,7 @@ function KanaQuizView({
     const gameLabel = gameType === 'typemaster'
       ? 'TypeMaster'
       : gameType === 'choice'
-        ? 'Choice'
+        ? 'Multiple Choice'
       : gameType === 'endless'
         ? 'Endless'
         : 'Quiz';
@@ -5393,7 +5426,7 @@ function KanaQuizView({
   const quizPrimaryActionLabel = hasFinished ? 'Play Again' : isRunning ? 'Pause Quiz' : isQuizPaused ? 'Resume Quiz' : 'Play Quiz';
   const endlessPrimaryActionLabel = endlessHasFinished ? 'Play Again' : endlessIsRunning ? 'Pause Endless' : isEndlessPaused ? 'Resume Endless' : 'Play Endless';
   const typemasterPrimaryActionLabel = typemasterHasFinished ? 'Play Again' : typemasterIsRunning ? 'Pause TypeMaster' : isTypemasterPaused ? 'Resume TypeMaster' : 'Play TypeMaster';
-  const multipleChoicePrimaryActionLabel = multipleChoiceHasFinished ? 'Play Again' : multipleChoiceIsRunning ? 'Pause Choice' : isMultipleChoicePaused ? 'Resume Choice' : 'Play Choice';
+  const multipleChoicePrimaryActionLabel = multipleChoiceHasFinished ? 'Play Again' : multipleChoiceIsRunning ? 'Pause Multiple Choice' : isMultipleChoicePaused ? 'Resume Multiple Choice' : 'Play Multiple Choice';
   const isTimerAdjustmentLocked =
     isRunning ||
     isQuizPaused ||
@@ -5599,7 +5632,7 @@ function KanaQuizView({
       const gameLabel = entry.gameType === 'typemaster'
         ? 'TypeMaster'
         : entry.gameType === 'choice'
-          ? 'Choice'
+          ? 'Multiple Choice'
         : entry.gameType === 'endless'
           ? 'Endless'
           : 'Quiz';
@@ -6140,7 +6173,7 @@ function KanaQuizView({
             >
               <PencilNoteIcon active={isFocusNotesOpen} />
             </Pressable>
-            <Text style={styles.quizNavVersion}>v2.0</Text>
+            <Text style={styles.quizNavVersion}>v2.21</Text>
           </View>
         </View>
 

@@ -1,6 +1,6 @@
 {
   "name": "TensaiNoteMobile",
-  "version": "0.0.1",
+  "version": "2.21",
   "private": true,
   "scripts": {
     "lint": "eslint .",
