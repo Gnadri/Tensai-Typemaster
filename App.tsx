@@ -2664,6 +2664,9 @@ function KanaQuizView({
         const next = existing
           ? focusedItemsRef.current.filter(entry => !matchesItem(entry))
           : [...focusedItemsRef.current, { key, sourceMode: resolvedSourceMode, item: plainItem }];
+        if (quizMode === 'focus' || quizMode === 'bottleneck') {
+          suppressNextFocusFamilyDatasetSyncRef.current = true;
+        }
         await saveFocusedItems(next);
         // Focus leaderboard session is tied to the current focus set; reset it whenever the set changes.
         setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
@@ -2679,7 +2682,7 @@ function KanaQuizView({
         console.error('Failed to toggle Focus item:', err);
       }
     },
-    [getFocusItemKey, getItemSourceMode, saveFocusedItems],
+    [getFocusItemKey, getItemSourceMode, quizMode, saveFocusedItems],
   );
   const toggleBottleneckItem = useCallback(
     async (item: any, sourceMode?: string) => {
@@ -2713,20 +2716,6 @@ function KanaQuizView({
         // Bottleneck items are included in Focus mode, so Focus session records depend on this set too.
         setSessionLeaderboard(prev => prev.filter(entry => !isFocusModeKey(entry.mode)));
         setLeaderboardScope('session');
-        setLeaderboardIndex(prev => {
-          const nextIndexes = { ...prev };
-          Object.keys(nextIndexes).forEach(modeKey => {
-            if (isFocusModeKey(modeKey)) delete nextIndexes[modeKey];
-          });
-          return nextIndexes;
-        });
-        setSessionLeaderboardIndex(prev => {
-          const nextIndexes = { ...prev };
-          Object.keys(nextIndexes).forEach(modeKey => {
-            if (isFocusModeKey(modeKey)) delete nextIndexes[modeKey];
-          });
-          return nextIndexes;
-        });
         setLastRecordUpdate(prev => (prev && isFocusModeKey(prev.mode) ? null : prev));
         setLoadedSaveProfileId(null);
       } catch (err) {
@@ -3531,10 +3520,10 @@ function KanaQuizView({
   );
 
   const confirmAction = useCallback(
-    (title: string, message: string) =>
+    (title: string, message: string, confirmLabel = 'Yes') =>
       new Promise<boolean>(resolve => {
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          resolve(window.confirm(message));
+          resolve(window.confirm(`${title}\n\n${message}`));
           return;
         }
         Alert.alert(
@@ -3542,7 +3531,7 @@ function KanaQuizView({
           message,
           [
             { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Yes', onPress: () => resolve(true) },
+            { text: confirmLabel, onPress: () => resolve(true) },
           ],
           { cancelable: true, onDismiss: () => resolve(false) },
         );
@@ -3663,13 +3652,14 @@ function KanaQuizView({
   const updateSaveProfile = useCallback(async (profileId: string) => {
     const targetProfile = saveProfiles.find(item => item.id === profileId);
     if (!targetProfile) {
-      Alert.alert('Update failed', 'That Focus profile no longer exists.');
+      Alert.alert('Overwrite failed', 'That Focus profile no longer exists.');
       return;
     }
 
     const confirmed = await confirmAction(
-      'Update Focus Profile',
-      `Overwrite "${targetProfile.name}" with the current Focus entries, Bottleneck entries, and Focus leaderboard times?`,
+      'Are you sure?',
+      `Overwrite "${targetProfile.name}" with the current Focus entries, Bottleneck entries, notes, and Focus leaderboard times?`,
+      'Overwrite',
     );
     if (!confirmed) return;
 
@@ -3687,8 +3677,8 @@ function KanaQuizView({
       await persistSaveProfiles(nextProfiles);
       setLoadedSaveProfileId(profileId);
     } catch (err) {
-      console.error('Failed to update Focus profile:', err);
-      Alert.alert('Update failed', 'Could not update the Focus profile.');
+      console.error('Failed to overwrite Focus profile:', err);
+      Alert.alert('Overwrite failed', 'Could not overwrite the Focus profile.');
     }
   }, [buildCurrentSaveProfile, confirmAction, persistSaveProfiles, saveProfiles]);
 
@@ -5321,7 +5311,7 @@ function KanaQuizView({
       ? 'Current Focus Mode Leaderboard'
       : scopeLabel;
   const focusLeaderboardSaveNotice = loadedSaveProfileId
-    ? 'Focus leaderboard positions are part of the loaded Focus profile. Use Update Loaded Focus Profile after you change the set or improve times.'
+    ? 'Focus leaderboard positions are part of the loaded Focus profile. Use Overwrite Loaded Focus Profile after you change the set or improve times.'
     : 'Focus leaderboard positions are saved locally and can also be stored in a Focus profile from Settings > Save Manager.';
   const activeFocusSnapshotName = loadedSaveProfileId
     ? (saveProfiles.find(profile => profile.id === loadedSaveProfileId)?.name || 'Unnamed save profile')
@@ -8239,14 +8229,14 @@ function KanaQuizView({
                     <Text style={styles.saveManagerPaneTitle}>Save Focus profiles separately</Text>
                     <View style={styles.saveManagerGuideList}>
                       <Text style={styles.saveManagerGuideStep}>Each Focus profile stores Focus items, Bottleneck items, notes, and Focus-mode leaderboard times.</Text>
-                      <Text style={styles.saveManagerGuideStep}>Profiles are only changed when you explicitly create, update, import, delete, or save notes.</Text>
+                      <Text style={styles.saveManagerGuideStep}>Profiles are only changed when you explicitly create, overwrite, import, delete, or save notes.</Text>
                       <Text style={styles.saveManagerGuideStep}>Leaderboard backups are exported, imported, and persisted separately.</Text>
                     </View>
                   </View>
 
                   <View style={styles.saveManagerPaneCard}>
                     <Text style={styles.saveManagerSectionEyebrow}>Current state</Text>
-                    <Text style={styles.saveManagerPaneTitle}>Create or update a Focus profile</Text>
+                    <Text style={styles.saveManagerPaneTitle}>Create or overwrite a Focus profile</Text>
                     <Text style={styles.saveManagerPaneSubtitle}>Capture the current Focus, Bottleneck, notes, and Focus-mode times in one named profile.</Text>
                     <TextInput
                       style={styles.calendarInput}
@@ -8274,7 +8264,7 @@ function KanaQuizView({
                     </Pressable>
                     {loadedSaveProfileId ? (
                       <Pressable style={[styles.stageSecondaryButton, styles.saveManagerPrimaryButton]} onPress={() => void updateSaveProfile(loadedSaveProfileId)}>
-                        <Text style={styles.stageSecondaryLabel}>Update Loaded Focus Profile</Text>
+                        <Text style={styles.stageSecondaryLabel}>Overwrite Loaded Focus Profile</Text>
                       </Pressable>
                     ) : null}
                   </View>
@@ -8310,7 +8300,7 @@ function KanaQuizView({
                               <Text style={styles.saveManagerEntryButtonLabel}>Load Focus</Text>
                             </Pressable>
                             <Pressable style={styles.saveManagerEntryButton} onPress={() => void updateSaveProfile(profile.id)}>
-                              <Text style={styles.saveManagerEntryButtonLabel}>Update</Text>
+                              <Text style={styles.saveManagerEntryButtonLabel}>Overwrite</Text>
                             </Pressable>
                             <Pressable style={styles.saveManagerEntryDeleteButton} onPress={() => void deleteSaveProfile(profile.id)}>
                               <Text style={styles.saveManagerEntryDeleteButtonLabel}>Delete</Text>
