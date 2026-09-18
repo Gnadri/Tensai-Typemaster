@@ -6,6 +6,17 @@ Tensai TypeMaster is a Chrome extension with:
 
 The extension runtime files are built into `dist/`.
 
+Leaderboard results are saved automatically. Focus history belongs to the effective
+selection of Focus and Bottleneck items; changing selections keeps the previous
+set's history, and returning to that set restores it. New runs also update the
+loaded Focus file automatically. Imports merge records instead of replacing them.
+
+Persistence uses a versioned database with serialized transactions, a shared
+browser lock, and recovery copies. Existing saves migrate once; legacy storage is
+left intact. After updating the extension, reopen existing app tabs so every tab
+uses the new save logic. Run `npm run test:persistence` for storage, migration,
+profile history, and timer regression tests.
+
 ## Project Structure
 
 - `App.tsx`: main full app UI/logic (Quiz, Endless, TypeMaster, Leaderboard, Focus, saves)

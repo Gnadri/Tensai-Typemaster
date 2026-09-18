@@ -170,8 +170,7 @@ export const normalizeSaveProfilesPayload = (
         notes: profile.notes,
         noteFolders: profile.noteFolders,
       });
-    })
-    .slice(0, 200);
+    });
 
 export const convertLegacySnapshotsToProfiles = (
   payload: any,
@@ -201,7 +200,7 @@ export const convertLegacySnapshotsToProfiles = (
     }),
   );
 
-  return focusProfiles.slice(0, 200);
+  return focusProfiles;
 };
 
 export const extractSaveProfilesFromImport = (
