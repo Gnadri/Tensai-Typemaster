@@ -6,6 +6,20 @@ Tensai TypeMaster is a Chrome extension with:
 
 The extension runtime files are built into `dist/`.
 
+Custom lessons are organized into C1-C5 sections, with subjects in each section's
+dropdown menu. C1-1 Colours contains 25 Japanese
+colour words with kana readings, romaji, and English meanings. C1-2 Calendar adds
+the seven days of the week, twelve months, and six related words. C2-C5 are reserved
+for future subjects. Use these lessons in the practice modes or browse Custom in
+the Glossary. Run `npm run test:custom-category` for the category regression checks.
+
+C1 lessons share the JLPT reading modes: On/Kun, Full Joyo Readings, Onyomi only,
+Kunyomi only, English Translate, and Kanji Input. Single kanji use the official
+reading data; compounds and kana use their whole-word readings when a requested
+reading group is unavailable. Results are tracked separately for each mode.
+Quiz's Show Hint button reveals each row's answer hint for the active reading
+mode. Hide Hint conceals them, and pausing also hides the hints until resumed.
+
 Leaderboard results are saved automatically. Focus history belongs to the effective
 selection of Focus and Bottleneck items; changing selections keeps the previous
 set's history, and returning to that set restores it. New runs also update the

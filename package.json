@@ -8,6 +8,7 @@
     "test": "jest",
     "test:save-stats": "jest --config jest.save-stats.config.js --runInBand",
     "test:focus-clipboard": "jest --config jest.focus-clipboard.config.js --runInBand",
+    "test:custom-category": "jest --config jest.custom-category.config.js --runInBand",
     "test:persistence": "jest --config jest.persistence.config.js --runInBand",
     "web": "webpack serve --mode development",
     "build:extension": "webpack --mode production && node scripts/copy-manifest.js",

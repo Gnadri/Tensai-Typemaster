@@ -37,6 +37,7 @@ import {
   JLPT_N1_KANJI_SOURCE_PART_10,
 } from './mobile/src/data/jlpt_n1_kanji';
 import { JOYO_KANJI_READING_LOOKUP } from './mobile/src/data/joyo_kanji_readings';
+import { CUSTOM_QUIZ_MODES, CUSTOM_SECTIONS, isCustomQuizMode } from './mobile/src/data/customVocabulary';
 import {
   buildFocusNoteFolderPayload,
   buildSaveProfilePayload,
@@ -1507,6 +1508,7 @@ const QUIZ_MODES = [
   { value: 'jlpt_n1_10', label: 'JLPT N1-10', tabLabel: 'N1-10', family: 'jlpt', dataset: JLPT_N1_10_KANJI_QUIZ },
   { value: 'focus', label: 'Focus', tabLabel: 'Focus', family: 'focus', dataset: [] },
   { value: 'bottleneck', label: 'Bottleneck', tabLabel: 'Bottleneck', family: 'focus', dataset: [] },
+  ...CUSTOM_QUIZ_MODES,
 ];
 const JLPT_READING_MODES = [
   { value: 'on_kun', label: 'On/Kun (Default)' },
@@ -1523,9 +1525,11 @@ const QUIZ_FAMILY_OPTIONS = [
   { value: 'kana', label: 'Kana' },
   { value: 'jlpt', label: 'JLPT' },
   { value: 'focus', label: 'Focus' },
+  { value: 'custom', label: 'Custom' },
 ];
 const GLOSSARY_FILTER_OPTIONS = [
   { value: 'jlpt', label: 'JLPT' },
+  { value: 'custom', label: 'Custom' },
   { value: 'focus', label: 'Focus' },
   { value: 'bottleneck', label: 'Bottleneck' },
 ];
@@ -1567,6 +1571,7 @@ const JLPT_N1_VARIANT_VALUES = ['jlpt_n1', 'jlpt_n1_2', 'jlpt_n1_3', 'jlpt_n1_4'
 const JLPT_N4_VARIANT_VALUES = ['jlpt_n4', 'jlpt_n4_2'];
 
 const isJlptQuizMode = (mode: string) => mode.startsWith('jlpt_');
+const isReadingStudyQuizMode = (mode: string) => isJlptQuizMode(mode) || isCustomQuizMode(mode);
 
 const getDefaultQuizModeForWeb = () => {
   if (Platform.OS !== 'web' || typeof window === 'undefined') {
@@ -1619,7 +1624,7 @@ const withEngModeKey = (mode: string, engModeEnabled: boolean = false) =>
   engModeEnabled ? `${ENG_MODE_KEY_PREFIX}${stripEngModeKey(mode)}` : stripEngModeKey(mode);
 
 const getQuizModeKey = (mode: string, jlptReadingMode: string = DEFAULT_JLPT_READING_MODE, engModeEnabled: boolean = false) => {
-  const baseModeKey = isJlptQuizMode(mode) || mode === 'focus' ? `${mode}:${jlptReadingMode}` : mode;
+  const baseModeKey = isReadingStudyQuizMode(mode) || mode === 'focus' ? `${mode}:${jlptReadingMode}` : mode;
   return withEngModeKey(baseModeKey, engModeEnabled);
 };
 
@@ -1639,6 +1644,8 @@ const getBaseFocusSourceMode = (sourceMode: string | undefined) => {
 };
 const getSourceModeFromCanonicalItemId = (id: any) => {
   const safeId = `${id || ''}`;
+  const customMode = CUSTOM_QUIZ_MODES.find(mode => safeId.startsWith(`${mode.value}_`));
+  if (customMode) return customMode.value;
   if (safeId.startsWith('n5_')) return 'jlpt_n5';
   if (safeId.startsWith('n4_2_')) return 'jlpt_n4_2';
   if (safeId.startsWith('n4_')) return 'jlpt_n4';
@@ -1694,10 +1701,11 @@ const parseTypeMasterModeKey = (mode: string) => {
   const queueMode = hasQueueMode ? last : DEFAULT_TYPEMASTER_QUEUE_MODE;
   const baseParts = hasQueueMode ? parts.slice(0, -1) : parts;
   const baseMode = baseParts[0] || QUIZ_MODES[0].value;
-  const jlptReadingMode = isJlptQuizMode(baseMode)
-    ? (baseParts[1] || DEFAULT_JLPT_READING_MODE)
+  const defaultReadingMode = engMode && isCustomQuizMode(baseMode) ? JLPT_ENGLISH_TRANSLATE_MODES[0] : DEFAULT_JLPT_READING_MODE;
+  const jlptReadingMode = isReadingStudyQuizMode(baseMode)
+    ? (baseParts[1] || defaultReadingMode)
     : null;
-  const normalizedQuizModeKey = isJlptQuizMode(baseMode)
+  const normalizedQuizModeKey = isReadingStudyQuizMode(baseMode)
     ? getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE, engMode)
     : withEngModeKey(baseParts.join(':') || baseMode, engMode);
   return {
@@ -1724,8 +1732,9 @@ const normalizeStoredQuizModeKey = (mode: any) => {
   const engMode = isEngModeKey(safeMode);
   const withoutEng = stripEngModeKey(safeMode);
   const [baseMode, jlptReadingMode] = withoutEng.split(':');
-  const normalizedMode = isJlptQuizMode(baseMode)
-    ? getQuizModeKey(baseMode, jlptReadingMode || DEFAULT_JLPT_READING_MODE)
+  const defaultReadingMode = engMode && isCustomQuizMode(baseMode) ? JLPT_ENGLISH_TRANSLATE_MODES[0] : DEFAULT_JLPT_READING_MODE;
+  const normalizedMode = isReadingStudyQuizMode(baseMode)
+    ? getQuizModeKey(baseMode, jlptReadingMode || defaultReadingMode)
     : withoutEng;
   return withEngModeKey(normalizedMode, engMode);
 };
@@ -1763,7 +1772,7 @@ const getQuizModeLabel = (mode: string) => {
     ) {
       return 'Alphabet - ENG';
     }
-    if (selected && isJlptQuizMode(baseMode)) {
+    if (selected && isReadingStudyQuizMode(baseMode)) {
       return `${getSelectedBaseLabel(selected)} - ENG`;
     }
     if (baseMode === 'focus') return 'Focus - ENG';
@@ -1775,7 +1784,7 @@ const getQuizModeLabel = (mode: string) => {
   const selected = QUIZ_MODES.find(option => option.value === baseMode);
   if (!selected) return mode;
   const selectedBaseLabel = getSelectedBaseLabel(selected);
-  if (!isJlptQuizMode(baseMode)) return selectedBaseLabel;
+  if (!isReadingStudyQuizMode(baseMode)) return selectedBaseLabel;
   const selectedJlptMode = JLPT_READING_MODES.find(option => option.value === jlptReadingMode);
   return selectedJlptMode ? `${selectedBaseLabel} - ${selectedJlptMode.label}` : selectedBaseLabel;
 };
@@ -1796,6 +1805,19 @@ const getNormalizedJoyoReadingGroupsForItem = (item: any) => {
 };
 
 const getNormalizedJlptReadingGroups = (item: any) => {
+  if (item.reading && Array.isArray(item.meanings)) {
+    // Single kanji can share the official reading groups. Compounds and kana
+    // keep their whole-word readings instead of joining readings of each kanji.
+    const joyo = JOYO_KANJI_READING_LOOKUP[item.kana];
+    const normalize = (values: string[]) => values.map(normalizeRomaji).filter(Boolean);
+    const onyomi = normalize(item.onyomi?.length ? item.onyomi : joyo?.onyomiRomaji || []);
+    const kunyomi = normalize(item.kunyomi?.length ? item.kunyomi : joyo?.kunyomiRomaji || []);
+    return {
+      all: Array.from(new Set([...normalize(item.answers || []), ...onyomi, ...kunyomi])),
+      onyomi: Array.from(new Set(onyomi)),
+      kunyomi: Array.from(new Set(kunyomi)),
+    };
+  }
   const normalizedAnswers = (item.answers || []).map((value: string) => normalizeRomaji(value)).filter(Boolean);
   const normalizedOnyomi = (Array.isArray(item.onyomi) && item.onyomi.length ? item.onyomi : (item.answers || []).slice(0, 1))
     .map((value: string) => normalizeRomaji(value))
@@ -1829,7 +1851,7 @@ const getJlptAcceptedReadings = (item: any, jlptReadingMode: string) => {
 const isJlptEnglishTranslateMode = (jlptReadingMode: string) =>
   JLPT_ENGLISH_TRANSLATE_MODES.includes(jlptReadingMode);
 const getJlptEnglishMeaningsForItem = (item: any) =>
-  ([...(JLPT_N5_ENGLISH_MEANINGS[item.id] || []), ...(JLPT_N4_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N4_2_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N3_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N2_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N1_ENGLISH_MEANINGS_BY_KANA[item.kana] || [])])
+  (item.meanings?.length ? item.meanings : [...(JLPT_N5_ENGLISH_MEANINGS[item.id] || []), ...(JLPT_N4_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N4_2_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N3_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N2_ENGLISH_MEANINGS_BY_KANA[item.kana] || []), ...(JLPT_N1_ENGLISH_MEANINGS_BY_KANA[item.kana] || [])])
     .map((value: string) => normalizeRomaji(value))
     .filter(Boolean);
 const getJlptSpanishMeaningsForItem = (item: any) =>
@@ -1909,6 +1931,8 @@ const normalizeStoredFocusItem = (rawItem: any, sourceMode?: string) => {
     answers: Array.isArray(base?.answers) ? base.answers : Array.isArray(rawItem?.answers) ? rawItem.answers : [],
     onyomi: Array.isArray(base?.onyomi) ? base.onyomi : Array.isArray(rawItem?.onyomi) ? rawItem.onyomi : [],
     kunyomi: Array.isArray(base?.kunyomi) ? base.kunyomi : Array.isArray(rawItem?.kunyomi) ? rawItem.kunyomi : [],
+    meanings: Array.isArray(base?.meanings) ? base.meanings : Array.isArray(rawItem?.meanings) ? rawItem.meanings : [],
+    reading: base?.reading || rawItem?.reading || '',
   };
 };
 
@@ -2252,6 +2276,7 @@ function KanaQuizView({
   const [isJlptModeDropdownOpen, setIsJlptModeDropdownOpen] = useState(false);
   const [openJlptSetDropdownBase, setOpenJlptSetDropdownBase] = useState<string | null>(null);
   const [openKanaDropdownBase, setOpenKanaDropdownBase] = useState<string | null>(null);
+  const [openCustomSection, setOpenCustomSection] = useState<string | null>(null);
   const [quizFamily, setQuizFamily] = useState(getQuizModeFamily(defaultQuizMode));
   const [leaderboardScope, setLeaderboardScope] = useState(LEADERBOARD_SCOPE_OPTIONS[0].value);
   const [leaderboardGameType, setLeaderboardGameType] = useState(LEADERBOARD_GAME_OPTIONS[0].value);
@@ -2272,6 +2297,7 @@ function KanaQuizView({
   const [finishReason, setFinishReason] = useState<'time' | 'complete' | 'stopped' | null>(null);
   const [completionTimeMs, setCompletionTimeMs] = useState<number | null>(null);
   const [isQuizScoreHidden, setIsQuizScoreHidden] = useState(false);
+  const [quizShowHints, setQuizShowHints] = useState(false);
   const [isBottleneckLoopEnabled, setIsBottleneckLoopEnabled] = useState(false);
   const [bottleneckLoopScore, setBottleneckLoopScore] = useState(0);
   const [isLeaderboardEditMode, setIsLeaderboardEditMode] = useState(false);
@@ -2699,18 +2725,18 @@ function KanaQuizView({
     [bottleneckItems, focusedItems, quizMode],
   );
   const isJlptStyleItem = useCallback(
-    (item: any, sourceMode?: string) => isJlptQuizMode(sourceMode || getItemSourceMode(item)),
+    (item: any, sourceMode?: string) => isReadingStudyQuizMode(sourceMode || getItemSourceMode(item)),
     [getItemSourceMode],
   );
   const isSpanishMode = quizLanguage === 'spanish';
   const usesJapaneseInputForItem = useCallback(
-    (item: any, sourceMode?: string) => isJlptStyleItem(item, sourceMode) && jlptReadingMode === 'jp_on_kun_kanji',
-    [isJlptStyleItem, jlptReadingMode],
+    (item: any, sourceMode?: string) => !engModeEnabled && isJlptStyleItem(item, sourceMode) && jlptReadingMode === 'jp_on_kun_kanji',
+    [engModeEnabled, isJlptStyleItem, jlptReadingMode],
   );
   const getAcceptedAnswersForItem = useCallback(
     (item: any, sourceMode?: string) => {
       const resolvedSourceMode = sourceMode || getItemSourceMode(item);
-      if (isJlptQuizMode(resolvedSourceMode)) {
+      if (isReadingStudyQuizMode(resolvedSourceMode)) {
         if (engModeEnabled) {
           const translatedMeanings = isSpanishMode ? getJlptSpanishMeaningsForItem(item) : getJlptEnglishMeaningsForItem(item);
           if (translatedMeanings.length) return translatedMeanings;
@@ -2730,7 +2756,7 @@ function KanaQuizView({
   const getPromptTextForItem = useCallback(
     (item: any, sourceMode?: string) => {
       const resolvedSourceMode = sourceMode || getItemSourceMode(item);
-      if (isJlptQuizMode(resolvedSourceMode)) {
+      if (isReadingStudyQuizMode(resolvedSourceMode)) {
         if (engModeEnabled) {
           const translatedMeanings = isSpanishMode ? getJlptSpanishDisplayMeaningsForItem(item) : getJlptEnglishMeaningsForItem(item);
           if (translatedMeanings.length) {
@@ -2752,9 +2778,13 @@ function KanaQuizView({
   const getHintTextForItem = useCallback(
     (item: any, sourceMode?: string) => {
       const accepted = getAcceptedAnswersForItem(item, sourceMode);
+      if (isCustomQuizMode(sourceMode || getItemSourceMode(item))) {
+        if (engModeEnabled || isJlptEnglishTranslateMode(jlptReadingMode)) return accepted.join(' / ');
+        return `${accepted.join(' / ')} · ${(item.meanings || []).join(' / ')}`;
+      }
       return accepted.length ? accepted.join('/') : '';
     },
-    [getAcceptedAnswersForItem],
+    [engModeEnabled, getAcceptedAnswersForItem, getItemSourceMode, jlptReadingMode],
   );
   const getScoreInputLengthForItem = useCallback(
     (item: any, sourceMode?: string) => {
@@ -2973,16 +3003,20 @@ function KanaQuizView({
   );
 
   const isJlptMode = isJlptQuizMode(quizMode);
+  const isCustomMode = isCustomQuizMode(quizMode);
+  const activeCustomMode = CUSTOM_QUIZ_MODES.find(mode => mode.value === quizMode);
+  const isEmptyCustomSection = isCustomMode && !activeCustomMode?.dataset.length;
   const isFocusMode = quizMode === 'focus';
   const isBottleneckMode = quizMode === 'bottleneck';
   const isFocusFamilyMode = isFocusMode || isBottleneckMode;
   const isFocusFamilyLoopScoring = isFocusFamilyMode && isBottleneckLoopEnabled;
   const activeFocusFamilyDataset = isBottleneckMode ? bottleneckDataset : focusDataset;
-  const shouldShowJlptModeControls = quizView !== 'glossary' && (isJlptMode || isFocusFamilyMode) && !engModeEnabled;
-  const isJlptJapaneseInputMode = !engModeEnabled && isJlptMode && jlptReadingMode === 'jp_on_kun_kanji';
-  const isJlptEnglishMode = isJlptMode && (engModeEnabled || isJlptEnglishTranslateMode(jlptReadingMode));
-  const isJlptFullJoyoReadingMode = isJlptMode && jlptReadingMode === JLPT_JOYO_FULL_READING_MODE;
-  const isKanjiStudyMode = isJlptMode || isFocusFamilyMode;
+  const isReadingStudyMode = isJlptMode || (isCustomMode && !isEmptyCustomSection);
+  const shouldShowJlptModeControls = quizView !== 'glossary' && (isReadingStudyMode || isFocusFamilyMode) && !engModeEnabled;
+  const isJlptJapaneseInputMode = !engModeEnabled && isReadingStudyMode && jlptReadingMode === 'jp_on_kun_kanji';
+  const isJlptEnglishMode = isReadingStudyMode && (engModeEnabled || isJlptEnglishTranslateMode(jlptReadingMode));
+  const isJlptFullJoyoReadingMode = isReadingStudyMode && jlptReadingMode === JLPT_JOYO_FULL_READING_MODE;
+  const isKanjiStudyMode = isJlptMode || isFocusFamilyMode || isCustomMode;
   const isEnglishVocabularyMode = engModeEnabled && isKanjiStudyMode;
   const isEnglishAlphabetMode = engModeEnabled && !isKanjiStudyMode;
   const shouldShowJlptKanjiInfo = isKanjiStudyMode && !isJlptJapaneseInputMode;
@@ -3014,7 +3048,7 @@ function KanaQuizView({
       KANA_VARIANT_OPTIONS.hiragana.includes(quizMode as any) ||
       KANA_VARIANT_OPTIONS.katakana.includes(quizMode as any);
     const isJlptLikeMode = isJlptQuizMode(quizMode);
-    if (!isKanaMode && !isJlptLikeMode) return;
+    if (!isKanaMode && !isJlptLikeMode && !isCustomQuizMode(quizMode)) return;
     const nextDataset = engModeEnabled && isKanaMode
       ? ENGLISH_ALPHABET_QUIZ
       : getQuizDataset(quizMode);
@@ -4986,7 +5020,7 @@ function KanaQuizView({
   const getMultipleChoicePromptTextForItem = useCallback(
     (item: any, sourceMode?: string) => {
       const resolvedSourceMode = sourceMode || getItemSourceMode(item);
-      if (isJlptQuizMode(resolvedSourceMode)) {
+      if (isReadingStudyQuizMode(resolvedSourceMode)) {
         if (engModeEnabled || isJlptEnglishTranslateMode(jlptReadingMode)) {
           const translatedMeanings = isSpanishMode ? getJlptSpanishDisplayMeaningsForItem(item) : getJlptEnglishMeaningsForItem(item);
           if (translatedMeanings.length) return translatedMeanings.join(' / ');
@@ -5007,7 +5041,7 @@ function KanaQuizView({
   const getMultipleChoiceOptionTextForItem = useCallback(
     (item: any, sourceMode?: string) => {
       const resolvedSourceMode = sourceMode || getItemSourceMode(item);
-      if (isJlptQuizMode(resolvedSourceMode)) return item?.kana || '';
+      if (isJlptQuizMode(resolvedSourceMode) || isCustomQuizMode(resolvedSourceMode)) return item?.kana || '';
       return getPromptTextForItem(item, sourceMode);
     },
     [getItemSourceMode, getPromptTextForItem],
@@ -5016,7 +5050,7 @@ function KanaQuizView({
   const getMultipleChoiceReadingKeysForItem = useCallback(
     (item: any, sourceMode?: string) => {
       const resolvedSourceMode = sourceMode || getItemSourceMode(item);
-      if (isJlptQuizMode(resolvedSourceMode)) {
+      if (isReadingStudyQuizMode(resolvedSourceMode)) {
         const readingMode = jlptReadingMode === 'jp_on_kun_kanji' || isJlptEnglishTranslateMode(jlptReadingMode)
           ? DEFAULT_JLPT_READING_MODE
           : jlptReadingMode;
@@ -5621,15 +5655,16 @@ function KanaQuizView({
   );
   const activeGlossaryFilter = quizMode === 'focus' || quizMode === 'bottleneck'
     ? quizMode
-    : 'jlpt';
+    : isCustomMode ? 'custom' : 'jlpt';
   const effectiveQuizFamily = quizView === 'glossary'
-    ? activeGlossaryFilter === 'jlpt'
-      ? 'jlpt'
+    ? activeGlossaryFilter === 'jlpt' || activeGlossaryFilter === 'custom'
+      ? activeGlossaryFilter
       : 'focus'
     : quizFamily;
   const activeFamilyModes = getQuizModesForFamily(effectiveQuizFamily);
   const displayedFamilyModes = isSpanishMode
     ? activeFamilyModes.filter(option => option.value === 'jlpt_n5')
+    : effectiveQuizFamily === 'custom' ? []
     : quizView === 'glossary' && activeGlossaryFilter !== 'jlpt'
     ? []
     : effectiveQuizFamily === 'jlpt'
@@ -5689,6 +5724,7 @@ function KanaQuizView({
     ? 'Prompt'
     : isJlptJapaneseInputMode
       ? 'Romaji Reading'
+      : isCustomMode ? (engModeEnabled ? 'Vocabulary' : 'Japanese')
       : isKanjiStudyMode
         ? (engModeEnabled ? (isSpanishMode ? 'Vocabulario' : 'Vocabulary') : 'Kanji')
         : (engModeEnabled ? 'Alphabet' : 'Kana');
@@ -6258,6 +6294,7 @@ function KanaQuizView({
     </View>
   );
   const closeQuizDropdownMenus = () => {
+    setOpenCustomSection(null);
     setIsJlptModeDropdownOpen(false);
     setOpenJlptSetDropdownBase(null);
     setOpenKanaDropdownBase(null);
@@ -6306,12 +6343,17 @@ function KanaQuizView({
   const selectQuizView = (nextView: string) => {
     setQuizView(nextView);
     closeQuizDropdownMenus();
-    if (nextView === 'glossary' && !isJlptQuizMode(quizMode) && quizMode !== 'focus' && quizMode !== 'bottleneck') {
+    if (nextView === 'glossary' && !isJlptQuizMode(quizMode) && !isCustomMode && quizMode !== 'focus' && quizMode !== 'bottleneck') {
       setQuizFamily('jlpt');
       selectQuizMode('jlpt_n5');
     }
   };
   const selectGlossaryFilter = (nextFilter: string) => {
+    if (nextFilter === 'custom') {
+      setQuizFamily('custom');
+      if (!isCustomMode) selectQuizMode(CUSTOM_QUIZ_MODES[0].value);
+      return;
+    }
     if (nextFilter === 'focus') {
       setQuizFamily('focus');
       selectQuizMode('focus');
@@ -6368,7 +6410,7 @@ function KanaQuizView({
         style={styles.quizScroll}
         contentContainerStyle={styles.quizContent}
         onTouchStart={() => {
-          if (isJlptModeDropdownOpen || openJlptSetDropdownBase || openKanaDropdownBase) {
+          if (isJlptModeDropdownOpen || openJlptSetDropdownBase || openKanaDropdownBase || openCustomSection) {
             closeQuizDropdownMenus();
           }
         }}
@@ -6443,6 +6485,63 @@ function KanaQuizView({
               );
             })}
           </View>
+          {effectiveQuizFamily === 'custom' ? (
+            <>
+              <View style={styles.quizSubNavDivider} />
+              <View style={styles.quizSubNavTabs}>
+                {CUSTOM_SECTIONS.map(section => {
+                  const selected = activeCustomMode?.section === section;
+                  const sectionModes = CUSTOM_QUIZ_MODES.filter(mode => mode.section === section);
+                  const targetMode = selected ? activeCustomMode : sectionModes[0];
+                  const subjects = sectionModes.filter(mode => mode.dataset.length);
+                  const expanded = openCustomSection === section;
+                  return (
+                    <View key={section} style={styles.quizSplitTabGroup} onTouchStart={event => event.stopPropagation()}>
+                    <Pressable
+                      accessibilityRole="tab"
+                      accessibilityLabel={`Custom ${section}`}
+                      accessibilityState={{ selected }}
+                      style={[styles.quizSubNavTab, subjects.length > 0 && styles.quizSplitTabMain, selected && styles.quizSubNavTabActive]}
+                      onPress={() => selectQuizMode(targetMode.value)}
+                    >
+                      <Text style={[styles.quizSubNavTabText, selected && styles.quizSubNavTabTextActive]}>{section}</Text>
+                    </Pressable>
+                    {subjects.length > 0 ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${section} subjects`}
+                        accessibilityState={{ expanded }}
+                        style={[styles.quizSubNavTab, styles.quizSplitTabToggle, selected && styles.quizSplitTabToggleActive]}
+                        onPress={() => {
+                          if (isRunning || endlessIsRunning || typemasterIsRunning || multipleChoiceIsRunning) return;
+                          closeQuizDropdownMenus();
+                          setOpenCustomSection(expanded ? null : section);
+                        }}
+                      >
+                        <Text style={[styles.quizSubNavTabText, styles.quizSplitTabChevron, selected && styles.quizSubNavTabTextActive]}>{expanded ? '▲' : '▼'}</Text>
+                      </Pressable>
+                    ) : null}
+                    {expanded ? (
+                      <View style={[styles.quizSplitTabMenu, styles.quizCustomSubjectMenu]}>
+                        {subjects.map(mode => (
+                          <Pressable
+                            key={mode.value}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: quizMode === mode.value }}
+                            style={[styles.quizDropdownMenuItem, quizMode === mode.value && styles.quizDropdownMenuItemActive]}
+                            onPress={() => selectQuizMode(mode.value)}
+                          >
+                            <Text style={[styles.quizDropdownMenuItemText, quizMode === mode.value && styles.quizDropdownMenuItemTextActive]}>{mode.label} ({mode.dataset.length})</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
           {displayedFamilyModes.length > 0 ? (
             <>
           <View style={styles.quizSubNavDivider} />
@@ -6797,10 +6896,14 @@ function KanaQuizView({
           ) : null}
           {shouldShowJlptModeControls ? (
             <View style={styles.quizDropdownWrap} onTouchStart={(event) => event.stopPropagation()}>
-              <Text style={styles.quizDropdownLabel}>JLPT Mode</Text>
+              <Text style={styles.quizDropdownLabel}>{isCustomMode ? 'C1 Mode' : 'JLPT Mode'}</Text>
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Reading mode"
+                accessibilityState={{ expanded: isJlptModeDropdownOpen }}
                 style={styles.quizDropdownTrigger}
                 onPress={() => {
+                  setOpenCustomSection(null);
                   setOpenJlptSetDropdownBase(null);
                   setIsJlptModeDropdownOpen(prev => !prev);
                 }}
@@ -6859,7 +6962,19 @@ function KanaQuizView({
           ) : null}
         </View>
 
-        <View style={styles.quizControlsSection}>
+        {!isEmptyCustomSection ? <View style={styles.quizControlsSection}>
+          {quizView === 'quiz' && !hasFinished ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={quizShowHints ? 'Hide Hint' : 'Show Hint'}
+              accessibilityState={{ expanded: quizShowHints, disabled: quizPromptHidden }}
+              style={[styles.quizResetButton, quizShowHints && styles.quizHintButtonActive, quizPromptHidden && styles.quizStopButtonDisabled]}
+              onPress={() => setQuizShowHints(prev => !prev)}
+              disabled={quizPromptHidden}
+            >
+              <Text style={[styles.quizResetButtonLabel, quizShowHints && styles.quizSubNavTabTextActive]}>{quizShowHints ? 'Hide Hint' : 'Show Hint'}</Text>
+            </Pressable>
+          ) : null}
           {isFocusFamilyMode ? (
             <CopyFocusButton text={focusCharactersText} />
           ) : null}
@@ -7019,11 +7134,41 @@ function KanaQuizView({
               </View>
             </>
           )}
-        </View>
+        </View> : null}
       </View>
 
       <View style={styles.quizTableRow}>
-        {quizView === 'typemaster' ? (
+        {isEmptyCustomSection ? (
+          <View style={styles.quizFinishCard}>
+            <Text style={styles.quizFinishTitle}>{activeCustomMode.section}</Text>
+            <Text style={styles.quizFinishSubtitle}>No subjects yet. Choose C1 to practise C1-1 Colours.</Text>
+          </View>
+        ) : quizView === 'glossary' && isCustomMode ? (
+          <View style={styles.quizFinishCard}>
+            <Text style={styles.quizFinishTitle}>{activeCustomMode.label} Glossary</Text>
+            <Text style={styles.quizFinishSubtitle}>{activeCustomMode.dataset.length} words · Tap a word to add it to Focus; hold to add it to Bottleneck.</Text>
+            <View style={styles.kanjiGlossaryList}>
+              {activeCustomMode.dataset.map(item => (
+                <Pressable
+                  key={item.id}
+                  style={[styles.kanjiGlossaryRow, isFocusedItem(item) && styles.kanjiGlossaryRowFocused, isBottleneckItem(item) && styles.kanjiGlossaryRowBottleneck]}
+                  onPress={() => {
+                    if (suppressNextFocusPressRef.current) { suppressNextFocusPressRef.current = false; return; }
+                    void toggleFocusedItem(item);
+                  }}
+                  onLongPress={() => { suppressNextFocusPressRef.current = true; void toggleBottleneckItem(item); }}
+                  delayLongPress={350}
+                >
+                  <View style={styles.kanjiGlossaryBody}>
+                    <Text style={styles.quizKanaText}>{item.kana}</Text>
+                    <Text style={styles.kanjiGlossaryMeanings}>{item.reading} · {item.answers.join(' / ')}</Text>
+                    <Text style={styles.kanjiGlossaryMeanings}>{item.meanings.join(' / ')}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : quizView === 'typemaster' ? (
           <View style={styles.quizFinishCard}>
             {typemasterHasFinished ? (
               // TypeMaster mode finish screen
@@ -8230,7 +8375,8 @@ function KanaQuizView({
               </View>
               <View style={[styles.quizTableBody, isFocusFamilyMode && styles.quizTableBodyTopAligned]}>
                 {column.map(item => (
-                  <View key={item.id} style={styles.quizTableRowItem}>
+                  <View key={item.id}>
+                  <View style={styles.quizTableRowItem}>
                     <View
                       style={[
                         styles.quizKanaCell,
@@ -8275,6 +8421,7 @@ function KanaQuizView({
                           <Text
                             style={[
                               styles.quizKanaText,
+                              !engModeEnabled && !quizPromptHidden && !usesJapaneseInputForItem(item) && styles.quizKanaTextJapanese,
                               isJlptJapaneseInputMode && styles.quizKanaTextWide,
                               engModeEnabled && styles.quizKanaTextEnglish,
                               engModeEnabled && isEnglishAlphabetMode && styles.quizKanaTextEnglishAlphabet,
@@ -8301,7 +8448,7 @@ function KanaQuizView({
                       editable={!hasFinished && !isQuizPaused}
                       autoCapitalize="none"
                       autoCorrect={false}
-                      maxLength={usesJapaneseInputForItem(item) ? 2 : 40}
+                      maxLength={usesJapaneseInputForItem(item) ? Math.max(2, Array.from(item.kana || '').length) : 40}
                       returnKeyType="next"
                       blurOnSubmit={false}
                       onSubmitEditing={() => focusNextAnswer(item.id, answers)}
@@ -8326,6 +8473,12 @@ function KanaQuizView({
                       placeholder={answerPlaceholder}
                       placeholderTextColor="#64748b"
                     />
+                  </View>
+                  {quizShowHints && !quizPromptHidden ? (
+                    <Text accessibilityLabel={`Hint for ${item.kana}`} style={styles.quizRowHint}>
+                      Hint: {getHintTextForItem(item)}
+                    </Text>
+                  ) : null}
                   </View>
                 ))}
               </View>

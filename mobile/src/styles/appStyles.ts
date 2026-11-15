@@ -486,6 +486,11 @@ export const styles = StyleSheet.create({
     zIndex: 60,
     elevation: 9,
   },
+  quizCustomSubjectMenu: {
+    left: 0,
+    right: 'auto',
+    minWidth: 200,
+  },
   quizSubNavTabActive: {
     backgroundColor: '#3b82f6',
   },
@@ -822,6 +827,18 @@ export const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   quizResetButtonLabel: { color: '#94a3b8', fontWeight: '600', fontSize: 14 },
+  quizHintButtonActive: {
+    backgroundColor: '#1e3a5f',
+    borderColor: '#60a5fa',
+  },
+  quizRowHint: {
+    color: '#bfdbfe',
+    backgroundColor: '#101b2f',
+    fontSize: 12,
+    lineHeight: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
   quizCustomTimerColumn: {
     gap: 2,
     paddingVertical: 7,
@@ -931,6 +948,10 @@ export const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   quizKanaText: { color: '#ffffff', fontWeight: '700', fontSize: 18 },
+  quizKanaTextJapanese: {
+    maxWidth: 36,
+    textAlign: 'center',
+  },
   quizKanaTextBottleneck: {
     color: '#020617',
   },
